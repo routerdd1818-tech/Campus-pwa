@@ -466,20 +466,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [settings, setSettings] = useState<UserSettings>(() => {
     const uid = initialUser?.id;
+    let loaded: UserSettings;
     const saved = localStorage.getItem(getScopedKey(uid, 'settings'));
     if (saved) {
-      try { return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch {}
-    }
-    if (!uid) {
+      try { loaded = { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch { loaded = DEFAULT_SETTINGS; }
+    } else if (!uid) {
       const legacy = localStorage.getItem('campus_settings');
-      return legacy ? { ...DEFAULT_SETTINGS, ...JSON.parse(legacy) } : DEFAULT_SETTINGS;
+      loaded = legacy ? { ...DEFAULT_SETTINGS, ...JSON.parse(legacy) } : DEFAULT_SETTINGS;
+    } else {
+      loaded = {
+        ...DEFAULT_SETTINGS,
+        ownerName: initialUser?.displayName || (uid ? initialUser!.username : '我的課表'),
+        shareCode: initialUser?.shareCode || DEFAULT_SETTINGS.shareCode,
+        lineUserId: initialUser?.lineUserId || DEFAULT_SETTINGS.lineUserId,
+      };
     }
-    return {
-      ...DEFAULT_SETTINGS,
-      ownerName: initialUser?.displayName || (uid ? initialUser!.username : '我的課表'),
-      shareCode: initialUser?.shareCode || DEFAULT_SETTINGS.shareCode,
-      lineUserId: initialUser?.lineUserId || DEFAULT_SETTINGS.lineUserId,
-    };
+
+    // Auto-migrate from old deleted Supabase project dxoobrrjzaovwpyagzgn
+    if (loaded.supabaseUrl && (loaded.supabaseUrl.includes('dxoobrrjzaovwpyagzgn') || !loaded.supabaseUrl.startsWith('https://'))) {
+      loaded.supabaseUrl = DEFAULT_SUPABASE_URL;
+      loaded.supabaseAnonKey = DEFAULT_SUPABASE_ANON_KEY;
+      localStorage.removeItem('campus_supabase_url');
+      localStorage.removeItem('campus_supabase_anon_key');
+    }
+    return loaded;
   });
 
   // Custom categories state (scoped per user)

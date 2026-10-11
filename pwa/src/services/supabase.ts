@@ -8,8 +8,20 @@ export const DEFAULT_SUPABASE_ANON_KEY =
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabaseClient(url?: string, key?: string): SupabaseClient {
-  const currentUrl = url || localStorage.getItem('campus_supabase_url') || DEFAULT_SUPABASE_URL;
-  const currentKey = key || localStorage.getItem('campus_supabase_anon_key') || DEFAULT_SUPABASE_ANON_KEY;
+  let storedUrl = localStorage.getItem('campus_supabase_url');
+  let storedKey = localStorage.getItem('campus_supabase_anon_key');
+
+  // Auto-migration: if stored URL is the old deleted project dxoobrrjzaovwpyagzgn, purge it!
+  if (storedUrl && (storedUrl.includes('dxoobrrjzaovwpyagzgn') || !storedUrl.startsWith('https://'))) {
+    localStorage.removeItem('campus_supabase_url');
+    localStorage.removeItem('campus_supabase_anon_key');
+    storedUrl = null;
+    storedKey = null;
+    supabaseInstance = null;
+  }
+
+  const currentUrl = url || storedUrl || DEFAULT_SUPABASE_URL;
+  const currentKey = key || storedKey || DEFAULT_SUPABASE_ANON_KEY;
 
   if (!supabaseInstance) {
     supabaseInstance = createClient(currentUrl, currentKey);
@@ -715,7 +727,10 @@ export async function bindLineFollower(shareCode: string, deviceId: string) {
   }
 }
 
-export async function sendTestLineMessage(userId: string, text: string): Promise<boolean> {
+export async function sendTestLineMessage(
+  userId: string,
+  text: string
+): Promise<{ ok: boolean; error?: string }> {
   try {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.rpc('relay_line_message', {
@@ -723,10 +738,47 @@ export async function sendTestLineMessage(userId: string, text: string): Promise
       p_is_direct_push: true,
       p_messages: [{ type: 'text', text: text }],
     });
-    return !error && data?.ok === true;
-  } catch {
-    return false;
+
+    if (!error && data?.ok === true) {
+      return { ok: true };
+    }
+
+    if (data?.error) {
+      return { ok: false, error: data.error };
+    }
+    if (error) {
+      console.warn('relay_line_message RPC error, trying direct fallback:', error);
+    }
+  } catch (err: any) {
+    console.warn('sendTestLineMessage network error:', err);
   }
+
+  // Fallback: Direct LINE push via token if available
+  try {
+    const token = await fetchAppApiConfig('line_channel_access_token');
+    if (token) {
+      const res = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          to: userId,
+          messages: [{ type: 'text', text: text }],
+        }),
+      });
+      if (res.ok) {
+        return { ok: true };
+      }
+      const errJson = await res.json();
+      return { ok: false, error: errJson?.message || `LINE API 回傳 HTTP ${res.status}` };
+    }
+  } catch (err: any) {
+    return { ok: false, error: err.message || '連線至 LINE 失敗' };
+  }
+
+  return { ok: false, error: '請確認 Supabase app_api_configs 是否已儲存 line_channel_access_token' };
 }
 
 // -------------------------------------------------------------

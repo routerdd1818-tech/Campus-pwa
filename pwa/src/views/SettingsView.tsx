@@ -254,14 +254,14 @@ export const SettingsView: React.FC = () => {
     }
     setIsSendingTestPush(true);
     try {
-      const ok = await sendTestLineMessage(
+      const res = await sendTestLineMessage(
         lineUserId,
         `🐾 哈囉 ${ownerName}！這是來自 Campus 可樂校園的專屬推播測試！\n專屬課表代碼：${shareCode}\n今日花費限額：$${dailyLimit} 元。\n每日晨報將於 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時送達！`
       );
-      if (ok) {
+      if (res.ok) {
         showNotification('🚀 測試推播已發送，請檢查您的 LINE 聊天室！');
       } else {
-        showNotification('發送失敗，請確認 Supabase app_api_configs 是否已儲存 line_channel_access_token');
+        showNotification(`發送失敗：${res.error || '請確認 LINE Token 設定'}`);
       }
     } finally {
       setIsSendingTestPush(false);

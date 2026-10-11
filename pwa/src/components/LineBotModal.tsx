@@ -73,16 +73,16 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
     setIsLoading(true);
     setStatusMessage(null);
     try {
-      const ok = await sendTestLineMessage(
+      const res = await sendTestLineMessage(
         lineUserId,
         `🐾 哈囉 ${userName}！這是來自可樂管家專屬您的獨立推播測試！\n您的課表代碼為【${shareCode}】\n每日晨報將在每天早上 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時為您發送！`
       );
-      if (ok) {
+      if (res.ok) {
         setIsSuccess(true);
         setStatusMessage('測試訊息已成功發送至您的 LINE，請查看聊天室！');
       } else {
         setIsSuccess(false);
-        setStatusMessage('推播失敗，請確認 Supabase 雲端 Token 是否正常');
+        setStatusMessage(res.error ? `推播失敗：${res.error}` : '推播失敗，請確認 Supabase 雲端 Token 是否正常');
       }
     } finally {
       setIsLoading(false);
