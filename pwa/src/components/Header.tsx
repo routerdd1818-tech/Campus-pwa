@@ -15,6 +15,7 @@ export const Header: React.FC = () => {
     setIsLineBotModalOpen,
     setIsShareModalOpen,
     settings,
+    nextSyncDisplay,
   } = useApp();
 
   const getGreeting = () => {
@@ -94,10 +95,11 @@ export const Header: React.FC = () => {
             onClick={() => syncWithSupabase()}
             disabled={isSyncing}
             className="p-1.5 rounded-full bg-white/80 dark:bg-zinc-800/80 border border-black/5 dark:border-white/10 shadow-ios-sm active:scale-95 transition-all text-calico-cocoa/80 dark:text-zinc-300 hover:text-calico-orange"
-            title="手動同步 Supabase 雲端"
+            title={`雲端同步 (${nextSyncDisplay})`}
           >
             <RefreshCw className={`w-3.5 h-3.5 text-calico-orange ${isSyncing ? 'animate-spin' : ''}`} />
           </button>
+
 
           {/* Connection Status Indicator */}
           <div

@@ -18,15 +18,27 @@ import {
   CheckSquare,
   Wallet,
   Clock,
-  MapPin,
-  Tag,
   Sparkles,
   CalendarDays,
   Coffee,
-  Users,
+  Plane,
+  Tag,
 } from 'lucide-react';
 
 const WEEKDAYS_HEADER = ['日', '一', '二', '三', '四', '五', '六'];
+
+interface UnifiedSpanItem {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  colorHex: string;
+  category: string;
+  isAllDay: boolean;
+  notes?: string;
+  type: 'event' | 'todo';
+  isCompleted?: boolean;
+}
 
 export const CalendarView: React.FC = () => {
   const {
@@ -35,6 +47,7 @@ export const CalendarView: React.FC = () => {
     transactions,
     calendarEvents,
     budgetInfo,
+    addTodo,
     toggleTodo,
     addCalendarEvent,
     updateCalendarEvent,
@@ -92,8 +105,6 @@ export const CalendarView: React.FC = () => {
 
     // Days in current month
     for (let i = 1; i <= daysInMonth; i++) {
-      const currDate = new Date(year, month, i);
-      // Format as YYYY-MM-DD
       const mStr = String(month + 1).padStart(2, '0');
       const dStr = String(i).padStart(2, '0');
       days.push({
@@ -103,11 +114,10 @@ export const CalendarView: React.FC = () => {
       });
     }
 
-    // Days in next month to fill the remaining cells (up to complete weeks)
+    // Days in next month to fill remaining cells (up to complete 7-day rows)
     const totalCells = Math.ceil(days.length / 7) * 7;
     const remaining = totalCells - days.length;
     for (let i = 1; i <= remaining; i++) {
-      const nextDate = new Date(year, month + 1, i);
       const mStr = String(((month + 1) % 12) + 1).padStart(2, '0');
       const dStr = String(i).padStart(2, '0');
       const nextYear = month === 11 ? year + 1 : year;
@@ -163,13 +173,41 @@ export const CalendarView: React.FC = () => {
   };
 
   // -------------------------------------------------------------
-  // 🌟 TimeTree Multi-Day Span Event Logic
+  // 🌟 TimeTree Multi-Day Span Event & Period Todos Logic
   // -------------------------------------------------------------
-  // Helper to determine if an event covers a specific date
-  const getEventsForDate = (dateStr: string) => {
-    return calendarEvents.filter((e) => {
-      return dateStr >= e.startDate && dateStr <= e.endDate;
-    });
+  const getAllSpanItemsForDate = (dateStr: string): UnifiedSpanItem[] => {
+    // 1. Calendar Events covering this date
+    const eventItems: UnifiedSpanItem[] = calendarEvents
+      .filter((e) => dateStr >= e.startDate && dateStr <= e.endDate)
+      .map((e) => ({
+        id: e.id,
+        title: e.title,
+        startDate: e.startDate,
+        endDate: e.endDate,
+        colorHex: e.colorHex || '#E67E22',
+        category: e.category,
+        isAllDay: e.isAllDay,
+        notes: e.notes,
+        type: 'event',
+      }));
+
+    // 2. Todos with Period (e.g. 12/7~12/14 出國) covering this date
+    const periodTodoItems: UnifiedSpanItem[] = todos
+      .filter((t) => t.startDate && t.endDate && dateStr >= t.startDate && dateStr <= t.endDate)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        startDate: t.startDate!,
+        endDate: t.endDate!,
+        colorHex: t.colorHex || '#DD6B20',
+        category: t.category,
+        isAllDay: true,
+        notes: t.notes,
+        type: 'todo',
+        isCompleted: t.isCompleted,
+      }));
+
+    return [...eventItems, ...periodTodoItems];
   };
 
   // -------------------------------------------------------------
@@ -185,19 +223,21 @@ export const CalendarView: React.FC = () => {
 
   const todayTodos = useMemo(() => {
     return todos.filter((t) => {
-      if (!t.dueDate) return false;
-      return t.dueDate.slice(0, 10) === todayStr;
+      // Due today or period active today
+      if (t.dueDate && t.dueDate.slice(0, 10) === todayStr) return true;
+      if (t.startDate && t.endDate && todayStr >= t.startDate && todayStr <= t.endDate) return true;
+      return false;
     });
   }, [todos, todayStr]);
 
-  const todayTransactions = useMemo(() => {
-    return transactions.filter((t) => t.date.slice(0, 10) === todayStr);
-  }, [transactions, todayStr]);
+  const todaySpanItems = useMemo(() => {
+    return getAllSpanItemsForDate(todayStr);
+  }, [calendarEvents, todos, todayStr]);
 
-  // Selected date events
-  const selectedDateEvents = useMemo(() => {
-    return getEventsForDate(selectedDateStr);
-  }, [selectedDateStr, calendarEvents]);
+  // Selected date events & items
+  const selectedDateSpanItems = useMemo(() => {
+    return getAllSpanItemsForDate(selectedDateStr);
+  }, [selectedDateStr, calendarEvents, todos]);
 
   const selectedDateCourses = useMemo(() => {
     const sel = new Date(selectedDateStr);
@@ -208,7 +248,11 @@ export const CalendarView: React.FC = () => {
   }, [selectedDateStr, courses]);
 
   const selectedDateTodos = useMemo(() => {
-    return todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === selectedDateStr);
+    return todos.filter((t) => {
+      if (t.dueDate && t.dueDate.slice(0, 10) === selectedDateStr) return true;
+      if (t.startDate && t.endDate && selectedDateStr >= t.startDate && selectedDateStr <= t.endDate) return true;
+      return false;
+    });
   }, [selectedDateStr, todos]);
 
   const selectedDateTransactions = useMemo(() => {
@@ -225,7 +269,7 @@ export const CalendarView: React.FC = () => {
             onClick={() => setCalendarMode('month')}
             className={`px-3 py-1.5 rounded-xl transition-all ${
               calendarMode === 'month'
-                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm font-black'
                 : 'text-calico-cocoa/60 dark:text-zinc-400'
             }`}
           >
@@ -235,7 +279,7 @@ export const CalendarView: React.FC = () => {
             onClick={() => setCalendarMode('week')}
             className={`px-3 py-1.5 rounded-xl transition-all ${
               calendarMode === 'week'
-                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm font-black'
                 : 'text-calico-cocoa/60 dark:text-zinc-400'
             }`}
           >
@@ -268,7 +312,7 @@ export const CalendarView: React.FC = () => {
             className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
           >
             <Plus className="w-4 h-4" />
-            <span>新活動</span>
+            <span>新行程</span>
           </button>
         </div>
       </div>
@@ -276,7 +320,7 @@ export const CalendarView: React.FC = () => {
       {/* ======================================================== */}
       {/* 🌟 1. 當日的折疊 (Today's Collapsible Summary) */}
       {/* ======================================================== */}
-      <div className="rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios overflow-hidden transition-all">
+      <div className="rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios overflow-hidden transition-all">
         {/* Collapsible Header */}
         <button
           onClick={() => setIsTodaySummaryOpen(!isTodaySummaryOpen)}
@@ -309,6 +353,34 @@ export const CalendarView: React.FC = () => {
         {/* Collapsible Content */}
         {isTodaySummaryOpen && (
           <div className="px-4 pb-4 pt-1 border-t border-black/5 dark:border-white/5 space-y-3.5 animate-fade-in">
+            {/* 1.0 進行中的跨日行程與出國週期 */}
+            {todaySpanItems.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-xs font-black text-calico-orange flex items-center space-x-1">
+                  <Plane className="w-3.5 h-3.5" />
+                  <span>進行中的跨日/出國行程 ({todaySpanItems.length})</span>
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {todaySpanItems.map((item) => (
+                    <div
+                      key={item.id}
+                      style={{
+                        backgroundColor: `${item.colorHex}18`,
+                        borderColor: `${item.colorHex}40`,
+                        color: item.colorHex,
+                      }}
+                      className="px-2.5 py-1 rounded-xl text-xs font-black border flex items-center space-x-1.5 shadow-2xs"
+                    >
+                      <span>{item.title}</span>
+                      <span className="text-[10px] opacity-75">
+                        ({item.startDate.slice(5)} ~ {item.endDate.slice(5)})
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* 1.1 今日課表 (Today Courses) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -390,35 +462,36 @@ export const CalendarView: React.FC = () => {
                 </div>
               ) : (
                 <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
-                  今天沒有到期任務，進度全數掌控中！✨
+                  今天沒有待辦事項，輕鬆度過！✨
                 </p>
               )}
             </div>
 
-            {/* 1.3 今日記帳 (Today Expenses) */}
+            {/* 1.3 今日記帳與花費 (Today Spending & Budget) */}
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
-                  <Wallet className="w-3.5 h-3.5 text-amber-500" />
+                  <Wallet className="w-3.5 h-3.5 text-calico-orange" />
                   <span>今日記帳花費 (${budgetInfo.todaySpent})</span>
                 </span>
-                <span className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400">
-                  今日剩餘預算：${budgetInfo.remaining}
+                <span className="text-[11px] text-calico-cocoa/60 font-bold">
+                  剩餘預算: ${Math.max(0, budgetInfo.remaining)}
                 </span>
               </div>
 
-              {todayTransactions.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {todayTransactions.map((tx) => (
-                    <div
-                      key={tx.id}
-                      className="px-2.5 py-1.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
-                    >
-                      <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
-                      <span className="text-[10px] text-calico-cocoa/60">{tx.notes}</span>
-                      <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
-                    </div>
-                  ))}
+              {transactions.filter((t) => t.date.slice(0, 10) === todayStr).length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {transactions
+                    .filter((t) => t.date.slice(0, 10) === todayStr)
+                    .map((tx) => (
+                      <div
+                        key={tx.id}
+                        className="px-2.5 py-1 rounded-xl bg-calico-cream/70 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-1.5 text-xs"
+                      >
+                        <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
+                        <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
+                      </div>
+                    ))}
                 </div>
               ) : (
                 <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
@@ -434,7 +507,7 @@ export const CalendarView: React.FC = () => {
       {/* 📅 2. 月曆 檢視 (Monthly Calendar with TimeTree Spans) */}
       {/* ======================================================== */}
       {calendarMode === 'month' && (
-        <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+        <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
           {/* Month Header Switcher */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -482,14 +555,16 @@ export const CalendarView: React.FC = () => {
               const isSelected = cell.dateStr === selectedDateStr;
               const isToday = cell.dateStr === todayStr;
 
-              // Events covering this date
-              const dayEvents = getEventsForDate(cell.dateStr);
+              // Unified span items covering this date
+              const daySpanItems = getAllSpanItemsForDate(cell.dateStr);
 
-              // Does this date have course?
+              // Does this date have course or todo?
               const cellDate = new Date(cell.dateStr);
               const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
               const hasCourse = courses.some((c) => c.dayOfWeek === cellDayOfWeek);
-              const hasTodo = todos.some((t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted);
+              const hasTodo = todos.some(
+                (t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted
+              );
 
               return (
                 <div
@@ -519,27 +594,27 @@ export const CalendarView: React.FC = () => {
                       {cell.dayNum}
                     </span>
 
-                    {/* Small indicators for course & todo */}
+                    {/* Indicators */}
                     <div className="flex items-center space-x-0.5">
                       {hasCourse && <span className="w-1.5 h-1.5 rounded-full bg-calico-orange" />}
                       {hasTodo && <span className="w-1.5 h-1.5 rounded-full bg-calico-sage" />}
                     </div>
                   </div>
 
-                  {/* 🌟 TimeTree Multi-Day Continuous Span Banners */}
+                  {/* 🌟 TimeTree Multi-Day Continuous Span Ribbons */}
                   <div className="space-y-0.5 mt-1 overflow-hidden">
-                    {dayEvents.slice(0, 2).map((ev) => {
-                      const isStart = cell.dateStr === ev.startDate;
-                      const isEnd = cell.dateStr === ev.endDate;
-                      const isSingle = ev.startDate === ev.endDate;
+                    {daySpanItems.slice(0, 2).map((item) => {
+                      const isStart = cell.dateStr === item.startDate;
+                      const isEnd = cell.dateStr === item.endDate;
+                      const isSingle = item.startDate === item.endDate;
 
                       return (
                         <div
-                          key={ev.id}
+                          key={item.id}
                           style={{
-                            backgroundColor: `${ev.colorHex}25`,
-                            color: ev.colorHex,
-                            borderColor: `${ev.colorHex}50`,
+                            backgroundColor: `${item.colorHex}22`,
+                            color: item.colorHex,
+                            borderColor: `${item.colorHex}50`,
                           }}
                           className={`text-[9px] font-black leading-tight px-1 py-0.5 truncate border transition-all ${
                             isSingle
@@ -550,18 +625,14 @@ export const CalendarView: React.FC = () => {
                               ? 'rounded-r-md rounded-l-none border-l-0'
                               : 'rounded-none border-x-0'
                           }`}
-                          title={`${ev.title} (${ev.startDate} ~ ${ev.endDate})`}
+                          title={`${item.title} (${item.startDate} ~ ${item.endDate})`}
                         >
-                          {isStart || isSingle ? ev.title : '⋯'}
+                          {isStart || isSingle ? item.title : '⋯'}
                         </div>
                       );
                     })}
 
-                    {dayEvents.length > 2 && (
-                      <span className="text-[8px] text-calico-cocoa/50 font-bold block leading-none">
-                        +{dayEvents.length - 2} 更多
-                      </span>
-                    )}
+                    {daySpanSpanOverflow(daySpanItems.length)}
                   </div>
                 </div>
               );
@@ -574,7 +645,7 @@ export const CalendarView: React.FC = () => {
       {/* 🗓️ 3. 週曆 檢視 (Weekly Calendar View) */}
       {/* ======================================================== */}
       {calendarMode === 'week' && (
-        <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+        <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
               <CalendarDays className="w-5 h-5 text-calico-orange" />
@@ -591,7 +662,7 @@ export const CalendarView: React.FC = () => {
               const isSelected = w.dateStr === selectedDateStr;
               const isToday = w.dateStr === todayStr;
 
-              const dayEvents = getEventsForDate(w.dateStr);
+              const daySpanItems = getAllSpanItemsForDate(w.dateStr);
               const dayCourses = courses.filter((c) => c.dayOfWeek === w.dayOfWeekNum);
               const dayTodos = todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === w.dateStr);
 
@@ -624,24 +695,28 @@ export const CalendarView: React.FC = () => {
                     </div>
 
                     <span className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400">
-                      {dayCourses.length} 門課 · {dayEvents.length} 項活動 · {dayTodos.length} 待辦
+                      {dayCourses.length} 門課 · {daySpanItems.length} 項活動/排程 · {dayTodos.length} 待辦
                     </span>
                   </div>
 
-                  {/* Multi-day TimeTree Events on this day */}
-                  {dayEvents.length > 0 && (
+                  {/* Span Items on this day */}
+                  {daySpanItems.length > 0 && (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {dayEvents.map((ev) => (
+                      {daySpanItems.map((item) => (
                         <div
-                          key={ev.id}
+                          key={item.id}
                           style={{
-                            backgroundColor: `${ev.colorHex}20`,
-                            color: ev.colorHex,
-                            borderColor: `${ev.colorHex}40`,
+                            backgroundColor: `${item.colorHex}20`,
+                            color: item.colorHex,
+                            borderColor: `${item.colorHex}40`,
                           }}
-                          className="px-2 py-0.5 rounded-md text-[10px] font-black border"
+                          className="px-2 py-0.5 rounded-md text-[10px] font-black border flex items-center space-x-1"
                         >
-                          {ev.title} ({ev.startDate} ~ {ev.endDate})
+                          {item.type === 'todo' && <Plane className="w-2.5 h-2.5 shrink-0" />}
+                          <span>{item.title}</span>
+                          <span className="text-[9px] opacity-75">
+                            ({item.startDate.slice(5)} ~ {item.endDate.slice(5)})
+                          </span>
                         </div>
                       ))}
                     </div>
@@ -656,7 +731,7 @@ export const CalendarView: React.FC = () => {
       {/* ======================================================== */}
       {/* 📋 4. 選取日期詳細行程 (Selected Date Agenda) */}
       {/* ======================================================== */}
-      <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+      <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5">
           <div>
             <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
@@ -672,53 +747,68 @@ export const CalendarView: React.FC = () => {
             </p>
           </div>
 
-          <button
-            onClick={() => {
-              setEventToEdit(null);
-              setIsEventModalOpen(true);
-            }}
-            className="px-2.5 py-1 rounded-xl bg-calico-orange/15 text-calico-orange text-xs font-bold flex items-center space-x-1 hover:bg-calico-orange/25 active:scale-95 transition-all"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>新增此日活動</span>
-          </button>
+          <div className="flex items-center space-x-1">
+            <button
+              onClick={() => setIsTodoModalOpen(true)}
+              className="px-2.5 py-1 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-bold flex items-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>加待辦</span>
+            </button>
+            <button
+              onClick={() => {
+                setEventToEdit(null);
+                setIsEventModalOpen(true);
+              }}
+              className="px-2.5 py-1 rounded-xl bg-calico-orange/15 text-calico-orange text-xs font-bold flex items-center space-x-1 hover:bg-calico-orange/25 active:scale-95 transition-all"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>加活動</span>
+            </button>
+          </div>
         </div>
 
-        {/* 4.1 TimeTree Span Events on Selected Date */}
-        {selectedDateEvents.length > 0 && (
+        {/* 4.1 TimeTree Span Items on Selected Date */}
+        {selectedDateSpanItems.length > 0 && (
           <div className="space-y-1.5">
             <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
               <CalendarDays className="w-3.5 h-3.5 text-calico-orange" />
-              <span>進行中的區間活動 ({selectedDateEvents.length})</span>
+              <span>進行中的區間行程 ({selectedDateSpanItems.length})</span>
             </span>
-            {selectedDateEvents.map((ev) => (
+            {selectedDateSpanItems.map((item) => (
               <div
-                key={ev.id}
+                key={item.id}
                 onClick={() => {
-                  setEventToEdit(ev);
-                  setIsEventModalOpen(true);
+                  if (item.type === 'event') {
+                    const found = calendarEvents.find((e) => e.id === item.id);
+                    if (found) {
+                      setEventToEdit(found);
+                      setIsEventModalOpen(true);
+                    }
+                  }
                 }}
-                style={{ borderLeftColor: ev.colorHex }}
+                style={{ borderLeftColor: item.colorHex }}
                 className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 border-l-4 flex items-center justify-between cursor-pointer hover:brightness-95 transition-all shadow-2xs"
               >
                 <div>
                   <div className="flex items-center space-x-2">
-                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">{ev.title}</span>
+                    {item.type === 'todo' && <Plane className="w-3.5 h-3.5 text-calico-orange" />}
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">{item.title}</span>
                     <span
-                      style={{ color: ev.colorHex }}
+                      style={{ color: item.colorHex }}
                       className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10 font-bold"
                     >
-                      {ev.category}
+                      {item.category}
                     </span>
                   </div>
-                  {ev.notes && (
-                    <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">{ev.notes}</p>
+                  {item.notes && (
+                    <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">{item.notes}</p>
                   )}
                 </div>
 
                 <div className="text-right shrink-0">
                   <span className="text-[11px] font-mono text-calico-cocoa/70 dark:text-zinc-300 font-bold">
-                    {ev.startDate === ev.endDate ? ev.startDate : `${ev.startDate} ~ ${ev.endDate}`}
+                    {item.startDate === item.endDate ? item.startDate : `${item.startDate} ~ ${item.endDate}`}
                   </span>
                 </div>
               </div>
@@ -803,7 +893,7 @@ export const CalendarView: React.FC = () => {
               {selectedDateTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="px-2.5 py-1.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
+                  className="px-2.5 py-1 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
                 >
                   <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
                   <span className="text-[10px] text-calico-cocoa/60">{tx.notes}</span>
@@ -815,7 +905,7 @@ export const CalendarView: React.FC = () => {
         )}
 
         {/* Empty state for selected date */}
-        {selectedDateEvents.length === 0 &&
+        {selectedDateSpanItems.length === 0 &&
           selectedDateCourses.length === 0 &&
           selectedDateTodos.length === 0 &&
           selectedDateTransactions.length === 0 && (
@@ -858,13 +948,22 @@ export const CalendarView: React.FC = () => {
         isOpen={isTodoModalOpen}
         onClose={() => setIsTodoModalOpen(false)}
         onSave={(todo) => {
-          // Add with dueDate set to selectedDateStr
-          useApp().addTodo({
+          addTodo({
             ...todo,
-            dueDate: new Date(selectedDateStr + 'T23:59:00').toISOString(),
+            dueDate: todo.dueDate || new Date(selectedDateStr + 'T23:59:00').toISOString(),
           });
         }}
       />
     </div>
   );
 };
+
+// Helper for overflow counter
+function daySpanSpanOverflow(count: number) {
+  if (count <= 2) return null;
+  return (
+    <span className="text-[8px] text-calico-cocoa/50 font-bold block leading-none">
+      +{count - 2} 更多
+    </span>
+  );
+}

@@ -199,7 +199,7 @@ export const ScheduleView: React.FC = () => {
   }, [courses, selectedDay, todayDayOfWeek]);
 
   return (
-    <div className="space-y-4 pb-24">
+    <div className="space-y-4 pb-32">
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* 週課表 vs 本日行程 */}

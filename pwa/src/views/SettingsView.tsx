@@ -23,7 +23,15 @@ import {
   LogIn,
   ExternalLink,
   Sparkles,
+  Clock,
+  Tag,
+  Plus,
+  Trash2,
+  Layers,
+  Palette,
 } from 'lucide-react';
+
+const PALETTE = ['#E67E22', '#48BB78', '#3182CE', '#805AD5', '#D53F8C', '#ED8936', '#E53E3E', '#3D2F2E', '#38B2AC'];
 
 export const SettingsView: React.FC = () => {
   const {
@@ -35,6 +43,14 @@ export const SettingsView: React.FC = () => {
     logoutUser,
     setIsAuthModalOpen,
     setIsLineBotModalOpen,
+    customExpenseCategories,
+    customIncomeCategories,
+    customTodoCategories,
+    addCustomCategory,
+    deleteCustomCategory,
+    lastSyncedAt,
+    nextSyncDisplay,
+    triggerManualUpload,
   } = useApp();
 
   const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || DEFAULT_SUPABASE_URL);
@@ -46,6 +62,16 @@ export const SettingsView: React.FC = () => {
   const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
   const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
   const [resetDay, setResetDay] = useState(settings.accountingResetDay ?? 1);
+
+  // Scheduled Cloud Upload & Sync states
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(settings.autoSyncEnabled ?? true);
+  const [autoSyncTime, setAutoSyncTime] = useState(settings.autoSyncTime || '23:00');
+  const [autoSyncIntervalMinutes, setAutoSyncIntervalMinutes] = useState(settings.autoSyncIntervalMinutes ?? 30);
+
+  // Category Manager Tab
+  const [activeCategoryTab, setActiveCategoryTab] = useState<'expense' | 'income' | 'todo'>('expense');
+  const [newCatName, setNewCatName] = useState('');
+  const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
 
   // Sync state if currentUser changes
   useEffect(() => {
@@ -71,10 +97,26 @@ export const SettingsView: React.FC = () => {
       linePushMinute: pushMinute,
       customDailyLimit: dailyLimit,
       accountingResetDay: resetDay,
+      autoSyncEnabled,
+      autoSyncTime,
+      autoSyncIntervalMinutes,
     });
     resetSupabaseClient(supabaseUrl, supabaseAnonKey);
-    setAlertMsg('設定已儲存！');
+    setAlertMsg('設定已儲存成功！');
     setTimeout(() => setAlertMsg(null), 3000);
+  };
+
+  const handleCreateCategory = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCatName.trim()) return;
+    addCustomCategory(activeCategoryTab, {
+      name: newCatName.trim(),
+      colorHex: newCatColor,
+      icon: 'tag',
+    });
+    setNewCatName('');
+    setAlertMsg(`已新增 ${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'} 分類！`);
+    setTimeout(() => setAlertMsg(null), 2500);
   };
 
   const handleClaimLineFollower = async () => {
@@ -123,6 +165,7 @@ export const SettingsView: React.FC = () => {
       courses: localStorage.getItem('campus_courses'),
       todos: localStorage.getItem('campus_todos'),
       transactions: localStorage.getItem('campus_transactions'),
+      calendarEvents: localStorage.getItem('campus_calendar_events'),
       settings: localStorage.getItem('campus_settings'),
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -135,18 +178,18 @@ export const SettingsView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 pb-28">
       <div>
         <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
           雲端與系統設定
         </h2>
         <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400">
-          Supabase 雲端資料庫、LINE Bot 晨報與記帳規則
+          固定上傳時間、自訂分類種類、LINE 推播與帳號管理
         </p>
       </div>
 
       {alertMsg && (
-        <div className="p-3.5 rounded-2xl bg-calico-sage/15 border border-calico-sage/30 text-calico-cocoa dark:text-zinc-100 text-xs font-bold flex items-center space-x-2 animate-fade-in">
+        <div className="p-3.5 rounded-2xl bg-calico-sage/15 border border-calico-sage/30 text-calico-cocoa dark:text-zinc-100 text-xs font-bold flex items-center space-x-2 animate-fade-in shadow-2xs">
           <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
           <span>{alertMsg}</span>
         </div>
@@ -199,26 +242,10 @@ export const SettingsView: React.FC = () => {
                 {currentUser.shareCode}
               </span>
             </div>
-            {currentUser.lineUserId ? (
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">綁定 LINE ID</span>
-                <span className="font-mono text-calico-sage truncate max-w-[150px]">{currentUser.lineUserId}</span>
-              </div>
-            ) : (
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">LINE 推播</span>
-                <button
-                  onClick={() => setIsLineBotModalOpen(true)}
-                  className="text-xs font-bold text-calico-orange underline"
-                >
-                  前往綁定
-                </button>
-              </div>
-            )}
           </div>
         ) : (
           <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between">
-            <span>註冊或登入後，課表與待辦會自動依帳號獨立保存！</span>
+            <span>註冊或登入後，課表、行事曆與待辦會自動依帳號雲端保存！</span>
             <button
               onClick={() => setIsAuthModalOpen(true)}
               className="px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold text-[11px] shrink-0 ml-2 shadow-xs"
@@ -229,63 +256,209 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      {/* 1. Supabase Cloud Vault Section */}
+      {/* 1. ⏰ Scheduled Cloud Upload & Sync Section (固定上傳時間) */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                固定自動上傳與雲端同步
+              </h3>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                {nextSyncDisplay}
+              </p>
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoSyncEnabled}
+              onChange={(e) => setAutoSyncEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-calico-orange"></div>
+          </label>
+        </div>
+
+        {autoSyncEnabled && (
+          <div className="space-y-3 pt-1 border-t border-black/5 dark:border-white/5 animate-fade-in">
+            {/* Fixed Daily Time Picker (e.g. 23:00) */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                  每日固定上傳時間
+                </label>
+                <input
+                  type="time"
+                  value={autoSyncTime}
+                  onChange={(e) => setAutoSyncTime(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold font-mono"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                  定期背景同步頻率
+                </label>
+                <select
+                  value={autoSyncIntervalMinutes}
+                  onChange={(e) => setAutoSyncIntervalMinutes(Number(e.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+                >
+                  <option value={0}>僅在固定時間上傳</option>
+                  <option value={15}>每 15 分鐘自動同步</option>
+                  <option value={30}>每 30 分鐘自動同步</option>
+                  <option value={60}>每 1 小時自動同步</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Sync Status Banner & Manual Button */}
+            <div className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs">
+              <div>
+                <span className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 block font-medium">
+                  上次同步成功時間
+                </span>
+                <span className="font-mono font-bold text-calico-cocoa dark:text-zinc-200">
+                  {lastSyncedAt ? new Date(lastSyncedAt).toLocaleTimeString() : '尚未同步'}
+                </span>
+              </div>
+
+              <button
+                onClick={triggerManualUpload}
+                disabled={isSyncing}
+                className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-bold flex items-center space-x-1 shadow-xs active:scale-95 transition-all hover:brightness-105 disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+                <span>{isSyncing ? '同步上傳中...' : '立即手動同步'}</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* 2. 🏷️ 自訂記帳與待辦分類種類 (Custom Categories Manager) */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center space-x-2.5">
-          <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
-            <Cloud className="w-5 h-5" />
+          <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
+            <Tag className="w-5 h-5" />
           </div>
           <div>
             <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-              Supabase 雲端保險箱與同步
+              自訂記帳與待辦種類
             </h3>
             <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-              無須在本地架伺服器，API 與資料庫全託管在 Supabase
+              自訂各項標籤、分類名稱與專屬代表色
             </p>
           </div>
         </div>
 
-        <div className="space-y-2.5 pt-1">
-          <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              Supabase Project URL
-            </label>
-            <input
-              type="text"
-              value={supabaseUrl}
-              onChange={(e) => setSupabaseUrl(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              課表 6 碼分享代碼
-            </label>
-            <input
-              type="text"
-              maxLength={6}
-              value={shareCode}
-              onChange={(e) => setShareCode(e.target.value.toUpperCase())}
-              className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-bold tracking-widest"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              顯示名稱
-            </label>
-            <input
-              type="text"
-              value={ownerName}
-              onChange={(e) => setOwnerName(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
-            />
-          </div>
+        {/* Tab Switcher for Categories */}
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('expense')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'expense'
+                ? 'bg-calico-orange text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            支出種類 ({customExpenseCategories.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('income')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'income'
+                ? 'bg-calico-sage text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            收入種類 ({customIncomeCategories.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('todo')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'todo'
+                ? 'bg-indigo-600 text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            待辦標籤 ({customTodoCategories.length})
+          </button>
         </div>
+
+        {/* Existing categories list */}
+        <div className="flex flex-wrap gap-2 pt-1 max-h-40 overflow-y-auto pr-1">
+          {(activeCategoryTab === 'expense'
+            ? customExpenseCategories
+            : activeCategoryTab === 'income'
+            ? customIncomeCategories
+            : customTodoCategories
+          ).map((c) => (
+            <div
+              key={c.id || c.name}
+              className="px-3 py-1.5 rounded-xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs font-bold"
+            >
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.colorHex }} />
+              <span className="text-calico-cocoa dark:text-zinc-100">{c.name}</span>
+              <button
+                type="button"
+                onClick={() => deleteCustomCategory(activeCategoryTab, c.id || c.name)}
+                className="text-calico-cocoa/30 hover:text-red-500 transition-colors ml-1"
+                title="刪除此分類"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Inline Add Category form */}
+        <form onSubmit={handleCreateCategory} className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder={`輸入新${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'}名稱`}
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+            />
+            <button
+              type="submit"
+              disabled={!newCatName.trim()}
+              className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-extrabold shadow-xs active:scale-95 disabled:opacity-40 transition-all flex items-center space-x-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>新增種類</span>
+            </button>
+          </div>
+
+          {/* Color swatches */}
+          <div className="flex items-center space-x-2 pt-0.5">
+            <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold">挑選顏色：</span>
+            {PALETTE.map((c) => (
+              <button
+                type="button"
+                key={c}
+                onClick={() => setNewCatColor(c)}
+                style={{ backgroundColor: c }}
+                className={`w-4 h-4 rounded-full transition-transform ${
+                  newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white' : 'opacity-70'
+                }`}
+              />
+            ))}
+          </div>
+        </form>
       </div>
 
-      {/* 2. LINE Bot Settings */}
+      {/* 3. LINE Bot Settings */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -294,10 +467,10 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                LINE 官方帳號每日晨報推播
+                LINE 官方帳號每日推播
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                加好友自動綁定 User ID，每天早上準時推播今日課表與待辦
+                推播獨立區隔，加好友自動綁定 User ID
               </p>
             </div>
           </div>
@@ -314,7 +487,7 @@ export const SettingsView: React.FC = () => {
         <div className="space-y-2.5 pt-1">
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              已綁定的 LINE User ID (U 開頭 33 碼)
+              已綁定的 LINE User ID
             </label>
             <input
               type="text"
@@ -332,7 +505,7 @@ export const SettingsView: React.FC = () => {
               className="flex-1 py-2 px-3 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-bold flex items-center justify-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all"
             >
               <UserCheck className="w-3.5 h-3.5" />
-              <span>{isClaimingLineId ? '尋找好友中...' : '自動認領加好友的 LINE ID'}</span>
+              <span>{isClaimingLineId ? '尋找好友中...' : '自動認領 LINE ID'}</span>
             </button>
 
             <button
@@ -344,40 +517,10 @@ export const SettingsView: React.FC = () => {
               <span>測試推播</span>
             </button>
           </div>
-
-          {/* Time Picker */}
-          <div className="grid grid-cols-2 gap-3 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-                每日推播小時 (0-23)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="23"
-                value={pushHour}
-                onChange={(e) => setPushHour(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-                每日推播分鐘 (0-59)
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={pushMinute}
-                onChange={(e) => setPushMinute(Number(e.target.value))}
-                className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
-              />
-            </div>
-          </div>
         </div>
       </div>
 
-      {/* 3. Budget Settings */}
+      {/* 4. Budget & Cycle Settings */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center space-x-2.5">
           <div className="p-2 rounded-xl bg-calico-cocoa/10 text-calico-cocoa dark:text-zinc-200">

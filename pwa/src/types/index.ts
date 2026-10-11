@@ -25,17 +25,29 @@ export interface Course {
 }
 
 export type TodoPriority = 'low' | 'medium' | 'high';
-export type TodoCategory = '作業' | '考試' | '報告' | '生活' | '個人' | '論文閱讀';
+export type TodoRecurrence = 'none' | 'daily' | 'weekly' | 'monthly' | 'custom_period';
+export type TodoCategory = string;
+
+export interface CustomCategory {
+  id: string;
+  name: string;
+  colorHex: string;
+  icon?: string;
+}
 
 export interface Todo {
   id: string;
   userId?: string;
   title: string;
   notes?: string;
-  dueDate?: string; // ISO string
+  dueDate?: string;     // ISO string (deadline)
+  startDate?: string;   // YYYY-MM-DD (for period tasks like 12/7~12/14)
+  endDate?: string;     // YYYY-MM-DD
+  recurrence?: TodoRecurrence;
   isCompleted: boolean;
   priority: TodoPriority;
-  category: TodoCategory;
+  category: string;     // supports custom category
+  colorHex?: string;
   courseId?: string;
   paperUrl?: string;
   readingStatus?: '未讀' | '閱讀中' | '已讀畢';
@@ -108,6 +120,15 @@ export interface UserSettings {
   linePushMinute: number;
   isLinePushEnabled: boolean;
   theme: 'light' | 'dark' | 'system';
+  // Scheduled cloud upload & auto-sync
+  autoSyncEnabled: boolean;
+  autoSyncTime: string; // e.g. "23:00"
+  autoSyncIntervalMinutes: number; // 0 = only at fixed time, 15, 30, 60
+  lastSyncedAt?: string;
+  // Custom categories
+  customExpenseCategories?: CustomCategory[];
+  customIncomeCategories?: CustomCategory[];
+  customTodoCategories?: CustomCategory[];
 }
 
 export interface CalendarEvent {
@@ -144,3 +165,4 @@ export interface SavedFriendRecord {
   lastViewedAt: string;
   cachedSchedule?: SharedScheduleData;
 }
+

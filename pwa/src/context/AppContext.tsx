@@ -10,6 +10,7 @@ import {
   CalendarEvent,
   SavedFriendRecord,
   SharedScheduleData,
+  CustomCategory,
 } from '../types';
 import {
   fetchCoursesFromSupabase,
@@ -92,6 +93,18 @@ const INITIAL_COURSES: Course[] = [
 
 const INITIAL_TODOS: Todo[] = [
   {
+    id: 't_travel',
+    title: '✈️ 12/7~12/14 日本東京自由行 (出國度假)',
+    startDate: '2026-12-07',
+    endDate: '2026-12-14',
+    dueDate: '2026-12-07T08:00:00.000Z',
+    isCompleted: false,
+    priority: 'high',
+    category: '出國/旅遊',
+    recurrence: 'custom_period',
+    notes: '護照換日幣、成田特快 Skyliner 車票、Bic Camera 優惠券',
+  },
+  {
     id: 't1',
     title: '演算法作業二：動態規劃解題',
     dueDate: new Date(Date.now() + 86400000 * 2).toISOString(),
@@ -116,6 +129,7 @@ const INITIAL_TODOS: Todo[] = [
     readingStatus: '已讀畢',
   },
 ];
+
 
 const INITIAL_TRANSACTIONS: Transaction[] = [
   {
@@ -182,6 +196,33 @@ const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
   },
 ];
 
+export const DEFAULT_EXPENSE_CATEGORIES: CustomCategory[] = [
+  { id: 'cat_food', name: '餐飲', icon: 'coffee', colorHex: '#E67E22' },
+  { id: 'cat_trans', name: '交通', icon: 'bus', colorHex: '#48BB78' },
+  { id: 'cat_study', name: '學習', icon: 'book', colorHex: '#3182CE' },
+  { id: 'cat_life', name: '生活', icon: 'shopping-cart', colorHex: '#805AD5' },
+  { id: 'cat_ent', name: '娛樂', icon: 'gamepad-2', colorHex: '#D53F8C' },
+  { id: 'cat_tech', name: '數位 3C', icon: 'laptop', colorHex: '#3D2F2E' },
+  { id: 'cat_other', name: '其他', icon: 'more-horizontal', colorHex: '#718096' },
+];
+
+export const DEFAULT_INCOME_CATEGORIES: CustomCategory[] = [
+  { id: 'inc_allowance', name: '生活費', icon: 'home', colorHex: '#48BB78' },
+  { id: 'inc_salary', name: '薪資/家教', icon: 'briefcase', colorHex: '#3182CE' },
+  { id: 'inc_scholarship', name: '獎學金', icon: 'award', colorHex: '#ECC94B' },
+  { id: 'inc_other', name: '其他收入', icon: 'dollar-sign', colorHex: '#805AD5' },
+];
+
+export const DEFAULT_TODO_CATEGORIES: CustomCategory[] = [
+  { id: 'todo_hw', name: '作業', colorHex: '#E67E22' },
+  { id: 'todo_exam', name: '考試', colorHex: '#E53E3E' },
+  { id: 'todo_report', name: '報告', colorHex: '#3182CE' },
+  { id: 'todo_life', name: '生活', colorHex: '#48BB78' },
+  { id: 'todo_personal', name: '個人', colorHex: '#805AD5' },
+  { id: 'todo_paper', name: '論文閱讀', colorHex: '#3D2F2E' },
+  { id: 'todo_trip', name: '出國/旅遊', colorHex: '#DD6B20' },
+];
+
 const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: DEFAULT_SUPABASE_URL,
   supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -195,6 +236,9 @@ const DEFAULT_SETTINGS: UserSettings = {
   linePushMinute: 0,
   isLinePushEnabled: true,
   theme: 'light',
+  autoSyncEnabled: true,
+  autoSyncTime: '23:00',
+  autoSyncIntervalMinutes: 30,
 };
 
 interface BudgetInfo {
@@ -234,10 +278,21 @@ interface AppContextType {
   budgetInfo: BudgetInfo;
   catMood: 'happy' | 'sleeping' | 'thinking' | 'proud';
   setCatMood: (mood: 'happy' | 'sleeping' | 'thinking' | 'proud') => void;
+  // Custom categories
+  customExpenseCategories: CustomCategory[];
+  customIncomeCategories: CustomCategory[];
+  customTodoCategories: CustomCategory[];
+  addCustomCategory: (type: 'expense' | 'income' | 'todo', cat: { name: string; colorHex: string; icon?: string }) => void;
+  deleteCustomCategory: (type: 'expense' | 'income' | 'todo', idOrName: string) => void;
+  // Scheduled cloud upload & auto-sync
+  lastSyncedAt: string | null;
+  nextSyncDisplay: string;
+  triggerManualUpload: () => Promise<void>;
   addCourse: (course: Course) => Promise<void>;
   updateCourse: (course: Course) => Promise<void>;
   deleteCourse: (id: string) => Promise<void>;
   addTodo: (todo: Todo) => Promise<void>;
+  updateTodo: (todo: Todo) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
   deleteTodo: (id: string) => Promise<void>;
   addTransaction: (t: Transaction) => Promise<void>;
@@ -252,6 +307,7 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | null>(null);
+
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings'>('schedule');
@@ -316,6 +372,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
   });
 
+  // Custom categories state
+  const [customExpenseCategories, setCustomExpenseCategories] = useState<CustomCategory[]>(() => {
+    try {
+      const saved = localStorage.getItem('campus_custom_expense_cats');
+      return saved ? JSON.parse(saved) : DEFAULT_EXPENSE_CATEGORIES;
+    } catch {
+      return DEFAULT_EXPENSE_CATEGORIES;
+    }
+  });
+
+  const [customIncomeCategories, setCustomIncomeCategories] = useState<CustomCategory[]>(() => {
+    try {
+      const saved = localStorage.getItem('campus_custom_income_cats');
+      return saved ? JSON.parse(saved) : DEFAULT_INCOME_CATEGORIES;
+    } catch {
+      return DEFAULT_INCOME_CATEGORIES;
+    }
+  });
+
+  const [customTodoCategories, setCustomTodoCategories] = useState<CustomCategory[]>(() => {
+    try {
+      const saved = localStorage.getItem('campus_custom_todo_cats');
+      return saved ? JSON.parse(saved) : DEFAULT_TODO_CATEGORIES;
+    } catch {
+      return DEFAULT_TODO_CATEGORIES;
+    }
+  });
+
+  const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => {
+    return localStorage.getItem('campus_last_synced_at') || null;
+  });
+
   // Online / Offline tracking
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -353,7 +441,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('campus_settings', JSON.stringify(settings));
   }, [settings]);
 
-  // Initial cloud sync
+  useEffect(() => {
+    localStorage.setItem('campus_custom_expense_cats', JSON.stringify(customExpenseCategories));
+  }, [customExpenseCategories]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_custom_income_cats', JSON.stringify(customIncomeCategories));
+  }, [customIncomeCategories]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_custom_todo_cats', JSON.stringify(customTodoCategories));
+  }, [customTodoCategories]);
+
+  // Initial and on-demand cloud sync
   const syncWithSupabase = async (targetUser?: UserAccount | null) => {
     if (!navigator.onLine) return;
     setIsSyncing(true);
@@ -372,12 +472,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (cloudTodos.length > 0) setTodos(cloudTodos);
       if (cloudTx.length > 0) setTransactions(cloudTx);
       if (cloudEvents.length > 0) setCalendarEvents(cloudEvents);
+
+      const nowIso = new Date().toISOString();
+      setLastSyncedAt(nowIso);
+      localStorage.setItem('campus_last_synced_at', nowIso);
     } catch (e) {
-      console.warn('Initial cloud sync error:', e);
+      console.warn('Cloud sync error:', e);
     } finally {
       setIsSyncing(false);
     }
   };
+
+  const triggerManualUpload = async () => {
+    await syncWithSupabase();
+  };
+
+  // Scheduled cloud upload & auto-sync timer
+  const nextSyncDisplay = useMemo(() => {
+    if (!settings.autoSyncEnabled) return '已停用定時上傳';
+    if (settings.autoSyncTime) {
+      return `每日 ${settings.autoSyncTime} 上傳`;
+    }
+    return `每 ${settings.autoSyncIntervalMinutes || 30} 分鐘自動同步`;
+  }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes]);
+
+  useEffect(() => {
+    if (!settings.autoSyncEnabled) return;
+
+    let lastTriggeredMinute = '';
+
+    const intervalTimer = setInterval(() => {
+      const now = new Date();
+      const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+      // Check fixed upload time (e.g., 23:00)
+      if (settings.autoSyncTime && currentHHMM === settings.autoSyncTime && lastTriggeredMinute !== currentHHMM) {
+        lastTriggeredMinute = currentHHMM;
+        syncWithSupabase();
+        return;
+      }
+
+      // Check periodic interval (e.g., every 30 mins)
+      if (settings.autoSyncIntervalMinutes && settings.autoSyncIntervalMinutes > 0 && lastSyncedAt) {
+        const lastTime = new Date(lastSyncedAt).getTime();
+        const diffMins = (now.getTime() - lastTime) / (1000 * 60);
+        if (diffMins >= settings.autoSyncIntervalMinutes) {
+          syncWithSupabase();
+        }
+      }
+    }, 25000);
+
+    return () => clearInterval(intervalTimer);
+  }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes, lastSyncedAt]);
 
   const setCurrentUser = (user: UserAccount | null, rememberPassword?: string | null) => {
     setCurrentUserState(user);
@@ -471,6 +617,51 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, [transactions, settings]);
 
+  // Custom Category Methods
+  const addCustomCategory = (
+    type: 'expense' | 'income' | 'todo',
+    cat: { name: string; colorHex: string; icon?: string }
+  ) => {
+    const newCat: CustomCategory = {
+      id: `cat_${Date.now()}`,
+      name: cat.name.trim(),
+      colorHex: cat.colorHex,
+      icon: cat.icon || 'tag',
+    };
+    if (type === 'expense') {
+      setCustomExpenseCategories((prev) =>
+        prev.some((c) => c.name === newCat.name) ? prev : [...prev, newCat]
+      );
+    } else if (type === 'income') {
+      setCustomIncomeCategories((prev) =>
+        prev.some((c) => c.name === newCat.name) ? prev : [...prev, newCat]
+      );
+    } else {
+      setCustomTodoCategories((prev) =>
+        prev.some((c) => c.name === newCat.name) ? prev : [...prev, newCat]
+      );
+    }
+  };
+
+  const deleteCustomCategory = (
+    type: 'expense' | 'income' | 'todo',
+    idOrName: string
+  ) => {
+    if (type === 'expense') {
+      setCustomExpenseCategories((prev) =>
+        prev.filter((c) => c.id !== idOrName && c.name !== idOrName)
+      );
+    } else if (type === 'income') {
+      setCustomIncomeCategories((prev) =>
+        prev.filter((c) => c.id !== idOrName && c.name !== idOrName)
+      );
+    } else {
+      setCustomTodoCategories((prev) =>
+        prev.filter((c) => c.id !== idOrName && c.name !== idOrName)
+      );
+    }
+  };
+
   // Actions
   const addCourse = async (course: Course) => {
     const enriched = { ...course, userId: currentUser?.id || course.userId };
@@ -495,6 +686,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTodos((prev) => [enriched, ...prev]);
     await upsertTodoToSupabase(enriched, currentUser?.id);
     setCatMood('thinking');
+  };
+
+  const updateTodo = async (todo: Todo) => {
+    const enriched = { ...todo, userId: currentUser?.id || todo.userId };
+    setTodos((prev) => prev.map((t) => (t.id === enriched.id ? enriched : t)));
+    await upsertTodoToSupabase(enriched, currentUser?.id);
   };
 
   const toggleTodo = async (id: string) => {
@@ -592,10 +789,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         budgetInfo,
         catMood,
         setCatMood,
+        customExpenseCategories,
+        customIncomeCategories,
+        customTodoCategories,
+        addCustomCategory,
+        deleteCustomCategory,
+        lastSyncedAt,
+        nextSyncDisplay,
+        triggerManualUpload,
         addCourse,
         updateCourse,
         deleteCourse,
         addTodo,
+        updateTodo,
         toggleTodo,
         deleteTodo,
         addTransaction,
