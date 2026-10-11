@@ -13,7 +13,7 @@ export const DEFAULT_CLASS_PERIODS: ClassPeriod[] = [
   { id: 2, name: '第 2 節', displayCode: '2', startTime: '09:10', endTime: '10:00', isNoon: false },
   { id: 3, name: '第 3 節', displayCode: '3', startTime: '10:10', endTime: '11:00', isNoon: false },
   { id: 4, name: '第 4 節', displayCode: '4', startTime: '11:10', endTime: '12:00', isNoon: false },
-  { id: 100, name: '中午', displayCode: '午', startTime: '12:10', endTime: '13:20', isNoon: true },
+  { id: 100, name: '中午', displayCode: '午', startTime: '12:10', endTime: '13:10', isNoon: true },
   { id: 5, name: '第 5 節', displayCode: '5', startTime: '13:20', endTime: '14:10', isNoon: false },
   { id: 6, name: '第 6 節', displayCode: '6', startTime: '14:20', endTime: '15:10', isNoon: false },
   { id: 7, name: '第 7 節', displayCode: '7', startTime: '15:30', endTime: '16:20', isNoon: false },

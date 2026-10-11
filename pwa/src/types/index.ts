@@ -51,6 +51,8 @@ export interface Todo {
   courseId?: string;
   paperUrl?: string;
   readingStatus?: '未讀' | '閱讀中' | '已讀畢';
+  reminderAdvance?: 'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d';
+  reminderCustomDays?: number;
 }
 
 export interface Transaction {
@@ -119,6 +121,10 @@ export interface UserSettings {
   linePushHour: number;
   linePushMinute: number;
   isLinePushEnabled: boolean;
+  lineEveningPushEnabled?: boolean;
+  lineEveningPushHour?: number;
+  lineEveningPushMinute?: number;
+  lineTodoReminderEnabled?: boolean;
   theme: 'light' | 'dark' | 'system';
   // Scheduled cloud upload & auto-sync
   autoSyncEnabled: boolean;

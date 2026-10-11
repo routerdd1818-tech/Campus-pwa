@@ -13,6 +13,7 @@ import {
   Check,
   Repeat,
   Sparkles,
+  Bell,
 } from 'lucide-react';
 
 interface TodoModalProps {
@@ -49,6 +50,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
   const [recurrence, setRecurrence] = useState<TodoRecurrence>('none');
   const [dueDate, setDueDate] = useState('');
   const [paperUrl, setPaperUrl] = useState('');
+  const [reminderAdvance, setReminderAdvance] = useState<'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d'>('1d');
 
   // Inline custom category creation
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -68,6 +70,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setStartDate(todo.startDate || '');
         setEndDate(todo.endDate || '');
         setRecurrence(todo.recurrence || 'none');
+        setReminderAdvance(todo.reminderAdvance || '1d');
       } else {
         setTitle('');
         setNotes('');
@@ -79,6 +82,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setStartDate('');
         setEndDate('');
         setRecurrence('none');
+        setReminderAdvance('1d');
       }
       setIsCreatingCategory(false);
       setNewCatName('');
@@ -117,6 +121,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
       isCompleted: todo?.isCompleted ?? false,
       paperUrl: category === '論文閱讀' ? paperUrl.trim() : undefined,
       readingStatus: todo?.readingStatus || (category === '論文閱讀' ? '未讀' : undefined),
+      reminderAdvance,
     });
     onClose();
   };
@@ -308,6 +313,55 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                 </div>
               </div>
             )}
+
+            {/* 🔔 LINE Bot 到期推播提醒設定 */}
+            <div className="pt-2.5 border-t border-black/5 dark:border-white/5 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                  <Bell className="w-3.5 h-3.5 text-calico-orange" />
+                  <span>LINE Bot 到期推播提醒</span>
+                </span>
+                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">
+                  {reminderAdvance === 'none'
+                    ? '不發送提醒'
+                    : reminderAdvance === 'due'
+                    ? '到期當下通知'
+                    : reminderAdvance === '1h'
+                    ? '到期前 1 小時通知'
+                    : reminderAdvance === '3h'
+                    ? '到期前 3 小時通知'
+                    : reminderAdvance === '1d'
+                    ? '前 1 天通知'
+                    : reminderAdvance === '2d'
+                    ? '前 2 天通知'
+                    : '前 3 天通知'}
+                </span>
+              </div>
+              <div className="grid grid-cols-4 sm:grid-cols-7 gap-1">
+                {[
+                  { key: 'none', label: '不提醒' },
+                  { key: 'due', label: '當下' },
+                  { key: '1h', label: '1小時前' },
+                  { key: '3h', label: '3小時前' },
+                  { key: '1d', label: '1天前' },
+                  { key: '2d', label: '2天前' },
+                  { key: '3d', label: '3天前' },
+                ].map((item) => (
+                  <button
+                    key={item.key}
+                    type="button"
+                    onClick={() => setReminderAdvance(item.key as any)}
+                    className={`py-1.5 px-0.5 rounded-xl text-[10px] font-bold transition-all text-center truncate ${
+                      reminderAdvance === item.key
+                        ? 'bg-calico-orange text-white shadow-2xs font-black'
+                        : 'bg-white/70 dark:bg-zinc-900/60 text-calico-cocoa/60 dark:text-zinc-400 hover:bg-calico-orange/10'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
 
 

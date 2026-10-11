@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Course } from '../types';
+import { Course, ClassPeriod } from '../types';
 import { callGeminiOcrGateway } from '../services/supabase';
-import { X, Sparkles, Upload, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { X, Sparkles, Upload, Loader2, CheckCircle2, AlertCircle, Wand2, Clock } from 'lucide-react';
 
 interface OcrModalProps {
   isOpen: boolean;
@@ -9,11 +10,101 @@ interface OcrModalProps {
   onImportCourses: (courses: Course[]) => void;
 }
 
+// 根據使用者的節次作息設定，自動校準每堂課的起訖時間
+function calibrateCourseTimes(
+  item: any,
+  periods: ClassPeriod[]
+): { startTime: string; endTime: string; note?: string } {
+  if (!periods || periods.length === 0) {
+    return { startTime: item.startTime || '09:00', endTime: item.endTime || '12:00' };
+  }
+
+  // 1. 優先檢查是否具有節次代碼 (例如 [1, 2], [5, 6, 7], "5-7", 或 "第 2-4 節")
+  let periodNums: number[] = [];
+  if (Array.isArray(item.periodCodes)) {
+    periodNums = item.periodCodes
+      .map((x: any) => Number(String(x).replace(/\D/g, '')))
+      .filter((n: number) => !isNaN(n) && n > 0);
+  } else if (typeof item.periodCodes === 'string') {
+    const matches = item.periodCodes.match(/\d+/g);
+    if (matches) {
+      if (item.periodCodes.includes('-') && matches.length >= 2) {
+        const startP = Number(matches[0]);
+        const endP = Number(matches[1]);
+        for (let p = startP; p <= endP; p++) periodNums.push(p);
+      } else {
+        periodNums = matches.map(Number);
+      }
+    }
+  }
+
+  if (periodNums.length > 0) {
+    const matchedPeriods = periods.filter(
+      (p) => periodNums.includes(p.id) || periodNums.includes(Number(p.displayCode))
+    );
+    if (matchedPeriods.length > 0) {
+      const minStart = matchedPeriods.reduce(
+        (min, p) => (p.startTime < min ? p.startTime : min),
+        matchedPeriods[0].startTime
+      );
+      const maxEnd = matchedPeriods.reduce(
+        (max, p) => (p.endTime > max ? p.endTime : max),
+        matchedPeriods[0].endTime
+      );
+      return { startTime: minStart, endTime: maxEnd, note: `依第 ${periodNums.join(',')} 節校準` };
+    }
+  }
+
+  // 2. 若無節次代碼，則根據 raw startTime / endTime 比對最貼近的作息節次
+  const toMins = (t: string) => {
+    const [h, m] = t.split(':').map(Number);
+    return (h || 0) * 60 + (m || 0);
+  };
+
+  const rawStartMins = toMins(item.startTime || '09:00');
+  const rawEndMins = toMins(item.endTime || '12:00');
+
+  // 找出起點最接近的節次
+  let closestStartPeriod = periods[0];
+  let minStartDiff = Infinity;
+  for (const p of periods) {
+    const diff = Math.abs(toMins(p.startTime) - rawStartMins);
+    if (diff < minStartDiff) {
+      minStartDiff = diff;
+      closestStartPeriod = p;
+    }
+  }
+
+  // 找出終點最接近的節次
+  let closestEndPeriod = periods[periods.length - 1];
+  let minEndDiff = Infinity;
+  for (const p of periods) {
+    const diff = Math.abs(toMins(p.endTime) - rawEndMins);
+    if (diff < minEndDiff) {
+      minEndDiff = diff;
+      closestEndPeriod = p;
+    }
+  }
+
+  // 差異小於 45 分鐘時自動校準對齊作息
+  const finalStart = minStartDiff <= 45 ? closestStartPeriod.startTime : item.startTime || '09:00';
+  const finalEnd = minEndDiff <= 45 ? closestEndPeriod.endTime : item.endTime || '12:00';
+
+  return {
+    startTime: finalStart,
+    endTime: finalEnd,
+    note: minStartDiff <= 45 ? `自動校正作息` : undefined,
+  };
+}
+
 export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCourses }) => {
+  const { classPeriods } = useApp();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [base64Data, setBase64Data] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [parsedCourses, setParsedCourses] = useState<Course[]>([]);
+  const [rawOcrItems, setRawOcrItems] = useState<any[]>([]);
+  const [autoCalibratePeriods, setAutoCalibratePeriods] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -24,6 +115,7 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
 
     setErrorMsg(null);
     setParsedCourses([]);
+    setRawOcrItems([]);
 
     const reader = new FileReader();
     reader.onload = () => {
@@ -34,6 +126,40 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
       setBase64Data(base64);
     };
     reader.readAsDataURL(file);
+  };
+
+  const mapItemsToCourses = (items: any[], calibrate: boolean): Course[] => {
+    const colors = ['#E67E22', '#3D2F2E', '#48BB78', '#3182CE', '#805AD5', '#DD6B20'];
+    return items.map((item: any, idx: number) => {
+      let startTime = item.startTime || '09:00';
+      let endTime = item.endTime || '12:00';
+
+      if (calibrate) {
+        const cal = calibrateCourseTimes(item, classPeriods);
+        startTime = cal.startTime;
+        endTime = cal.endTime;
+      }
+
+      return {
+        id: `ocr_${Date.now()}_${idx}`,
+        name: item.name || '未命名課程',
+        classroom: item.classroom || '',
+        instructor: item.instructor || '',
+        dayOfWeek: (Number(item.dayOfWeek) >= 1 && Number(item.dayOfWeek) <= 7 ? Number(item.dayOfWeek) : 1) as any,
+        startTime,
+        endTime,
+        colorHex: colors[idx % colors.length],
+        isSharedWithFriends: true,
+      };
+    });
+  };
+
+  const handleToggleCalibrate = () => {
+    const nextVal = !autoCalibratePeriods;
+    setAutoCalibratePeriods(nextVal);
+    if (rawOcrItems.length > 0) {
+      setParsedCourses(mapItemsToCourses(rawOcrItems, nextVal));
+    }
   };
 
   const handleStartOCR = async () => {
@@ -59,20 +185,9 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
         throw new Error('辨識結果格式異常，未取得課程列表');
       }
 
-      const colors = ['#E67E22', '#3D2F2E', '#48BB78', '#3182CE', '#805AD5', '#DD6B20'];
-      const mappedCourses: Course[] = items.map((item: any, idx: number) => ({
-        id: `ocr_${Date.now()}_${idx}`,
-        name: item.name || '未命名課程',
-        classroom: item.classroom || '',
-        instructor: item.instructor || '',
-        dayOfWeek: (Number(item.dayOfWeek) >= 1 && Number(item.dayOfWeek) <= 7 ? Number(item.dayOfWeek) : 1) as any,
-        startTime: item.startTime || '09:00',
-        endTime: item.endTime || '12:00',
-        colorHex: colors[idx % colors.length],
-        isSharedWithFriends: true,
-      }));
-
-      setParsedCourses(mappedCourses);
+      setRawOcrItems(items);
+      const mapped = mapItemsToCourses(items, autoCalibratePeriods);
+      setParsedCourses(mapped);
     } catch (err: any) {
       setErrorMsg(err.message || '辨識失敗，請確認圖片清晰度');
     } finally {
@@ -167,6 +282,21 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
                 <CheckCircle2 className="w-4 h-4 text-calico-sage" />
                 <span>成功辨識出 {parsedCourses.length} 門課程：</span>
               </span>
+
+              {/* Auto calibration toggle button */}
+              <button
+                type="button"
+                onClick={handleToggleCalibrate}
+                className={`px-2 py-1 rounded-lg text-[10px] font-bold flex items-center space-x-1 transition-all ${
+                  autoCalibratePeriods
+                    ? 'bg-calico-orange/15 text-calico-orange border border-calico-orange/30'
+                    : 'bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400'
+                }`}
+                title="自動依校園作息校正每節課時間"
+              >
+                <Wand2 className="w-3 h-3" />
+                <span>{autoCalibratePeriods ? '已依節次校準時間' : '原始圖片時間'}</span>
+              </button>
             </div>
 
             <div className="max-h-52 overflow-y-auto space-y-1.5 pr-1">
@@ -175,14 +305,22 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
                   key={i}
                   className="p-2.5 rounded-xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs"
                 >
-                  <div className="flex items-center space-x-2">
-                    <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.colorHex }} />
-                    <span className="font-bold text-calico-cocoa dark:text-zinc-100">{c.name}</span>
-                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                  <div className="flex items-center space-x-2 truncate">
+                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: c.colorHex }} />
+                    <span className="font-bold text-calico-cocoa dark:text-zinc-100 truncate">{c.name}</span>
+                    <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-mono shrink-0">
                       週{['一', '二', '三', '四', '五', '六', '日'][c.dayOfWeek - 1]} {c.startTime}-{c.endTime}
                     </span>
                   </div>
-                  <span className="text-[11px] text-calico-cocoa/60 font-medium">{c.classroom || '未定教室'}</span>
+                  <div className="flex items-center space-x-1.5 shrink-0 ml-2">
+                    {autoCalibratePeriods && (
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-calico-orange/10 text-calico-orange font-bold flex items-center space-x-0.5">
+                        <Clock className="w-2.5 h-2.5" />
+                        <span>校準</span>
+                      </span>
+                    )}
+                    <span className="text-[11px] text-calico-cocoa/60 font-medium">{c.classroom || '未定教室'}</span>
+                  </div>
                 </div>
               ))}
             </div>

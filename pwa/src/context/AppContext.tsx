@@ -19,15 +19,21 @@ import {
   fetchCoursesFromSupabase,
   upsertCourseToSupabase,
   deleteCourseFromSupabase,
+  batchUpsertCoursesToSupabase,
   fetchTodosFromSupabase,
   upsertTodoToSupabase,
   deleteTodoFromSupabase,
+  batchUpsertTodosToSupabase,
   fetchTransactionsFromSupabase,
   upsertTransactionToSupabase,
   deleteTransactionFromSupabase,
+  batchUpsertTransactionsToSupabase,
   fetchCalendarEventsFromSupabase,
   upsertCalendarEventToSupabase,
   deleteCalendarEventFromSupabase,
+  batchUpsertCalendarEventsToSupabase,
+  syncAllLocalDataToSupabase,
+  saveUserLineBotPushSettings,
   publishSharedSchedule,
   fetchSharedScheduleByCode,
   loginUserAccount,
@@ -239,6 +245,10 @@ const DEFAULT_SETTINGS: UserSettings = {
   linePushHour: 7,
   linePushMinute: 0,
   isLinePushEnabled: true,
+  lineEveningPushEnabled: true,
+  lineEveningPushHour: 18,
+  lineEveningPushMinute: 0,
+  lineTodoReminderEnabled: true,
   theme: 'light',
   autoSyncEnabled: true,
   autoSyncTime: '23:00',
@@ -406,6 +416,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  const coursesRef = useRef(courses);
+  coursesRef.current = courses;
+  const todosRef = useRef(todos);
+  todosRef.current = todos;
+  const transactionsRef = useRef(transactions);
+  transactionsRef.current = transactions;
+  const calendarEventsRef = useRef(calendarEvents);
+  calendarEventsRef.current = calendarEvents;
 
   const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>(() => {
     const uid = initialUser?.id;
@@ -687,14 +706,55 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setLastSyncedAt(rawSynced || null);
   };
 
-  // Initial and on-demand cloud sync
+  // Local-first cloud sync (以本機資料為準同步至雲端，避免清空本機資料)
   const syncWithSupabase = async (targetUser?: UserAccount | null) => {
     if (!navigator.onLine) return;
     setIsSyncing(true);
     const activeUser = targetUser !== undefined ? targetUser : currentUser;
-    const userKey = activeUser ? activeUser.id : undefined;
+    const userKey = activeUser ? activeUser.id : (currentUser?.id || 'guest');
 
     try {
+      // 1. 本機資料優先：先將手機上的所有課程、待辦、收支、行事曆推送到 Supabase
+      const currentLocalData = {
+        courses: coursesRef.current,
+        todos: todosRef.current,
+        transactions: transactionsRef.current,
+        calendarEvents: calendarEventsRef.current,
+      };
+
+      await syncAllLocalDataToSupabase(userKey, currentLocalData);
+
+      // 同步更新好友分享排程與推播設定
+      if (settings.shareCode) {
+        publishSharedSchedule({
+          shareCode: settings.shareCode,
+          ownerName: settings.ownerName || '我的課表',
+          isSharingEnabled: true,
+          coursesData: currentLocalData.courses,
+          todosData: currentLocalData.todos,
+          accountingData: currentLocalData.transactions,
+          calendarEventsData: currentLocalData.calendarEvents,
+          isExpenseSharingEnabled: true,
+        }).catch(() => {});
+
+        saveUserLineBotPushSettings(
+          userKey,
+          settings.lineUserId || '',
+          settings.shareCode,
+          settings.ownerName || '我的課表',
+          settings.linePushHour ?? 7,
+          settings.linePushMinute ?? 0,
+          settings.isLinePushEnabled ?? true,
+          currentLocalData.courses,
+          currentLocalData.todos,
+          settings.lineEveningPushEnabled ?? true,
+          settings.lineEveningPushHour ?? 18,
+          settings.lineEveningPushMinute ?? 0,
+          currentLocalData.transactions
+        ).catch(() => {});
+      }
+
+      // 2. 擷取雲端最新資料（僅做合併補齊，絕不覆蓋或清空本機既有資料）
       const [cloudCourses, cloudTodos, cloudTx, cloudEvents] = await Promise.all([
         fetchCoursesFromSupabase(userKey),
         fetchTodosFromSupabase(userKey),
@@ -702,18 +762,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         fetchCalendarEventsFromSupabase(userKey),
       ]);
 
-      // Guard: only apply if the current active user hasn't changed during fetch
+      // Guard: 確保在異步請求期間使用者帳號未切換
       if ((activeUser?.id || null) === activeUserIdRef.current) {
-        if (userKey) {
-          setCourses(cloudCourses);
-          setTodos(cloudTodos);
-          setTransactions(cloudTx);
-          setCalendarEvents(cloudEvents);
-        } else {
-          if (cloudCourses.length > 0) setCourses(cloudCourses);
-          if (cloudTodos.length > 0) setTodos(cloudTodos);
-          if (cloudTx.length > 0) setTransactions(cloudTx);
-          if (cloudEvents.length > 0) setCalendarEvents(cloudEvents);
+        if (cloudCourses.length > 0) {
+          setCourses((prev) => {
+            const existingIds = new Set(prev.map((c) => c.id));
+            const newFromCloud = cloudCourses.filter((c) => !existingIds.has(c.id));
+            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
+          });
+        }
+        if (cloudTodos.length > 0) {
+          setTodos((prev) => {
+            const existingIds = new Set(prev.map((t) => t.id));
+            const newFromCloud = cloudTodos.filter((t) => !existingIds.has(t.id));
+            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
+          });
+        }
+        if (cloudTx.length > 0) {
+          setTransactions((prev) => {
+            const existingIds = new Set(prev.map((t) => t.id));
+            const newFromCloud = cloudTx.filter((t) => !existingIds.has(t.id));
+            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
+          });
+        }
+        if (cloudEvents.length > 0) {
+          setCalendarEvents((prev) => {
+            const existingIds = new Set(prev.map((e) => e.id));
+            const newFromCloud = cloudEvents.filter((e) => !existingIds.has(e.id));
+            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
+          });
         }
       }
 

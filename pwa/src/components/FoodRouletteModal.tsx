@@ -297,19 +297,22 @@ export const FoodRouletteModal: React.FC<FoodRouletteModalProps> = ({ isOpen, on
             {/* Rotating Wheel Disc (SVG) */}
             <div
               onClick={handleSpin}
-              className="w-full h-full relative cursor-pointer select-none"
+              className="w-full h-full relative cursor-pointer select-none flex items-center justify-center"
             >
               <svg
                 viewBox="0 0 320 320"
-                className="w-full h-full drop-shadow-lg"
-                style={{
-                  transform: `rotate(${rotationDegrees}deg)`,
-                  transformOrigin: '160px 160px',
-                  transition: isSpinning
-                    ? 'transform 3600ms cubic-bezier(0.12, 0.8, 0.32, 1)'
-                    : 'none',
-                }}
+                className="w-full h-full drop-shadow-lg overflow-visible"
               >
+                <g
+                  style={{
+                    transform: `rotate(${rotationDegrees}deg)`,
+                    transformOrigin: '160px 160px',
+                    transformBox: 'view-box',
+                    transition: isSpinning
+                      ? 'transform 3600ms cubic-bezier(0.12, 0.8, 0.32, 1)'
+                      : 'none',
+                  }}
+                >
                 {/* Outer Wheel Bezel */}
                 <circle
                   cx={CX}
@@ -442,6 +445,7 @@ export const FoodRouletteModal: React.FC<FoodRouletteModalProps> = ({ isOpen, on
                 >
                   🐾
                 </text>
+                </g>
               </svg>
             </div>
           </div>

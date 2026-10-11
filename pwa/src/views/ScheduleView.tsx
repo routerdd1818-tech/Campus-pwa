@@ -45,7 +45,7 @@ const PERIOD_SCHEDULE: PeriodDef[] = [
   { id: 2, name: '第 2 節', code: '2', start: '09:10', end: '10:00', isNoon: false },
   { id: 3, name: '第 3 節', code: '3', start: '10:10', end: '11:00', isNoon: false },
   { id: 4, name: '第 4 節', code: '4', start: '11:10', end: '12:00', isNoon: false },
-  { id: 100, name: '中午', code: '中午', start: '12:10', end: '13:20', isNoon: true },
+  { id: 100, name: '中午', code: '中午', start: '12:10', end: '13:10', isNoon: true },
   { id: 5, name: '第 5 節', code: '5', start: '13:20', end: '14:10', isNoon: false },
   { id: 6, name: '第 6 節', code: '6', start: '14:20', end: '15:10', isNoon: false },
   { id: 7, name: '第 7 節', code: '7', start: '15:30', end: '16:20', isNoon: false },
@@ -153,22 +153,18 @@ export const ScheduleView: React.FC = () => {
     return (js === 0 ? 7 : js) as DayOfWeek;
   }, []);
 
-  // Determine if a course matches a given period
+  // Determine if a course matches a given period (獨立時段精確判定，避免第 5 節與中午重疊)
   const matchesPeriod = (course: Course, period: ClassPeriod): boolean => {
     const cStart = timeToMinutes(course.startTime);
     const cEnd = timeToMinutes(course.endTime);
     const pStart = timeToMinutes(period.startTime);
     const pEnd = timeToMinutes(period.endTime);
 
-    if (period.isNoon) {
-      // Allow flexible noon span 12:00~13:30
-      const noonWindowStart = Math.min(pStart, 12 * 60);
-      const noonWindowEnd = Math.max(pEnd, 13 * 60 + 30);
-      const overlap = Math.min(cEnd, noonWindowEnd) - Math.max(cStart, noonWindowStart);
-      return overlap >= 10 || (cStart >= 12 * 60 && cStart < 13 * 60 + 30);
-    }
-
-    return cStart < pEnd && cEnd > pStart;
+    // 每個時段皆為獨立區間：課程在該節次內重疊超過 10 分鐘，或課程完全落在該節次內
+    const overlap = Math.min(cEnd, pEnd) - Math.max(cStart, pStart);
+    if (overlap > 10) return true;
+    if (cStart >= pStart && cEnd <= pEnd && overlap > 0) return true;
+    return false;
   };
 
   // Open modal to edit existing course

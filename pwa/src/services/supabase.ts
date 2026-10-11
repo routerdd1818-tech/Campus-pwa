@@ -222,6 +222,31 @@ export async function deleteCourseFromSupabase(courseId: string): Promise<boolea
   }
 }
 
+export async function batchUpsertCoursesToSupabase(courses: Course[], deviceIdOrUserId?: string): Promise<boolean> {
+  if (!courses || courses.length === 0) return true;
+  try {
+    const supabase = getSupabaseClient();
+    const rows = courses.map((course) => ({
+      id: course.id,
+      device_id: deviceIdOrUserId || course.userId || '',
+      name: course.name,
+      code: course.code,
+      classroom: course.classroom,
+      instructor: course.instructor,
+      day_of_week: course.dayOfWeek,
+      start_time: course.startTime,
+      end_time: course.endTime,
+      color_hex: course.colorHex,
+      is_shared_with_friends: course.isSharedWithFriends ?? true,
+    }));
+    const { error } = await supabase.from('courses').upsert(rows);
+    return !error;
+  } catch (err) {
+    console.warn('batchUpsertCourses error:', err);
+    return false;
+  }
+}
+
 // -------------------------------------------------------------
 // ✅ Todos
 // -------------------------------------------------------------
@@ -289,6 +314,32 @@ export async function deleteTodoFromSupabase(todoId: string): Promise<boolean> {
     const { error } = await supabase.from('todos').delete().eq('id', todoId);
     return !error;
   } catch {
+    return false;
+  }
+}
+
+export async function batchUpsertTodosToSupabase(todos: Todo[], deviceIdOrUserId?: string): Promise<boolean> {
+  if (!todos || todos.length === 0) return true;
+  try {
+    const supabase = getSupabaseClient();
+    const rows = todos.map((todo) => ({
+      id: todo.id,
+      device_id: deviceIdOrUserId || todo.userId || '',
+      title: todo.title,
+      notes: todo.notes,
+      start_date: todo.startDate ? new Date(todo.startDate).toISOString() : undefined,
+      due_date: todo.dueDate || (todo.endDate ? new Date(todo.endDate).toISOString() : undefined),
+      is_completed: todo.isCompleted,
+      priority: todo.priority,
+      category: todo.category,
+      course_id: todo.courseId,
+      paper_url: todo.paperUrl,
+      reading_status: todo.readingStatus,
+    }));
+    const { error } = await supabase.from('todos').upsert(rows);
+    return !error;
+  } catch (err) {
+    console.warn('batchUpsertTodos error:', err);
     return false;
   }
 }
@@ -367,6 +418,32 @@ export async function deleteTransactionFromSupabase(id: string): Promise<boolean
   }
 }
 
+export async function batchUpsertTransactionsToSupabase(txs: Transaction[], deviceIdOrUserId?: string): Promise<boolean> {
+  if (!txs || txs.length === 0) return true;
+  try {
+    const supabase = getSupabaseClient();
+    const rows = txs.map((t) => ({
+      id: t.id,
+      device_id: deviceIdOrUserId || t.userId || '',
+      amount: t.amount,
+      type: t.type,
+      category_name: t.categoryName,
+      category_icon: t.categoryIcon,
+      category_color_hex: t.categoryColorHex,
+      payment_method_name: t.paymentMethodName,
+      date: t.date,
+      notes: t.notes,
+      value_score: t.valueScore,
+      is_shared_with_friends: t.isSharedWithFriends ?? true,
+    }));
+    const { error } = await supabase.from('accounting_transactions').upsert(rows);
+    return !error;
+  } catch (err) {
+    console.warn('batchUpsertTransactions error:', err);
+    return false;
+  }
+}
+
 // -------------------------------------------------------------
 // 📅 Calendar Events & Multi-day Spans (TimeTree style)
 // -------------------------------------------------------------
@@ -436,6 +513,62 @@ export async function deleteCalendarEventFromSupabase(eventId: string): Promise<
   }
 }
 
+export async function batchUpsertCalendarEventsToSupabase(events: CalendarEvent[], deviceIdOrUserId?: string): Promise<boolean> {
+  if (!events || events.length === 0) return true;
+  try {
+    const supabase = getSupabaseClient();
+    const rows = events.map((event) => ({
+      id: event.id,
+      device_id: deviceIdOrUserId || event.userId || '',
+      title: event.title,
+      start_date: event.startDate,
+      end_date: event.endDate,
+      start_time: event.startTime,
+      end_time: event.endTime,
+      is_all_day: event.isAllDay,
+      color_hex: event.colorHex,
+      category: event.category,
+      notes: event.notes,
+      is_shared_with_friends: event.isSharedWithFriends ?? true,
+    }));
+    const { error } = await supabase.from('calendar_events').upsert(rows);
+    return !error;
+  } catch (err) {
+    console.warn('batchUpsertCalendarEvents error:', err);
+    return false;
+  }
+}
+
+export async function syncAllLocalDataToSupabase(
+  userKey: string,
+  localData: {
+    courses: Course[];
+    todos: Todo[];
+    transactions: Transaction[];
+    calendarEvents: CalendarEvent[];
+  }
+): Promise<{ ok: boolean; uploadedCount: number }> {
+  try {
+    const [cOk, tOk, txOk, eOk] = await Promise.all([
+      batchUpsertCoursesToSupabase(localData.courses, userKey),
+      batchUpsertTodosToSupabase(localData.todos, userKey),
+      batchUpsertTransactionsToSupabase(localData.transactions, userKey),
+      batchUpsertCalendarEventsToSupabase(localData.calendarEvents, userKey),
+    ]);
+
+    const count =
+      (localData.courses?.length || 0) +
+      (localData.todos?.length || 0) +
+      (localData.transactions?.length || 0) +
+      (localData.calendarEvents?.length || 0);
+
+    return { ok: cOk && tOk && txOk && eOk, uploadedCount: count };
+  } catch (err) {
+    console.warn('syncAllLocalDataToSupabase error:', err);
+    return { ok: false, uploadedCount: 0 };
+  }
+}
+
 // -------------------------------------------------------------
 // 🤝 Shared Schedule & Friend Calendar (課表、行事曆、記帳共享)
 // -------------------------------------------------------------
@@ -499,7 +632,11 @@ export async function saveUserLineBotPushSettings(
   pushMinute: number,
   isEnabled: boolean,
   coursesData: Course[] = [],
-  todosData: Todo[] = []
+  todosData: Todo[] = [],
+  eveningPushEnabled: boolean = true,
+  eveningPushHour: number = 18,
+  eveningPushMinute: number = 0,
+  accountingData: Transaction[] = []
 ): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
@@ -513,11 +650,16 @@ export async function saveUserLineBotPushSettings(
       push_hour: pushHour,
       push_minute: pushMinute,
       is_enabled: isEnabled,
+      evening_push_enabled: eveningPushEnabled,
+      evening_push_hour: eveningPushHour,
+      evening_push_minute: eveningPushMinute,
       include_schedule: true,
       include_todos: true,
       include_weekly_plan: true,
+      include_expense_summary: true,
       courses_data: coursesData,
       todos_data: todosData,
+      accounting_data: accountingData,
       updated_at: new Date().toISOString(),
     });
 
@@ -601,7 +743,7 @@ export async function callGeminiOcrGateway(
         models: ['gemini-3.8-flash', 'gemini-2.5-flash'],
         base64Image,
         prompt:
-          '請辨識這張大學課表圖片，並以 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、startTime（格式如 09:00）、endTime（格式如 12:00）。只回傳 JSON 陣列，不需其他文字。',
+          '請辨識這張大學/大專課表圖片，並以 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、periodCodes（該堂課涵蓋的節次代碼或數字陣列，例如 [1, 2] 或 [5, 6, 7] 或 ["5","6","7"]）、startTime（格式如 09:10）、endTime（格式如 12:00）。只回傳 JSON 陣列，不需其他文字。',
       },
     });
 

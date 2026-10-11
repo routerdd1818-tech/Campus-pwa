@@ -111,6 +111,8 @@ export const SettingsView: React.FC = () => {
   const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
   const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
   const [isLinePushEnabled, setIsLinePushEnabled] = useState(settings.isLinePushEnabled ?? true);
+  const [isEveningPushEnabled, setIsEveningPushEnabled] = useState(settings.lineEveningPushEnabled ?? true);
+  const [isTodoReminderEnabled, setIsTodoReminderEnabled] = useState(settings.lineTodoReminderEnabled ?? true);
   const [isClaimingLineId, setIsClaimingLineId] = useState(false);
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
 
@@ -183,6 +185,8 @@ export const SettingsView: React.FC = () => {
       linePushHour: pushHour,
       linePushMinute: pushMinute,
       isLinePushEnabled,
+      lineEveningPushEnabled: isEveningPushEnabled,
+      lineTodoReminderEnabled: isTodoReminderEnabled,
       customDailyLimit: dailyLimit,
       accountingResetDay: resetDay,
       autoSyncEnabled,
@@ -868,6 +872,52 @@ export const SettingsView: React.FC = () => {
                 <option value={30}>30 分</option>
                 <option value={45}>45 分</option>
               </select>
+            </div>
+          </div>
+
+          {/* 🌆 晚間 18:00 叮嚀與收支推播 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                  🌆 晚間 18:00 收支與待辦叮嚀
+                </span>
+                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                  平日推播今日花費與未完成待辦（若今日待辦皆完成則自動靜音不打擾）
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input
+                  type="checkbox"
+                  checked={isEveningPushEnabled}
+                  onChange={(e) => setIsEveningPushEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#06C755]"></div>
+              </label>
+            </div>
+          </div>
+
+          {/* 🔔 待辦事項到期通知開關 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                  🔔 待辦事項到期前 LINE 提醒
+                </span>
+                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                  依各項待辦設定之提醒時間（例如 1 天前、3 小時前）發送專屬卡片
+                </span>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+                <input
+                  type="checkbox"
+                  checked={isTodoReminderEnabled}
+                  onChange={(e) => setIsTodoReminderEnabled(e.target.checked)}
+                  className="sr-only peer"
+                />
+                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#06C755]"></div>
+              </label>
             </div>
           </div>
 
