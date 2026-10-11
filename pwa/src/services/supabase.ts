@@ -3,7 +3,7 @@ import { Course, Todo, Transaction, Installment, SplitBill, UserAccount, Calenda
 
 export const DEFAULT_SUPABASE_URL = 'https://xjdwjrmtiutapoeikvln.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY =
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4b29icnJqemFvdndweWFnemduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNDAxNDksImV4cCI6MjEwNDYxNjE0OX0.MRF3i5yXveFpalZOPcquDtsbCa7lg_fDRWMZsA8uXm0';
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhqZHdqcm10aXV0YXBvZWlrdmxuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE3MDM0MjYsImV4cCI6MjEwNzI3OTQyNn0.3LoLaoS9UggTQW3x5fdAW0x5Ekiyb0vmQaVasvkb8V0';
 
 let supabaseInstance: SupabaseClient | null = null;
 
