@@ -1,5 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Course, Todo, Transaction, Installment, SplitBill, UserSettings, UserAccount } from '../types';
+import {
+  Course,
+  Todo,
+  Transaction,
+  Installment,
+  SplitBill,
+  UserSettings,
+  UserAccount,
+  CalendarEvent,
+  SavedFriendRecord,
+  SharedScheduleData,
+} from '../types';
 import {
   fetchCoursesFromSupabase,
   upsertCourseToSupabase,
@@ -10,6 +21,11 @@ import {
   fetchTransactionsFromSupabase,
   upsertTransactionToSupabase,
   deleteTransactionFromSupabase,
+  fetchCalendarEventsFromSupabase,
+  upsertCalendarEventToSupabase,
+  deleteCalendarEventFromSupabase,
+  publishSharedSchedule,
+  fetchSharedScheduleByCode,
   loginUserAccount,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
@@ -128,6 +144,44 @@ const INITIAL_TRANSACTIONS: Transaction[] = [
   },
 ];
 
+const INITIAL_CALENDAR_EVENTS: CalendarEvent[] = [
+  {
+    id: 'e1',
+    title: '期中考週 (Midterms)',
+    startDate: new Date(Date.now() + 86400000 * 4).toISOString().slice(0, 10),
+    endDate: new Date(Date.now() + 86400000 * 8).toISOString().slice(0, 10),
+    isAllDay: true,
+    colorHex: '#E67E22',
+    category: '考試',
+    notes: '全校期中考週，自習室 24H 開放',
+    isSharedWithFriends: true,
+  },
+  {
+    id: 'e2',
+    title: '系學會秋季露營 (Camping Trip)',
+    startDate: new Date(Date.now() + 86400000 * 11).toISOString().slice(0, 10),
+    endDate: new Date(Date.now() + 86400000 * 13).toISOString().slice(0, 10),
+    isAllDay: true,
+    colorHex: '#48BB78',
+    category: '活動',
+    notes: '南投清境農場，攜帶保暖衣物',
+    isSharedWithFriends: true,
+  },
+  {
+    id: 'e3',
+    title: '軟體專題期末成果發表',
+    startDate: new Date(Date.now() + 86400000 * 16).toISOString().slice(0, 10),
+    endDate: new Date(Date.now() + 86400000 * 16).toISOString().slice(0, 10),
+    startTime: '13:30',
+    endTime: '17:00',
+    isAllDay: false,
+    colorHex: '#3182CE',
+    category: '專案',
+    notes: '創客教室 A，準備簡報與 Demo 影片',
+    isSharedWithFriends: true,
+  },
+];
+
 const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: DEFAULT_SUPABASE_URL,
   supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -152,8 +206,8 @@ interface BudgetInfo {
 }
 
 interface AppContextType {
-  activeTab: 'schedule' | 'todos' | 'accounting' | 'settings';
-  setActiveTab: (tab: 'schedule' | 'todos' | 'accounting' | 'settings') => void;
+  activeTab: 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings';
+  setActiveTab: (tab: 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings') => void;
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null, rememberPassword?: string | null) => void;
   logoutUser: () => void;
@@ -161,11 +215,19 @@ interface AppContextType {
   setIsAuthModalOpen: (open: boolean) => void;
   isLineBotModalOpen: boolean;
   setIsLineBotModalOpen: (open: boolean) => void;
+  isShareModalOpen: boolean;
+  setIsShareModalOpen: (open: boolean) => void;
+  isEventModalOpen: boolean;
+  setIsEventModalOpen: (open: boolean) => void;
+  eventToEdit: CalendarEvent | null;
+  setEventToEdit: (e: CalendarEvent | null) => void;
   courses: Course[];
   todos: Todo[];
   transactions: Transaction[];
+  calendarEvents: CalendarEvent[];
   installments: Installment[];
   splitBills: SplitBill[];
+  savedFriends: SavedFriendRecord[];
   settings: UserSettings;
   isSyncing: boolean;
   isOnline: boolean;
@@ -180,6 +242,11 @@ interface AppContextType {
   deleteTodo: (id: string) => Promise<void>;
   addTransaction: (t: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
+  addCalendarEvent: (e: CalendarEvent) => Promise<void>;
+  updateCalendarEvent: (e: CalendarEvent) => Promise<void>;
+  deleteCalendarEvent: (id: string) => Promise<void>;
+  saveFriendRecord: (record: SavedFriendRecord) => void;
+  removeFriendRecord: (shareCode: string) => void;
   updateSettings: (s: Partial<UserSettings>) => void;
   syncWithSupabase: (targetUser?: UserAccount | null) => Promise<void>;
 }
@@ -187,7 +254,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<'schedule' | 'todos' | 'accounting' | 'settings'>('schedule');
+  const [activeTab, setActiveTab] = useState<'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings'>('schedule');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [catMood, setCatMood] = useState<'happy' | 'sleeping' | 'thinking' | 'proud'>('happy');
@@ -204,6 +271,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLineBotModalOpen, setIsLineBotModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
   // Load from LocalStorage
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -219,6 +289,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const saved = localStorage.getItem('campus_transactions');
     return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+  });
+
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => {
+    const saved = localStorage.getItem('campus_calendar_events');
+    return saved ? JSON.parse(saved) : INITIAL_CALENDAR_EVENTS;
+  });
+
+  const [savedFriends, setSavedFriends] = useState<SavedFriendRecord[]>(() => {
+    const saved = localStorage.getItem('campus_saved_friends');
+    return saved ? JSON.parse(saved) : [];
   });
 
   const [installments, setInstallments] = useState<Installment[]>(() => {
@@ -262,6 +342,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [transactions]);
 
   useEffect(() => {
+    localStorage.setItem('campus_calendar_events', JSON.stringify(calendarEvents));
+  }, [calendarEvents]);
+
+  useEffect(() => {
+    localStorage.setItem('campus_saved_friends', JSON.stringify(savedFriends));
+  }, [savedFriends]);
+
+  useEffect(() => {
     localStorage.setItem('campus_settings', JSON.stringify(settings));
   }, [settings]);
 
@@ -273,15 +361,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const userKey = activeUser ? activeUser.id : undefined;
 
     try {
-      const [cloudCourses, cloudTodos, cloudTx] = await Promise.all([
+      const [cloudCourses, cloudTodos, cloudTx, cloudEvents] = await Promise.all([
         fetchCoursesFromSupabase(userKey),
         fetchTodosFromSupabase(userKey),
         fetchTransactionsFromSupabase(),
+        fetchCalendarEventsFromSupabase(userKey),
       ]);
 
       if (cloudCourses.length > 0) setCourses(cloudCourses);
       if (cloudTodos.length > 0) setTodos(cloudTodos);
       if (cloudTx.length > 0) setTransactions(cloudTx);
+      if (cloudEvents.length > 0) setCalendarEvents(cloudEvents);
     } catch (e) {
       console.warn('Initial cloud sync error:', e);
     } finally {
@@ -438,6 +528,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteTransactionFromSupabase(id);
   };
 
+  const addCalendarEvent = async (e: CalendarEvent) => {
+    const enriched = { ...e, userId: currentUser?.id || e.userId };
+    setCalendarEvents((prev) => [...prev, enriched]);
+    await upsertCalendarEventToSupabase(enriched, currentUser?.id);
+    setCatMood('happy');
+  };
+
+  const updateCalendarEvent = async (e: CalendarEvent) => {
+    const enriched = { ...e, userId: currentUser?.id || e.userId };
+    setCalendarEvents((prev) => prev.map((item) => (item.id === enriched.id ? enriched : item)));
+    await upsertCalendarEventToSupabase(enriched, currentUser?.id);
+  };
+
+  const deleteCalendarEvent = async (id: string) => {
+    setCalendarEvents((prev) => prev.filter((item) => item.id !== id));
+    await deleteCalendarEventFromSupabase(id);
+  };
+
+  const saveFriendRecord = (record: SavedFriendRecord) => {
+    setSavedFriends((prev) => {
+      const filtered = prev.filter((f) => f.shareCode !== record.shareCode);
+      return [record, ...filtered];
+    });
+  };
+
+  const removeFriendRecord = (shareCode: string) => {
+    setSavedFriends((prev) => prev.filter((f) => f.shareCode !== shareCode));
+  };
+
   const updateSettings = (partial: Partial<UserSettings>) => {
     setSettings((prev) => ({ ...prev, ...partial }));
   };
@@ -454,11 +573,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsAuthModalOpen,
         isLineBotModalOpen,
         setIsLineBotModalOpen,
+        isShareModalOpen,
+        setIsShareModalOpen,
+        isEventModalOpen,
+        setIsEventModalOpen,
+        eventToEdit,
+        setEventToEdit,
         courses,
         todos,
         transactions,
+        calendarEvents,
         installments,
         splitBills,
+        savedFriends,
         settings,
         isSyncing,
         isOnline,
@@ -473,6 +600,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTodo,
         addTransaction,
         deleteTransaction,
+        addCalendarEvent,
+        updateCalendarEvent,
+        deleteCalendarEvent,
+        saveFriendRecord,
+        removeFriendRecord,
         updateSettings,
         syncWithSupabase,
       }}

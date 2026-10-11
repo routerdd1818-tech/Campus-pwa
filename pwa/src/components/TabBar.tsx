@@ -1,9 +1,9 @@
 import React from 'react';
-import { CalendarDays, CheckSquare, Wallet, Settings } from 'lucide-react';
+import { CalendarDays, Calendar, CheckSquare, Wallet, Settings } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 interface TabItem {
-  id: 'schedule' | 'todos' | 'accounting' | 'settings';
+  id: 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings';
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   badge?: number;
@@ -16,6 +16,7 @@ export const TabBar: React.FC = () => {
 
   const tabs: TabItem[] = [
     { id: 'schedule', label: '課表', icon: CalendarDays },
+    { id: 'calendar', label: '行事曆', icon: Calendar },
     { id: 'todos', label: '待辦', icon: CheckSquare, badge: uncompletedTodosCount },
     { id: 'accounting', label: '記帳', icon: Wallet },
     { id: 'settings', label: '設定', icon: Settings },

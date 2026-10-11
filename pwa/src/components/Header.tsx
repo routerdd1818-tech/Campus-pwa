@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalicoAvatar } from './CalicoAvatar';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, MessageCircle, User } from 'lucide-react';
+import { RefreshCw, MessageCircle, User, Share2 } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const {
@@ -13,6 +13,7 @@ export const Header: React.FC = () => {
     currentUser,
     setIsAuthModalOpen,
     setIsLineBotModalOpen,
+    setIsShareModalOpen,
     settings,
   } = useApp();
 
@@ -69,6 +70,15 @@ export const Header: React.FC = () => {
 
         {/* Right: Actions (LINE Bot Push, Sync, Status) */}
         <div className="flex items-center space-x-1.5">
+          {/* Friend Schedule / Calendar / Accounting Sharing */}
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="p-1.5 rounded-full bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40 shadow-2xs hover:bg-indigo-100 active:scale-95 transition-all"
+            title="開啟好友課表、行事曆與記帳共享中心"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+          </button>
+
           {/* LINE Bot Dedicated Push Button */}
           <button
             onClick={() => setIsLineBotModalOpen(true)}

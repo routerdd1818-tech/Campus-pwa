@@ -1,0 +1,870 @@
+import React, { useState, useMemo } from 'react';
+import { useApp } from '../context/AppContext';
+import { CalendarEvent, DayOfWeek, Todo, Course, Transaction } from '../types';
+import { EventModal } from '../components/EventModal';
+import { ShareModal } from '../components/ShareModal';
+import { TodoModal } from '../components/TodoModal';
+import {
+  Calendar as CalendarIcon,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Share2,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  Circle,
+  BookOpen,
+  CheckSquare,
+  Wallet,
+  Clock,
+  MapPin,
+  Tag,
+  Sparkles,
+  CalendarDays,
+  Coffee,
+  Users,
+} from 'lucide-react';
+
+const WEEKDAYS_HEADER = ['日', '一', '二', '三', '四', '五', '六'];
+
+export const CalendarView: React.FC = () => {
+  const {
+    courses,
+    todos,
+    transactions,
+    calendarEvents,
+    budgetInfo,
+    toggleTodo,
+    addCalendarEvent,
+    updateCalendarEvent,
+    deleteCalendarEvent,
+    isShareModalOpen,
+    setIsShareModalOpen,
+    isEventModalOpen,
+    setIsEventModalOpen,
+    eventToEdit,
+    setEventToEdit,
+  } = useApp();
+
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+
+  // Calendar View Mode: Month vs Week
+  const [calendarMode, setCalendarMode] = useState<'month' | 'week'>('month');
+
+  // Month navigation state
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  // Selected date (defaults to today)
+  const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
+
+  // Today Summary Collapsible State (default open)
+  const [isTodaySummaryOpen, setIsTodaySummaryOpen] = useState(true);
+
+  // Todo modal state for quick add
+  const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
+
+  // -------------------------------------------------------------
+  // 📅 Month grid calculation
+  // -------------------------------------------------------------
+  const year = currentDate.getFullYear();
+  const month = currentDate.getMonth(); // 0-indexed
+
+  const monthGridDays = useMemo(() => {
+    const firstDayOfMonth = new Date(year, month, 1);
+    const lastDayOfMonth = new Date(year, month + 1, 0);
+
+    const firstDayWeekday = firstDayOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
+    const daysInMonth = lastDayOfMonth.getDate();
+
+    // Days from previous month to fill the first row
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    const days: { dateStr: string; dayNum: number; isCurrentMonth: boolean }[] = [];
+
+    for (let i = firstDayWeekday - 1; i >= 0; i--) {
+      const prevDate = new Date(year, month - 1, prevMonthLastDay - i);
+      days.push({
+        dateStr: prevDate.toISOString().slice(0, 10),
+        dayNum: prevMonthLastDay - i,
+        isCurrentMonth: false,
+      });
+    }
+
+    // Days in current month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const currDate = new Date(year, month, i);
+      // Format as YYYY-MM-DD
+      const mStr = String(month + 1).padStart(2, '0');
+      const dStr = String(i).padStart(2, '0');
+      days.push({
+        dateStr: `${year}-${mStr}-${dStr}`,
+        dayNum: i,
+        isCurrentMonth: true,
+      });
+    }
+
+    // Days in next month to fill the remaining cells (up to complete weeks)
+    const totalCells = Math.ceil(days.length / 7) * 7;
+    const remaining = totalCells - days.length;
+    for (let i = 1; i <= remaining; i++) {
+      const nextDate = new Date(year, month + 1, i);
+      const mStr = String(((month + 1) % 12) + 1).padStart(2, '0');
+      const dStr = String(i).padStart(2, '0');
+      const nextYear = month === 11 ? year + 1 : year;
+      days.push({
+        dateStr: `${nextYear}-${mStr}-${dStr}`,
+        dayNum: i,
+        isCurrentMonth: false,
+      });
+    }
+
+    return days;
+  }, [year, month]);
+
+  // -------------------------------------------------------------
+  // 🗓️ Week View calculation
+  // -------------------------------------------------------------
+  const currentWeekDays = useMemo(() => {
+    const sel = new Date(selectedDateStr);
+    const dayOfWeek = sel.getDay(); // 0 (Sun) to 6 (Sat)
+    // Sunday of the current week
+    const sunday = new Date(sel);
+    sunday.setDate(sel.getDate() - dayOfWeek);
+
+    const weekDays: { dateStr: string; dayNum: number; weekdayName: string; dayOfWeekNum: number }[] = [];
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(sunday);
+      d.setDate(sunday.getDate() + i);
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      weekDays.push({
+        dateStr: `${y}-${m}-${day}`,
+        dayNum: d.getDate(),
+        weekdayName: WEEKDAYS_HEADER[i],
+        dayOfWeekNum: i === 0 ? 7 : i, // 1 = Mon ... 7 = Sun
+      });
+    }
+    return weekDays;
+  }, [selectedDateStr]);
+
+  // Navigation handlers
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(year, month - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(year, month + 1, 1));
+  };
+
+  const handleGoToday = () => {
+    setCurrentDate(new Date());
+    setSelectedDateStr(todayStr);
+  };
+
+  // -------------------------------------------------------------
+  // 🌟 TimeTree Multi-Day Span Event Logic
+  // -------------------------------------------------------------
+  // Helper to determine if an event covers a specific date
+  const getEventsForDate = (dateStr: string) => {
+    return calendarEvents.filter((e) => {
+      return dateStr >= e.startDate && dateStr <= e.endDate;
+    });
+  };
+
+  // -------------------------------------------------------------
+  // ☀️ Today's Summary Data (Courses + Todos + Accounting)
+  // -------------------------------------------------------------
+  const todayDayOfWeek = (now.getDay() === 0 ? 7 : now.getDay()) as DayOfWeek;
+
+  const todayCourses = useMemo(() => {
+    return courses
+      .filter((c) => c.dayOfWeek === todayDayOfWeek)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }, [courses, todayDayOfWeek]);
+
+  const todayTodos = useMemo(() => {
+    return todos.filter((t) => {
+      if (!t.dueDate) return false;
+      return t.dueDate.slice(0, 10) === todayStr;
+    });
+  }, [todos, todayStr]);
+
+  const todayTransactions = useMemo(() => {
+    return transactions.filter((t) => t.date.slice(0, 10) === todayStr);
+  }, [transactions, todayStr]);
+
+  // Selected date events
+  const selectedDateEvents = useMemo(() => {
+    return getEventsForDate(selectedDateStr);
+  }, [selectedDateStr, calendarEvents]);
+
+  const selectedDateCourses = useMemo(() => {
+    const sel = new Date(selectedDateStr);
+    const dayOfWeek = (sel.getDay() === 0 ? 7 : sel.getDay()) as DayOfWeek;
+    return courses
+      .filter((c) => c.dayOfWeek === dayOfWeek)
+      .sort((a, b) => a.startTime.localeCompare(b.startTime));
+  }, [selectedDateStr, courses]);
+
+  const selectedDateTodos = useMemo(() => {
+    return todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === selectedDateStr);
+  }, [selectedDateStr, todos]);
+
+  const selectedDateTransactions = useMemo(() => {
+    return transactions.filter((t) => t.date.slice(0, 10) === selectedDateStr);
+  }, [selectedDateStr, transactions]);
+
+  return (
+    <div className="space-y-4 pb-28">
+      {/* 頂部操作與視圖切換列 */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* 月曆 vs 週曆 切換 */}
+        <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+          <button
+            onClick={() => setCalendarMode('month')}
+            className={`px-3 py-1.5 rounded-xl transition-all ${
+              calendarMode === 'month'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            月曆預覽
+          </button>
+          <button
+            onClick={() => setCalendarMode('week')}
+            className={`px-3 py-1.5 rounded-xl transition-all ${
+              calendarMode === 'week'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            本週安排
+          </button>
+        </div>
+
+        {/* Buttons (Today, Add Event, Share) */}
+        <div className="flex items-center space-x-1.5">
+          <button
+            onClick={handleGoToday}
+            className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-extrabold text-calico-orange hover:bg-calico-orange/10 active:scale-95 transition-all shadow-2xs"
+          >
+            今天
+          </button>
+
+          <button
+            onClick={() => setIsShareModalOpen(true)}
+            className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-bold text-xs hover:bg-indigo-100 active:scale-95 transition-all shadow-2xs border border-indigo-200 dark:border-indigo-800/40"
+            title="行事曆、課表與記帳好友共享"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
+          <button
+            onClick={() => {
+              setEventToEdit(null);
+              setIsEventModalOpen(true);
+            }}
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
+          >
+            <Plus className="w-4 h-4" />
+            <span>新活動</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 🌟 1. 當日的折疊 (Today's Collapsible Summary) */}
+      {/* ======================================================== */}
+      <div className="rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios overflow-hidden transition-all">
+        {/* Collapsible Header */}
+        <button
+          onClick={() => setIsTodaySummaryOpen(!isTodaySummaryOpen)}
+          className="w-full p-4 flex items-center justify-between text-left hover:bg-black/2 dark:hover:bg-white/2 transition-colors"
+        >
+          <div className="flex items-center space-x-3">
+            <div className="w-9 h-9 rounded-2xl bg-calico-orange/15 text-calico-orange flex items-center justify-center font-black shadow-2xs">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                  今日總覽折疊卡
+                </h3>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-calico-orange text-white">
+                  今天 {now.getMonth() + 1}/{now.getDate()}
+                </span>
+              </div>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">
+                {todayCourses.length} 門課 · {todayTodos.length} 項待辦 · 已支出 ${budgetInfo.todaySpent}
+              </p>
+            </div>
+          </div>
+
+          <div className="p-1 rounded-full text-calico-cocoa/40">
+            {isTodaySummaryOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+          </div>
+        </button>
+
+        {/* Collapsible Content */}
+        {isTodaySummaryOpen && (
+          <div className="px-4 pb-4 pt-1 border-t border-black/5 dark:border-white/5 space-y-3.5 animate-fade-in">
+            {/* 1.1 今日課表 (Today Courses) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                  <BookOpen className="w-3.5 h-3.5 text-calico-orange" />
+                  <span>今日課表 ({todayCourses.length})</span>
+                </span>
+              </div>
+
+              {todayCourses.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {todayCourses.map((c) => (
+                    <div
+                      key={c.id}
+                      style={{ borderLeftColor: c.colorHex }}
+                      className="p-2.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 border-l-4 flex items-center justify-between text-xs"
+                    >
+                      <div className="truncate">
+                        <p className="font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">{c.name}</p>
+                        <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 truncate">
+                          {c.classroom || '未定教室'} · {c.instructor || '講師'}
+                        </p>
+                      </div>
+                      <span className="text-[11px] font-mono font-bold text-calico-cocoa/80 dark:text-zinc-300 shrink-0 ml-2">
+                        {c.startTime}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
+                  今天沒有排定課堂，自習或休息時光！☕️
+                </p>
+              )}
+            </div>
+
+            {/* 1.2 今日待辦 (Today Todos) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                  <CheckSquare className="w-3.5 h-3.5 text-calico-sage" />
+                  <span>今日待辦 ({todayTodos.length})</span>
+                </span>
+                <button
+                  onClick={() => setIsTodoModalOpen(true)}
+                  className="text-[11px] font-bold text-calico-orange hover:underline"
+                >
+                  ＋ 加待辦
+                </button>
+              </div>
+
+              {todayTodos.length > 0 ? (
+                <div className="space-y-1.5">
+                  {todayTodos.map((t) => (
+                    <div
+                      key={t.id}
+                      onClick={() => toggleTodo(t.id)}
+                      className="p-2 rounded-xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs cursor-pointer hover:bg-calico-orange/5 transition-colors"
+                    >
+                      <div className="flex items-center space-x-2 truncate">
+                        {t.isCompleted ? (
+                          <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
+                        ) : (
+                          <Circle className="w-4 h-4 text-calico-cocoa/30 shrink-0" />
+                        )}
+                        <span
+                          className={`truncate font-semibold ${
+                            t.isCompleted ? 'line-through text-calico-cocoa/40' : 'text-calico-cocoa dark:text-zinc-100'
+                          }`}
+                        >
+                          {t.title}
+                        </span>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 shrink-0 ml-2 font-bold">
+                        {t.category}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
+                  今天沒有到期任務，進度全數掌控中！✨
+                </p>
+              )}
+            </div>
+
+            {/* 1.3 今日記帳 (Today Expenses) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                  <Wallet className="w-3.5 h-3.5 text-amber-500" />
+                  <span>今日記帳花費 (${budgetInfo.todaySpent})</span>
+                </span>
+                <span className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                  今日剩餘預算：${budgetInfo.remaining}
+                </span>
+              </div>
+
+              {todayTransactions.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {todayTransactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="px-2.5 py-1.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
+                    >
+                      <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
+                      <span className="text-[10px] text-calico-cocoa/60">{tx.notes}</span>
+                      <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
+                  今天尚無記帳支出，善用預算聰明理財！🌱
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* 📅 2. 月曆 檢視 (Monthly Calendar with TimeTree Spans) */}
+      {/* ======================================================== */}
+      {calendarMode === 'month' && (
+        <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+          {/* Month Header Switcher */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <CalendarIcon className="w-5 h-5 text-calico-orange" />
+              <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100">
+                {year} 年 {month + 1} 月
+              </h3>
+            </div>
+
+            <div className="flex items-center space-x-1">
+              <button
+                onClick={handlePrevMonth}
+                className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 active:scale-95 transition-all"
+                title="上個月"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                onClick={handleNextMonth}
+                className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 active:scale-95 transition-all"
+                title="下個月"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+
+          {/* Weekday Names Header */}
+          <div className="grid grid-cols-7 gap-1 text-center pb-1 border-b border-black/5 dark:border-white/5">
+            {WEEKDAYS_HEADER.map((w, idx) => (
+              <div
+                key={w}
+                className={`text-[11px] font-black ${
+                  idx === 0 || idx === 6 ? 'text-calico-orange' : 'text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                {w}
+              </div>
+            ))}
+          </div>
+
+          {/* 7xN Calendar Days Grid */}
+          <div className="grid grid-cols-7 gap-1">
+            {monthGridDays.map((cell) => {
+              const isSelected = cell.dateStr === selectedDateStr;
+              const isToday = cell.dateStr === todayStr;
+
+              // Events covering this date
+              const dayEvents = getEventsForDate(cell.dateStr);
+
+              // Does this date have course?
+              const cellDate = new Date(cell.dateStr);
+              const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
+              const hasCourse = courses.some((c) => c.dayOfWeek === cellDayOfWeek);
+              const hasTodo = todos.some((t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted);
+
+              return (
+                <div
+                  key={cell.dateStr}
+                  onClick={() => setSelectedDateStr(cell.dateStr)}
+                  className={`min-h-[58px] sm:min-h-[64px] p-1 rounded-2xl flex flex-col justify-between cursor-pointer transition-all border ${
+                    isSelected
+                      ? 'bg-calico-orange/15 border-calico-orange shadow-ios-sm ring-1 ring-calico-orange'
+                      : isToday
+                      ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40'
+                      : cell.isCurrentMonth
+                      ? 'bg-calico-cream/30 dark:bg-zinc-800/30 border-black/5 dark:border-white/5 hover:border-calico-orange/30'
+                      : 'bg-black/2 dark:bg-white/2 border-transparent opacity-40'
+                  }`}
+                >
+                  {/* Day Number Header */}
+                  <div className="flex items-center justify-between">
+                    <span
+                      className={`text-xs font-black leading-none ${
+                        isToday
+                          ? 'w-5 h-5 rounded-full bg-calico-orange text-white flex items-center justify-center font-black shadow-xs'
+                          : isSelected
+                          ? 'text-calico-orange'
+                          : 'text-calico-cocoa/80 dark:text-zinc-200'
+                      }`}
+                    >
+                      {cell.dayNum}
+                    </span>
+
+                    {/* Small indicators for course & todo */}
+                    <div className="flex items-center space-x-0.5">
+                      {hasCourse && <span className="w-1.5 h-1.5 rounded-full bg-calico-orange" />}
+                      {hasTodo && <span className="w-1.5 h-1.5 rounded-full bg-calico-sage" />}
+                    </div>
+                  </div>
+
+                  {/* 🌟 TimeTree Multi-Day Continuous Span Banners */}
+                  <div className="space-y-0.5 mt-1 overflow-hidden">
+                    {dayEvents.slice(0, 2).map((ev) => {
+                      const isStart = cell.dateStr === ev.startDate;
+                      const isEnd = cell.dateStr === ev.endDate;
+                      const isSingle = ev.startDate === ev.endDate;
+
+                      return (
+                        <div
+                          key={ev.id}
+                          style={{
+                            backgroundColor: `${ev.colorHex}25`,
+                            color: ev.colorHex,
+                            borderColor: `${ev.colorHex}50`,
+                          }}
+                          className={`text-[9px] font-black leading-tight px-1 py-0.5 truncate border transition-all ${
+                            isSingle
+                              ? 'rounded-md'
+                              : isStart
+                              ? 'rounded-l-md rounded-r-none border-r-0'
+                              : isEnd
+                              ? 'rounded-r-md rounded-l-none border-l-0'
+                              : 'rounded-none border-x-0'
+                          }`}
+                          title={`${ev.title} (${ev.startDate} ~ ${ev.endDate})`}
+                        >
+                          {isStart || isSingle ? ev.title : '⋯'}
+                        </div>
+                      );
+                    })}
+
+                    {dayEvents.length > 2 && (
+                      <span className="text-[8px] text-calico-cocoa/50 font-bold block leading-none">
+                        +{dayEvents.length - 2} 更多
+                      </span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 🗓️ 3. 週曆 檢視 (Weekly Calendar View) */}
+      {/* ======================================================== */}
+      {calendarMode === 'week' && (
+        <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+          <div className="flex items-center justify-between">
+            <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+              <CalendarDays className="w-5 h-5 text-calico-orange" />
+              <span>本週安排概覽</span>
+            </h3>
+            <span className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+              {currentWeekDays[0]?.dateStr} ~ {currentWeekDays[6]?.dateStr}
+            </span>
+          </div>
+
+          {/* 7 Days of the Week */}
+          <div className="space-y-2">
+            {currentWeekDays.map((w) => {
+              const isSelected = w.dateStr === selectedDateStr;
+              const isToday = w.dateStr === todayStr;
+
+              const dayEvents = getEventsForDate(w.dateStr);
+              const dayCourses = courses.filter((c) => c.dayOfWeek === w.dayOfWeekNum);
+              const dayTodos = todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === w.dateStr);
+
+              return (
+                <div
+                  key={w.dateStr}
+                  onClick={() => setSelectedDateStr(w.dateStr)}
+                  className={`p-3 rounded-2xl border transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-calico-orange/15 border-calico-orange shadow-ios-sm'
+                      : isToday
+                      ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40'
+                      : 'bg-calico-cream/40 dark:bg-zinc-800/40 border-black/5 dark:border-white/5 hover:border-calico-orange/30'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-2">
+                      <span
+                        className={`text-xs font-black px-2 py-0.5 rounded-lg ${
+                          isToday
+                            ? 'bg-calico-orange text-white'
+                            : 'bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200'
+                        }`}
+                      >
+                        週{w.weekdayName}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-calico-cocoa/70 dark:text-zinc-300">
+                        {w.dateStr.slice(5)}
+                      </span>
+                    </div>
+
+                    <span className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400">
+                      {dayCourses.length} 門課 · {dayEvents.length} 項活動 · {dayTodos.length} 待辦
+                    </span>
+                  </div>
+
+                  {/* Multi-day TimeTree Events on this day */}
+                  {dayEvents.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {dayEvents.map((ev) => (
+                        <div
+                          key={ev.id}
+                          style={{
+                            backgroundColor: `${ev.colorHex}20`,
+                            color: ev.colorHex,
+                            borderColor: `${ev.colorHex}40`,
+                          }}
+                          className="px-2 py-0.5 rounded-md text-[10px] font-black border"
+                        >
+                          {ev.title} ({ev.startDate} ~ {ev.endDate})
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ======================================================== */}
+      {/* 📋 4. 選取日期詳細行程 (Selected Date Agenda) */}
+      {/* ======================================================== */}
+      <div className="p-4 rounded-3xl bg-white/90 dark:bg-calico-darkCard/90 backdrop-blur-md border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5">
+          <div>
+            <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+              <span>{selectedDateStr} 行程明細</span>
+              {selectedDateStr === todayStr && (
+                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-calico-orange text-white">
+                  今天
+                </span>
+              )}
+            </h4>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+              包含當日課表、跨天活動、待辦作業與收支
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              setEventToEdit(null);
+              setIsEventModalOpen(true);
+            }}
+            className="px-2.5 py-1 rounded-xl bg-calico-orange/15 text-calico-orange text-xs font-bold flex items-center space-x-1 hover:bg-calico-orange/25 active:scale-95 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>新增此日活動</span>
+          </button>
+        </div>
+
+        {/* 4.1 TimeTree Span Events on Selected Date */}
+        {selectedDateEvents.length > 0 && (
+          <div className="space-y-1.5">
+            <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+              <CalendarDays className="w-3.5 h-3.5 text-calico-orange" />
+              <span>進行中的區間活動 ({selectedDateEvents.length})</span>
+            </span>
+            {selectedDateEvents.map((ev) => (
+              <div
+                key={ev.id}
+                onClick={() => {
+                  setEventToEdit(ev);
+                  setIsEventModalOpen(true);
+                }}
+                style={{ borderLeftColor: ev.colorHex }}
+                className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 border-l-4 flex items-center justify-between cursor-pointer hover:brightness-95 transition-all shadow-2xs"
+              >
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">{ev.title}</span>
+                    <span
+                      style={{ color: ev.colorHex }}
+                      className="text-[10px] px-1.5 py-0.2 rounded-full bg-black/5 dark:bg-white/10 font-bold"
+                    >
+                      {ev.category}
+                    </span>
+                  </div>
+                  {ev.notes && (
+                    <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">{ev.notes}</p>
+                  )}
+                </div>
+
+                <div className="text-right shrink-0">
+                  <span className="text-[11px] font-mono text-calico-cocoa/70 dark:text-zinc-300 font-bold">
+                    {ev.startDate === ev.endDate ? ev.startDate : `${ev.startDate} ~ ${ev.endDate}`}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* 4.2 Courses on Selected Date */}
+        {selectedDateCourses.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+              <BookOpen className="w-3.5 h-3.5 text-calico-orange" />
+              <span>當日課程 ({selectedDateCourses.length})</span>
+            </span>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {selectedDateCourses.map((c) => (
+                <div
+                  key={c.id}
+                  style={{ borderLeftColor: c.colorHex }}
+                  className="p-2.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 border-l-4 flex items-center justify-between text-xs"
+                >
+                  <div className="truncate">
+                    <p className="font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">{c.name}</p>
+                    <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 truncate">
+                      {c.classroom || '未定教室'} · {c.instructor || '講師'}
+                    </p>
+                  </div>
+                  <span className="text-[11px] font-mono font-bold text-calico-cocoa/80 dark:text-zinc-300 shrink-0 ml-2">
+                    {c.startTime} - {c.endTime}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4.3 Todos on Selected Date */}
+        {selectedDateTodos.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+              <CheckSquare className="w-3.5 h-3.5 text-calico-sage" />
+              <span>當日待辦 ({selectedDateTodos.length})</span>
+            </span>
+            <div className="space-y-1.5">
+              {selectedDateTodos.map((t) => (
+                <div
+                  key={t.id}
+                  onClick={() => toggleTodo(t.id)}
+                  className="p-2 rounded-xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs cursor-pointer hover:bg-calico-orange/5 transition-colors"
+                >
+                  <div className="flex items-center space-x-2 truncate">
+                    {t.isCompleted ? (
+                      <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-calico-cocoa/30 shrink-0" />
+                    )}
+                    <span
+                      className={`truncate font-semibold ${
+                        t.isCompleted ? 'line-through text-calico-cocoa/40' : 'text-calico-cocoa dark:text-zinc-100'
+                      }`}
+                    >
+                      {t.title}
+                    </span>
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 shrink-0 ml-2 font-bold">
+                    {t.category}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* 4.4 Expenses on Selected Date */}
+        {selectedDateTransactions.length > 0 && (
+          <div className="space-y-1.5 pt-1">
+            <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+              <Wallet className="w-3.5 h-3.5 text-amber-500" />
+              <span>當日收支 ({selectedDateTransactions.length})</span>
+            </span>
+            <div className="flex flex-wrap gap-2">
+              {selectedDateTransactions.map((tx) => (
+                <div
+                  key={tx.id}
+                  className="px-2.5 py-1.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
+                >
+                  <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
+                  <span className="text-[10px] text-calico-cocoa/60">{tx.notes}</span>
+                  <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Empty state for selected date */}
+        {selectedDateEvents.length === 0 &&
+          selectedDateCourses.length === 0 &&
+          selectedDateTodos.length === 0 &&
+          selectedDateTransactions.length === 0 && (
+            <div className="text-center py-8 rounded-2xl bg-calico-cream/20 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10 space-y-2">
+              <Coffee className="w-6 h-6 text-calico-cocoa/30 dark:text-zinc-500 mx-auto" />
+              <p className="text-xs font-bold text-calico-cocoa/50 dark:text-zinc-400">
+                此日尚無排定事件、課程或待辦，是個放鬆的日子！
+              </p>
+            </div>
+          )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* 5. Modals */}
+      {/* ======================================================== */}
+      {/* TimeTree Span Event Modal */}
+      <EventModal
+        isOpen={isEventModalOpen}
+        event={eventToEdit}
+        defaultDate={selectedDateStr}
+        onClose={() => setIsEventModalOpen(false)}
+        onSave={(ev) => {
+          if (eventToEdit) {
+            updateCalendarEvent(ev);
+          } else {
+            addCalendarEvent(ev);
+          }
+        }}
+        onDelete={deleteCalendarEvent}
+      />
+
+      {/* Share Calendar / Schedule / Accounting Center */}
+      <ShareModal
+        isOpen={isShareModalOpen}
+        onClose={() => setIsShareModalOpen(false)}
+      />
+
+      {/* Quick Add Todo Modal */}
+      <TodoModal
+        isOpen={isTodoModalOpen}
+        onClose={() => setIsTodoModalOpen(false)}
+        onSave={(todo) => {
+          // Add with dueDate set to selectedDateStr
+          useApp().addTodo({
+            ...todo,
+            dueDate: new Date(selectedDateStr + 'T23:59:00').toISOString(),
+          });
+        }}
+      />
+    </div>
+  );
+};

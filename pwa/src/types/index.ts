@@ -109,3 +109,38 @@ export interface UserSettings {
   isLinePushEnabled: boolean;
   theme: 'light' | 'dark' | 'system';
 }
+
+export interface CalendarEvent {
+  id: string;
+  userId?: string;
+  title: string;
+  startDate: string; // YYYY-MM-DD
+  endDate: string;   // YYYY-MM-DD
+  startTime?: string;
+  endTime?: string;
+  isAllDay: boolean;
+  colorHex: string;
+  category: string;
+  notes?: string;
+  isSharedWithFriends?: boolean;
+}
+
+export interface SharedScheduleData {
+  shareCode: string;
+  ownerName: string;
+  isSharingEnabled: boolean;
+  coursesData: Course[];
+  todosData: Todo[];
+  accountingData: Transaction[];
+  calendarEventsData: CalendarEvent[];
+  isExpenseSharingEnabled: boolean;
+  updatedAt?: string;
+}
+
+export interface SavedFriendRecord {
+  shareCode: string;
+  ownerName: string;
+  nickname: string;
+  lastViewedAt: string;
+  cachedSchedule?: SharedScheduleData;
+}

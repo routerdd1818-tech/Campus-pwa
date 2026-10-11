@@ -103,6 +103,7 @@ CREATE TABLE IF NOT EXISTS public.shared_schedules (
     courses_data JSONB NOT NULL DEFAULT '[]'::jsonb,
     todos_data JSONB NOT NULL DEFAULT '[]'::jsonb,
     accounting_data JSONB NOT NULL DEFAULT '[]'::jsonb,
+    calendar_events_data JSONB NOT NULL DEFAULT '[]'::jsonb,
     is_expense_sharing_enabled BOOLEAN DEFAULT true,
     updated_at TIMESTAMPTZ DEFAULT now()
 );
@@ -111,7 +112,28 @@ ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS is_sharing_enabled 
 ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS courses_data JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS todos_data JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS accounting_data JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS calendar_events_data JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE public.shared_schedules ADD COLUMN IF NOT EXISTS is_expense_sharing_enabled BOOLEAN DEFAULT true;
+
+-- 3.5 行事曆區間活動資料表 (calendar_events, 支援 TimeTree 跨天連續彩色長條)
+CREATE TABLE IF NOT EXISTS public.calendar_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id TEXT DEFAULT '',
+    title TEXT NOT NULL,
+    start_date DATE NOT NULL,
+    end_date DATE NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    is_all_day BOOLEAN DEFAULT true,
+    color_hex TEXT DEFAULT '#E67E22',
+    category TEXT DEFAULT '活動',
+    notes TEXT DEFAULT '',
+    is_shared_with_friends BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.calendar_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all access on calendar_events" ON public.calendar_events;
+CREATE POLICY "Allow public all access on calendar_events" ON public.calendar_events FOR ALL TO public USING (true) WITH CHECK (true);
 
 -- 4. 記帳收支明細資料表 (accounting_transactions)
 CREATE TABLE IF NOT EXISTS public.accounting_transactions (

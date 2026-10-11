@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Course, Todo, Transaction, Installment, SplitBill, UserAccount } from '../types';
+import { Course, Todo, Transaction, Installment, SplitBill, UserAccount, CalendarEvent, SharedScheduleData } from '../types';
 
 export const DEFAULT_SUPABASE_URL = 'https://dxoobrrjzaovwpyagzgn.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY =
@@ -326,6 +326,123 @@ export async function deleteTransactionFromSupabase(id: string): Promise<boolean
     return !error;
   } catch {
     return false;
+  }
+}
+
+// -------------------------------------------------------------
+// 📅 Calendar Events & Multi-day Spans (TimeTree style)
+// -------------------------------------------------------------
+export async function fetchCalendarEventsFromSupabase(deviceIdOrUserId?: string): Promise<CalendarEvent[]> {
+  try {
+    const supabase = getSupabaseClient();
+    let query = supabase.from('calendar_events').select('*').order('start_date', { ascending: true });
+    if (deviceIdOrUserId) {
+      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+    }
+    const { data, error } = await query;
+    if (error || !data) return [];
+
+    return data.map((e: any) => ({
+      id: e.id,
+      userId: e.device_id || undefined,
+      title: e.title,
+      startDate: e.start_date,
+      endDate: e.end_date || e.start_date,
+      startTime: e.start_time || undefined,
+      endTime: e.end_time || undefined,
+      isAllDay: e.is_all_day ?? true,
+      colorHex: e.color_hex || '#E67E22',
+      category: e.category || '活動',
+      notes: e.notes || '',
+      isSharedWithFriends: e.is_shared_with_friends ?? true,
+    }));
+  } catch (err) {
+    console.warn('fetchCalendarEvents error (offline/fallback):', err);
+    return [];
+  }
+}
+
+export async function upsertCalendarEventToSupabase(event: CalendarEvent, deviceIdOrUserId?: string): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('calendar_events').upsert({
+      id: event.id,
+      device_id: deviceIdOrUserId || event.userId || '',
+      title: event.title,
+      start_date: event.startDate,
+      end_date: event.endDate,
+      start_time: event.startTime,
+      end_time: event.endTime,
+      is_all_day: event.isAllDay,
+      color_hex: event.colorHex,
+      category: event.category,
+      notes: event.notes,
+      is_shared_with_friends: event.isSharedWithFriends ?? true,
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function deleteCalendarEventFromSupabase(eventId: string): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('calendar_events').delete().eq('id', eventId);
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+// -------------------------------------------------------------
+// 🤝 Shared Schedule & Friend Calendar (課表、行事曆、記帳共享)
+// -------------------------------------------------------------
+export async function publishSharedSchedule(schedule: SharedScheduleData): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('shared_schedules').upsert({
+      share_code: schedule.shareCode.toUpperCase(),
+      owner_name: schedule.ownerName,
+      is_sharing_enabled: schedule.isSharingEnabled,
+      courses_data: schedule.coursesData,
+      todos_data: schedule.todosData,
+      accounting_data: schedule.accountingData,
+      calendar_events_data: schedule.calendarEventsData,
+      is_expense_sharing_enabled: schedule.isExpenseSharingEnabled,
+      updated_at: new Date().toISOString(),
+    });
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchSharedScheduleByCode(shareCode: string): Promise<SharedScheduleData | null> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase
+      .from('shared_schedules')
+      .select('*')
+      .eq('share_code', shareCode.trim().toUpperCase())
+      .maybeSingle();
+
+    if (error || !data) return null;
+    if (data.is_sharing_enabled === false) return null;
+
+    return {
+      shareCode: data.share_code,
+      ownerName: data.owner_name || '好友課表',
+      isSharingEnabled: data.is_sharing_enabled ?? true,
+      coursesData: Array.isArray(data.courses_data) ? data.courses_data : [],
+      todosData: Array.isArray(data.todos_data) ? data.todos_data : [],
+      accountingData: Array.isArray(data.accounting_data) ? data.accounting_data : [],
+      calendarEventsData: Array.isArray(data.calendar_events_data) ? data.calendar_events_data : [],
+      isExpenseSharingEnabled: data.is_expense_sharing_enabled ?? true,
+      updatedAt: data.updated_at,
+    };
+  } catch {
+    return null;
   }
 }
 
