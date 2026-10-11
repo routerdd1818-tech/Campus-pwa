@@ -1,7 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Course, Todo, Transaction, Installment, SplitBill, UserAccount, CalendarEvent, SharedScheduleData } from '../types';
 
-export const DEFAULT_SUPABASE_URL = 'https://dxoobrrjzaovwpyagzgn.supabase.co';
+export const DEFAULT_SUPABASE_URL = 'https://xjdwjrmtiutapoeikvln.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY =
   'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImR4b29icnJqemFvdndweWFnemduIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODkwNDAxNDksImV4cCI6MjEwNDYxNjE0OX0.MRF3i5yXveFpalZOPcquDtsbCa7lg_fDRWMZsA8uXm0';
 

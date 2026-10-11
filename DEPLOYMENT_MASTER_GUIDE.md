@@ -45,7 +45,7 @@
 ## 2. Supabase 雲端資料庫一鍵設定
 
 ### 步驟說明：
-1. 登入 [Supabase Dashboard](https://supabase.com/dashboard/project/dxoobrrjzaovwpyagzgn)。
+1. 登入 [Supabase Dashboard](https://supabase.com/dashboard/project/xjdwjrmtiutapoeikvln)。
 2. 點選左側選單的 **「SQL Editor」**。
 3. 點選 **「+ New query」**。
 4. 打開本專案中的 `supabase/supabase_all_in_one.sql`，全選複製內容並貼入 SQL Editor。
@@ -81,7 +81,7 @@ UPDATE public.app_api_configs SET config_value = '你的_Google_Gemini_API_Key' 
 3. 在 **Messaging API** 頁籤中：
    - **Webhook URL** 填入：
      ```text
-     https://dxoobrrjzaovwpyagzgn.supabase.co/functions/v1/line-webhook
+     https://xjdwjrmtiutapoeikvln.supabase.co/functions/v1/line-webhook
      ```
      （若使用您自己的 Supabase 專案，請替換專案 ID）
    - 開啟 **「Use webhook」**（切換至綠色啟用狀態）。

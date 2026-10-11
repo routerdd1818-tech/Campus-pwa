@@ -13,7 +13,7 @@
 --    - 即使手機關機或未開 App，Supabase 也會依每位使用者設定的時間與課表獨立發送晨報。
 --
 -- 【使用步驟（只需 1 分鐘）】：
--- 1. 登入 Supabase 控制台：https://supabase.com/dashboard/project/dxoobrrjzaovwpyagzgn
+-- 1. 登入 Supabase 控制台：https://supabase.com/dashboard/project/xjdwjrmtiutapoeikvln
 -- 2. 點選左側「SQL Editor」->「+ New query」。
 -- 3. 將本檔案全部內容複製貼上，點擊右下角綠色「Run」執行即可！
 -- ============================================================================

@@ -5,7 +5,7 @@
 //       統一集中在 Supabase 雲端執行，API 金鑰全數由 public.app_api_configs 讀取！
 //
 // 部署後網址：
-// https://dxoobrrjzaovwpyagzgn.supabase.co/functions/v1/campus-api-gateway
+// https://xjdwjrmtiutapoeikvln.supabase.co/functions/v1/campus-api-gateway
 // ============================================================================
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -21,7 +21,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://dxoobrrjzaovwpyagzgn.supabase.co";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://xjdwjrmtiutapoeikvln.supabase.co";
     const supabaseKey =
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_ANON_KEY") ??

@@ -5,7 +5,7 @@
 //       並自動配對 App 內的課表分享碼 (無須手動查詢或輸入 LINE ID！)
 //
 // 部署後 Webhook 網址：
-// https://dxoobrrjzaovwpyagzgn.supabase.co/functions/v1/line-webhook
+// https://xjdwjrmtiutapoeikvln.supabase.co/functions/v1/line-webhook
 // (請記得在 Supabase Edge Function 設定關閉 "Enforce JWT Verification")
 // ============================================================================
 
@@ -30,7 +30,7 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://dxoobrrjzaovwpyagzgn.supabase.co";
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "https://xjdwjrmtiutapoeikvln.supabase.co";
     const supabaseKey =
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ??
       Deno.env.get("SUPABASE_ANON_KEY") ??

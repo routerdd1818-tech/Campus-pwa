@@ -27,7 +27,7 @@
 
 ## 🚀 步驟 1：在 Supabase SQL Editor 執行一鍵建表與 API 腳本（只需 30 秒）
 
-1. 登入您的 [Supabase Dashboard](https://supabase.com/dashboard/project/dxoobrrjzaovwpyagzgn)。
+1. 登入您的 [Supabase Dashboard](https://supabase.com/dashboard/project/xjdwjrmtiutapoeikvln)。
 2. 點擊左側選單的 **「SQL Editor」** ➔ 點擊 **「+ New query」**。
 3. 打開專案中的 [`supabase/supabase_all_in_one.sql`](file:///Users/routertt/Documents/VSCode/Campus%20v1/supabase/supabase_all_in_one.sql)（或在 App 內「設定 ➔ 雲端與資料庫設定」點擊 **「一鍵複製完整雲端 SQL 腳本」**）。
 4. 全選貼上至 SQL Editor，點擊右下角綠色的 **「Run」**。
@@ -49,7 +49,7 @@
 4. 部署後點擊該 Function 的 **「Details / Settings」**，將 **「Enforce JWT Verification」關閉 (Off)**（因為 LINE 伺服器呼叫 Webhook 時不會帶 Supabase JWT）。
 5. 複製顯示的網址：
    ```text
-   https://dxoobrrjzaovwpyagzgn.supabase.co/functions/v1/line-webhook
+   https://xjdwjrmtiutapoeikvln.supabase.co/functions/v1/line-webhook
    ```
 
 ### 2-2. 建立 `campus-api-gateway`（Gemini AI 課表辨識與 LINE 雲端閘道）
@@ -66,7 +66,7 @@
 2. 切換到 **「Messaging API」** 分頁，往下滑找到 **「Webhook settings」**。
 3. 在 **Webhook URL** 填入剛才的 Supabase 網址：
    ```text
-   https://dxoobrrjzaovwpyagzgn.supabase.co/functions/v1/line-webhook
+   https://xjdwjrmtiutapoeikvln.supabase.co/functions/v1/line-webhook
    ```
 4. 點擊 **「Update」** 後，點擊 **「Verify」**（會顯示 `Success`），並將下方的 **「Use webhook」開關打開 (Enabled)**！
 5. *(選用)* 建議至 **LINE Official Account Manager ➔ 回應設定**，將「加入好友的歡迎訊息」與「自動回應訊息」關閉，由我們的 Supabase Webhook 自動回覆綁定成功訊息。
