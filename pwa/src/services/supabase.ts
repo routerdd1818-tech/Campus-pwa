@@ -630,3 +630,52 @@ export async function callGeminiOcrGateway(
     return { ok: false, error: err.message || '辨識服務無回應，請確認網路與服務狀態' };
   }
 }
+
+export async function testGeminiApiConnection(): Promise<{ ok: boolean; model?: string; message?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
+      body: {
+        action: 'gemini_ocr',
+        models: ['gemini-3.8-flash', 'gemini-2.5-flash'],
+        base64Image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA=',
+        prompt: 'Ping test. Output JSON: [{"status":"ok"}]',
+      },
+    });
+
+    if (error) {
+      let detailed = error.message;
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const errBody = await error.context.json();
+          if (errBody?.message) detailed = errBody.message;
+        }
+      } catch {}
+      return { ok: false, message: detailed || '連線測試異常' };
+    }
+
+    if (data?.status === 'error') {
+      return { ok: false, message: data.message || 'Gemini 回傳錯誤' };
+    }
+
+    return { ok: true, model: data?.model || 'gemini-3.8-flash', message: '連線正常！Gemini AI 課表辨識運作中' };
+  } catch (err: any) {
+    return { ok: false, message: err.message || '測試失敗' };
+  }
+}
+
+export async function fetchLineBotInfo(): Promise<{ ok: boolean; data?: any; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
+      body: { action: 'line_bot_info' },
+    });
+    if (error || data?.status === 'error') {
+      return { ok: false, error: error?.message || data?.message || '無法取得 LINE Bot 資訊' };
+    }
+    return { ok: true, data: data?.data };
+  } catch (err: any) {
+    return { ok: false, error: err.message || '查詢失敗' };
+  }
+}
+

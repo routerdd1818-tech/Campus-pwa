@@ -58,6 +58,14 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
   // Add friend inputs
   const [friendCodeInput, setFriendCodeInput] = useState('');
   const [friendNicknameInput, setFriendNicknameInput] = useState('');
+  const [recentCodes, setRecentCodes] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('campus_recent_share_codes');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [isAddingFriend, setIsAddingFriend] = useState(false);
   const [friendErrorMessage, setFriendErrorMessage] = useState<string | null>(null);
 
@@ -131,6 +139,11 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
       };
 
       saveFriendRecord(record);
+      setRecentCodes((prev) => {
+        const next = [cleanCode, ...prev.filter((c) => c !== cleanCode)].slice(0, 6);
+        localStorage.setItem('campus_recent_share_codes', JSON.stringify(next));
+        return next;
+      });
       setFriendCodeInput('');
       setFriendNicknameInput('');
       setActiveFriendSchedule(data);
@@ -404,6 +417,25 @@ export const ShareModal: React.FC<ShareModalProps> = ({ isOpen, onClose }) => {
                   className="px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
                 />
               </div>
+
+              {/* 歷史代碼快速帶入 */}
+              {recentCodes.length > 0 && (
+                <div className="flex items-center space-x-1.5 flex-wrap pt-0.5">
+                  <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-bold">
+                    快速帶入歷史代碼：
+                  </span>
+                  {recentCodes.map((code) => (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => setFriendCodeInput(code)}
+                      className="px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 text-calico-cocoa dark:text-zinc-200 text-[10px] font-mono font-bold transition-colors"
+                    >
+                      {code}
+                    </button>
+                  ))}
+                </div>
+              )}
 
               <button
                 type="submit"

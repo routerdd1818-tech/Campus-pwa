@@ -48,14 +48,55 @@ Deno.serve(async (req: Request) => {
       });
     }
 
-    // 1. 從 Supabase 雲端保險箱 (app_api_configs) 讀取 LINE Channel Access Token
-    const { data: tokenRow } = await supabase
+    // 1. 從 Supabase 雲端保險箱 (app_api_configs) 讀取 LINE Channel Access Token 或透過 ID/Secret 動態簽發
+    const { data: configRows } = await supabase
       .from("app_api_configs")
-      .select("config_value")
-      .eq("config_key", "line_channel_access_token")
-      .maybeSingle();
+      .select("config_key, config_value");
 
-    const lineAccessToken = tokenRow?.config_value?.trim() ?? "";
+    const vault: Record<string, string> = {};
+    for (const row of configRows ?? []) {
+      if (row.config_key && row.config_value) {
+        vault[row.config_key] = String(row.config_value).trim();
+      }
+    }
+
+    const getLineToken = async (): Promise<string> => {
+      if (vault["line_channel_access_token"]) {
+        return vault["line_channel_access_token"];
+      }
+      const channelId = vault["line_channel_id"];
+      const channelSecret = vault["line_channel_secret"];
+      if (channelId && channelSecret) {
+        try {
+          const oauthRes = await fetch("https://api.line.me/v2/oauth/accessToken", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              grant_type: "client_credentials",
+              client_id: channelId,
+              client_secret: channelSecret,
+            }),
+          });
+          if (oauthRes.ok) {
+            const oauthJson = await oauthRes.json();
+            const token = oauthJson?.access_token ?? "";
+            if (token) {
+              await supabase.from("app_api_configs").upsert({
+                config_key: "line_channel_access_token",
+                config_value: token,
+                updated_at: new Date().toISOString(),
+              });
+              return token;
+            }
+          }
+        } catch (_e) {
+          // Ignore oauth fetch errors
+        }
+      }
+      return "";
+    };
+
+    const lineAccessToken = await getLineToken();
 
     const results = [];
 

@@ -1,6 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Course, DayOfWeek, ClassPeriod } from '../types';
+import { Course, DayOfWeek, ClassPeriod, SavedFriendRecord } from '../types';
+import { fetchSharedScheduleByCode } from '../services/supabase';
 import { CourseModal } from '../components/CourseModal';
 import { OcrModal } from '../components/OcrModal';
 import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
@@ -16,6 +17,8 @@ import {
   CalendarDays,
   Compass,
   ArrowRight,
+  Eye,
+  Users,
 } from 'lucide-react';
 
 interface PeriodDef {
@@ -76,11 +79,46 @@ export const ScheduleView: React.FC = () => {
     classPeriods,
     isPeriodModalOpen,
     setIsPeriodModalOpen,
+    savedFriends,
+    saveFriendRecord,
+    setIsShareModalOpen,
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
   const [includeWeekend, setIncludeWeekend] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
+
+  // Friend schedule viewing state
+  const [viewingFriend, setViewingFriend] = useState<SavedFriendRecord | null>(null);
+  const [friendCourses, setFriendCourses] = useState<Course[] | null>(null);
+  const [isLoadingFriend, setIsLoadingFriend] = useState(false);
+
+  const activeCourses = useMemo(() => {
+    if (viewingFriend && friendCourses) return friendCourses;
+    return courses;
+  }, [viewingFriend, friendCourses, courses]);
+
+  const handleSelectFriendSchedule = async (friend: SavedFriendRecord) => {
+    setViewingFriend(friend);
+    const cached = friend.cachedSchedule?.coursesData || (friend.cachedSchedule as any)?.courses;
+    if (cached) {
+      setFriendCourses(cached);
+    }
+    setIsLoadingFriend(true);
+    try {
+      const latest = await fetchSharedScheduleByCode(friend.shareCode);
+      const latestCourses = latest?.coursesData || (latest as any)?.courses;
+      if (latest && latestCourses) {
+        setFriendCourses(latestCourses);
+        saveFriendRecord({ ...friend, cachedSchedule: latest, lastViewedAt: new Date().toISOString() });
+      }
+    } catch {
+      // Keep cached courses
+    } finally {
+      setIsLoadingFriend(false);
+    }
+  };
+
 
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>(() => {
     const jsDay = new Date().getDay();
@@ -174,7 +212,7 @@ export const ScheduleView: React.FC = () => {
 
     const now = new Date();
     const nowMin = now.getHours() * 60 + now.getMinutes();
-    const todayCourses = courses
+    const todayCourses = activeCourses
       .filter((c) => c.dayOfWeek === todayDayOfWeek)
       .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime));
 
@@ -213,10 +251,81 @@ export const ScheduleView: React.FC = () => {
 
     // 3. All classes ended
     return { type: 'ended', message: '今日課程已全部結束，下課愉快！☕️' };
-  }, [courses, selectedDay, todayDayOfWeek]);
+  }, [activeCourses, selectedDay, todayDayOfWeek]);
 
   return (
-    <div className="space-y-4 pb-32">
+    <div className="space-y-3.5 pb-32">
+      {/* 👥 好友課表快速切換列 (點擊即看，無須重新輸入分享碼) */}
+      <div className="flex items-center space-x-1.5 overflow-x-auto scrollbar-none py-1 px-0.5">
+        <button
+          type="button"
+          onClick={() => {
+            setViewingFriend(null);
+            setFriendCourses(null);
+          }}
+          className={`px-3 py-1.5 rounded-2xl text-xs font-black shrink-0 transition-all flex items-center space-x-1.5 shadow-2xs ${
+            viewingFriend === null
+              ? 'bg-calico-orange text-white ring-2 ring-calico-orange/30'
+              : 'bg-white dark:bg-zinc-800 text-calico-cocoa/80 dark:text-zinc-300 border border-black/5 dark:border-white/5 hover:border-calico-orange/40'
+          }`}
+        >
+          <span>🐾</span>
+          <span>我的課表</span>
+        </button>
+
+        {savedFriends.map((friend) => {
+          const isSelected = viewingFriend?.shareCode === friend.shareCode;
+          return (
+            <button
+              type="button"
+              key={friend.shareCode}
+              onClick={() => handleSelectFriendSchedule(friend)}
+              className={`px-3 py-1.5 rounded-2xl text-xs font-extrabold shrink-0 transition-all flex items-center space-x-1.5 shadow-2xs border ${
+                isSelected
+                  ? 'bg-indigo-600 text-white border-indigo-600 ring-2 ring-indigo-400/30'
+                  : 'bg-white dark:bg-zinc-800 text-calico-cocoa/80 dark:text-zinc-300 border-black/5 dark:border-white/5 hover:border-indigo-400'
+              }`}
+            >
+              <span>👤</span>
+              <span>{friend.nickname || friend.ownerName}</span>
+              <span className="font-mono text-[10px] opacity-75">({friend.shareCode})</span>
+            </button>
+          );
+        })}
+
+        <button
+          type="button"
+          onClick={() => setIsShareModalOpen(true)}
+          className="px-2.5 py-1.5 rounded-2xl text-xs font-bold shrink-0 bg-calico-cream dark:bg-zinc-800/80 text-calico-orange border border-dashed border-calico-orange/40 hover:border-calico-orange transition-all flex items-center space-x-1"
+          title="加入新好友或管理分享碼"
+        >
+          <Plus className="w-3.5 h-3.5" />
+          <span>加好友</span>
+        </button>
+      </div>
+
+      {/* 好友共享課表查閱提示橫幅 */}
+      {viewingFriend && (
+        <div className="p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-200 dark:border-indigo-900/40 text-xs font-bold text-indigo-900 dark:text-indigo-200 flex items-center justify-between animate-fade-in shadow-2xs">
+          <div className="flex items-center space-x-2">
+            <Eye className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+            <span>
+              正在查看好友【{viewingFriend.nickname || viewingFriend.ownerName}】（代碼：{viewingFriend.shareCode}）的共享課表
+              {isLoadingFriend && '（同步更新中...）'}
+            </span>
+          </div>
+          <button
+            onClick={() => {
+              setViewingFriend(null);
+              setFriendCourses(null);
+            }}
+            className="px-2.5 py-1 rounded-xl bg-indigo-600 text-white text-[11px] font-extrabold hover:bg-indigo-700 active:scale-95 transition-all shrink-0 ml-2"
+          >
+            返回我的課表
+          </button>
+        </div>
+      )}
+
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* 週課表 vs 本日行程 */}
@@ -357,14 +466,14 @@ export const ScheduleView: React.FC = () => {
 
                     {/* 當節各星期的課程儲存格 */}
                     {displayedDays.map((w) => {
-                      const dayCourses = courses.filter((c) => c.dayOfWeek === w.val);
+                      const dayCourses = activeCourses.filter((c) => c.dayOfWeek === w.val);
                       const matchedCourse = dayCourses.find((c) => matchesPeriod(c, period));
 
                       if (matchedCourse) {
                         return (
                           <div
                             key={w.val}
-                            onClick={() => handleEditCourse(matchedCourse)}
+                            onClick={() => !viewingFriend && handleEditCourse(matchedCourse)}
                             style={{
                               backgroundColor: `${matchedCourse.colorHex}22`,
                               borderLeftColor: matchedCourse.colorHex,
@@ -503,13 +612,13 @@ export const ScheduleView: React.FC = () => {
 
           {/* 當日課程清單 (按時間由早至晚排序) */}
           <div className="space-y-2.5">
-            {courses
+            {activeCourses
               .filter((c) => c.dayOfWeek === selectedDay)
               .sort((a, b) => timeToMinutes(a.startTime) - timeToMinutes(b.startTime))
               .map((c) => (
                 <div
                   key={c.id}
-                  onClick={() => handleEditCourse(c)}
+                  onClick={() => !viewingFriend && handleEditCourse(c)}
                   className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios hover:shadow-ios-lg active:scale-98 transition-all cursor-pointer flex items-center justify-between group"
                 >
                   <div className="flex items-center space-x-3.5">

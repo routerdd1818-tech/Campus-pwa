@@ -15,6 +15,7 @@ import {
   Sparkles,
   Calendar,
 } from 'lucide-react';
+import { CategoryIcon } from '../components/CategoryIcon';
 
 // ============================================================================
 // 🥧 Interactive SVG Donut / Pie Chart Component
@@ -171,10 +172,12 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
             >
               <div className="flex items-center justify-between text-xs font-bold mb-1">
                 <div className="flex items-center space-x-2">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: c.colorHex }}
-                  />
+                  <div
+                    style={{ backgroundColor: `${c.colorHex}25`, color: c.colorHex }}
+                    className="w-5 h-5 rounded-lg flex items-center justify-center shrink-0"
+                  >
+                    <CategoryIcon categoryName={c.name} className="w-3 h-3" />
+                  </div>
                   <span className="text-calico-cocoa dark:text-zinc-200">{c.name}</span>
                   <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-500 font-semibold">
                     ({c.count} 筆)
@@ -594,12 +597,10 @@ export const AccountingView: React.FC = () => {
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1">
                     <div
-                      style={{ backgroundColor: `${tx.categoryColorHex}20` }}
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                     >
-                      <span style={{ color: tx.categoryColorHex }} className="font-bold text-sm">
-                        {tx.categoryName.slice(0, 1)}
-                      </span>
+                      <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -797,12 +798,10 @@ export const AccountingView: React.FC = () => {
                 >
                   <div className="flex items-center space-x-3 min-w-0 flex-1">
                     <div
-                      style={{ backgroundColor: `${tx.categoryColorHex}20` }}
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                     >
-                      <span style={{ color: tx.categoryColorHex }} className="font-bold text-sm">
-                        {tx.categoryName.slice(0, 1)}
-                      </span>
+                      <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
                     </div>
 
                     <div className="min-w-0 flex-1">
@@ -977,12 +976,10 @@ export const AccountingView: React.FC = () => {
                 {/* Left: Icon & Title */}
                 <div className="flex items-center space-x-3 min-w-0 flex-1">
                   <div
-                    style={{ backgroundColor: `${tx.categoryColorHex}20` }}
-                    className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                    className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                   >
-                    <span style={{ color: tx.categoryColorHex }} className="font-bold text-sm">
-                      {tx.categoryName.slice(0, 1)}
-                    </span>
+                    <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
                   </div>
 
                   <div className="min-w-0 flex-1">

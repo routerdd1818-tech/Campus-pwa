@@ -6,10 +6,16 @@ import {
   resetSupabaseClient,
   publishSharedSchedule,
   fetchSharedScheduleByCode,
+  testGeminiApiConnection,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
 import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
+import {
+  CategoryIcon,
+  AVAILABLE_CATEGORY_ICONS,
+  EXTENDED_COLOR_PALETTE,
+} from '../components/CategoryIcon';
 import { ClassPeriod, SharedScheduleData } from '../types';
 import {
   User,
@@ -46,9 +52,11 @@ import {
   UtensilsCrossed,
   Timer,
   GraduationCap,
+  ExternalLink,
+  Bot,
+  HelpCircle,
 } from 'lucide-react';
 
-const PALETTE = ['#E67E22', '#48BB78', '#3182CE', '#805AD5', '#D53F8C', '#ED8936', '#E53E3E', '#3D2F2E', '#38B2AC'];
 
 export const SettingsView: React.FC = () => {
   const {
@@ -113,7 +121,8 @@ export const SettingsView: React.FC = () => {
   // 5. Custom Categories
   const [activeCategoryTab, setActiveCategoryTab] = useState<'expense' | 'income' | 'todo'>('expense');
   const [newCatName, setNewCatName] = useState('');
-  const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
+  const [newCatColor, setNewCatColor] = useState(EXTENDED_COLOR_PALETTE[0]);
+  const [newCatIcon, setNewCatIcon] = useState(AVAILABLE_CATEGORY_ICONS[0].id);
 
   // 6. Budget
   const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
@@ -133,8 +142,13 @@ export const SettingsView: React.FC = () => {
   // UI States
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedWebhook, setCopiedWebhook] = useState(false);
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+  const [geminiTestStatus, setGeminiTestStatus] = useState<{ ok?: boolean; message?: string } | null>(null);
+  const [showLineGuide, setShowLineGuide] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
 
   // Keep in sync with currentUser
   useEffect(() => {
@@ -294,11 +308,40 @@ export const SettingsView: React.FC = () => {
     addCustomCategory(activeCategoryTab, {
       name: newCatName.trim(),
       colorHex: newCatColor,
-      icon: 'tag',
+      icon: newCatIcon,
     });
     setNewCatName('');
     showNotification(`已新增 ${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'} 分類！`);
   };
+
+  // 🧠 Gemini AI Test
+  const handleTestGemini = async () => {
+    setIsTestingGemini(true);
+    setGeminiTestStatus(null);
+    try {
+      const res = await testGeminiApiConnection();
+      setGeminiTestStatus(res);
+      if (res.ok) {
+        showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-3.8-flash'})`);
+      } else {
+        showNotification(`⚠️ Gemini 測試失敗：${res.message}`);
+      }
+    } catch (e: any) {
+      setGeminiTestStatus({ ok: false, message: e.message || '測試失敗' });
+    } finally {
+      setIsTestingGemini(false);
+    }
+  };
+
+  // 📋 Copy Webhook URL
+  const webhookUrl = `${supabaseUrl || DEFAULT_SUPABASE_URL}/functions/v1/line-webhook`;
+  const handleCopyWebhook = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopiedWebhook(true);
+    setTimeout(() => setCopiedWebhook(false), 2000);
+    showNotification('📋 已複製 LINE Webhook URL！');
+  };
+
 
   // 🤝 Friend Sharing Operations
   const handlePublishSchedule = async () => {
@@ -627,6 +670,52 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
 
+            {/* Google Gemini AI OCR Connection Tester */}
+            <div className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-2 text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1.5 rounded-lg bg-calico-orange/15 text-calico-orange">
+                    <Sparkles className="w-3.5 h-3.5" />
+                  </div>
+                  <div>
+                    <span className="font-bold text-calico-cocoa dark:text-zinc-200 block text-xs">
+                      Google Gemini AI 課表辨識檢測
+                    </span>
+                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                      最新模型：gemini-3.8-flash (雲端 Gateway 連線)
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleTestGemini}
+                  disabled={isTestingGemini}
+                  className="px-3 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange font-bold hover:bg-calico-orange/25 active:scale-95 transition-all flex items-center space-x-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3 h-3 ${isTestingGemini ? 'animate-spin' : ''}`} />
+                  <span>{isTestingGemini ? '連線測試中...' : '測試連線'}</span>
+                </button>
+              </div>
+
+              {geminiTestStatus && (
+                <div
+                  className={`p-2 rounded-xl text-[11px] font-bold flex items-center space-x-1.5 ${
+                    geminiTestStatus.ok
+                      ? 'bg-calico-sage/15 text-calico-sage border border-calico-sage/20'
+                      : 'bg-red-500/15 text-red-500 border border-red-500/20'
+                  }`}
+                >
+                  {geminiTestStatus.ok ? (
+                    <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                  ) : (
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                  <span>{geminiTestStatus.message}</span>
+                </div>
+              )}
+            </div>
+
             {/* Advanced Supabase settings toggle */}
             <div className="pt-1">
               <button
@@ -695,7 +784,7 @@ export const SettingsView: React.FC = () => {
                 LINE 官方推播中心 (每日晨報)
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                每個帳號獨立推播，加好友自動綁定 User ID
+                官方帳號：可樂小幫手 (@112mlifa)
               </p>
             </div>
           </div>
@@ -709,6 +798,40 @@ export const SettingsView: React.FC = () => {
             />
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#06C755]"></div>
           </label>
+        </div>
+
+        {/* Bot Info & Quick Action Banner */}
+        <div className="p-3.5 rounded-2xl bg-[#06C755]/10 border border-[#06C755]/20 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-9 h-9 rounded-2xl bg-[#06C755] text-white flex items-center justify-center font-black text-base shadow-xs shrink-0">
+              <Bot className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center space-x-1.5">
+                <span className="font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                  可樂小幫手
+                </span>
+                <span className="font-mono text-[10px] bg-[#06C755]/20 text-[#06C755] dark:text-[#25D366] px-1.5 py-0.5 rounded font-black">
+                  @112mlifa
+                </span>
+              </div>
+              <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 truncate">
+                每日晨報、課表代碼自動回覆與花費提醒
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center space-x-1.5 shrink-0">
+            <a
+              href="https://line.me/R/ti/p/@112mlifa"
+              target="_blank"
+              rel="noreferrer"
+              className="px-2.5 py-1.5 rounded-xl bg-[#06C755] text-white font-bold text-xs flex items-center space-x-1 shadow-xs hover:brightness-105 active:scale-95 transition-all"
+            >
+              <ExternalLink className="w-3.5 h-3.5" />
+              <span>加好友</span>
+            </a>
+          </div>
         </div>
 
         <div className="space-y-2.5 pt-1 border-t border-black/5 dark:border-white/5">
@@ -780,8 +903,85 @@ export const SettingsView: React.FC = () => {
               <span>測試推播</span>
             </button>
           </div>
+
+          {/* Webhook & Setup Guide Accordion */}
+          <div className="pt-2 border-t border-black/5 dark:border-white/5">
+            <button
+              type="button"
+              onClick={() => setShowLineGuide(!showLineGuide)}
+              className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 hover:text-[#06C755] flex items-center justify-between w-full py-1"
+            >
+              <span className="flex items-center space-x-1.5">
+                <HelpCircle className="w-3.5 h-3.5 text-[#06C755]" />
+                <span>LINE Bot 無法使用？查看設定檢查清單 (3 步驟)</span>
+              </span>
+              {showLineGuide ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            </button>
+
+            {showLineGuide && (
+              <div className="mt-2.5 p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-3 text-xs animate-fade-in">
+                {/* Step 1 */}
+                <div className="space-y-1">
+                  <div className="flex items-center space-x-1.5 font-bold text-calico-cocoa dark:text-zinc-200">
+                    <span className="w-4 h-4 rounded-full bg-[#06C755] text-white flex items-center justify-center text-[10px]">1</span>
+                    <span>LINE Developers Console 設定 Webhook</span>
+                  </div>
+                  <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-400 pl-5.5">
+                    前往 Messaging API 頁籤，將 Webhook URL 填入下方網址並點擊 Verify，確保「Use Webhook」開關為開啟（Enabled）：
+                  </p>
+                  <div className="pl-5.5 flex items-center space-x-1.5 pt-1">
+                    <input
+                      type="text"
+                      readOnly
+                      value={webhookUrl}
+                      className="flex-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-[10px] font-mono text-calico-cocoa dark:text-zinc-200"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCopyWebhook}
+                      className="px-2.5 py-1.5 rounded-lg bg-black/5 dark:bg-white/10 hover:bg-[#06C755]/15 hover:text-[#06C755] text-xs font-bold flex items-center space-x-1 transition-all"
+                    >
+                      {copiedWebhook ? (
+                        <Check className="w-3.5 h-3.5 text-calico-sage" />
+                      ) : (
+                        <Copy className="w-3.5 h-3.5" />
+                      )}
+                      <span>{copiedWebhook ? '已複製' : '複製'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="space-y-1 border-t border-black/5 dark:border-white/5 pt-2">
+                  <div className="flex items-center space-x-1.5 font-bold text-calico-cocoa dark:text-zinc-200">
+                    <span className="w-4 h-4 rounded-full bg-[#06C755] text-white flex items-center justify-center text-[10px]">2</span>
+                    <span>LINE Official Account Manager (manager.line.biz) 回應設定</span>
+                  </div>
+                  <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-400 pl-5.5">
+                    在官方帳號後台「設定」&gt;「回應設定」中：
+                  </p>
+                  <ul className="list-disc list-inside text-[11px] text-calico-cocoa/70 dark:text-zinc-400 pl-6 space-y-0.5">
+                    <li>開啟 <span className="font-bold text-calico-cocoa dark:text-zinc-200">「Webhook」</span></li>
+                    <li>關閉 <span className="font-bold text-calico-cocoa dark:text-zinc-200">「自動回應訊息」</span>（停用後才不會被預設罐頭文字覆蓋）</li>
+                  </ul>
+                </div>
+
+                {/* Step 3 */}
+                <div className="space-y-1 border-t border-black/5 dark:border-white/5 pt-2">
+                  <div className="flex items-center space-x-1.5 font-bold text-calico-cocoa dark:text-zinc-200">
+                    <span className="w-4 h-4 rounded-full bg-[#06C755] text-white flex items-center justify-center text-[10px]">3</span>
+                    <span>加好友並傳送分享碼</span>
+                  </div>
+                  <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-400 pl-5.5">
+                    加入官方帳號好友後，在對話框直接傳送自己的分享碼 <span className="font-mono font-bold text-calico-orange bg-calico-orange/10 px-1 rounded">{shareCode}</span>，機器人會立即回傳綁定成功訊息！接著返回此處點擊上方「一鍵自動認領 LINE ID」即可。
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
+
 
       {/* ======================================================== */}
       {/* 4. ⏰ 課表每節課時間與節次自訂 (Inline Class Period Times) */}
@@ -955,7 +1155,7 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {/* Tags List */}
-        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+        <div className="flex flex-wrap gap-1.5 max-h-40 overflow-y-auto p-1 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5">
           {(activeCategoryTab === 'expense'
             ? customExpenseCategories
             : activeCategoryTab === 'income'
@@ -964,14 +1164,14 @@ export const SettingsView: React.FC = () => {
           ).map((c) => (
             <div
               key={c.id || c.name}
-              className="px-2.5 py-1 rounded-xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-1.5 text-xs font-bold"
+              className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/5 dark:border-white/10 flex items-center space-x-1.5 text-xs font-bold shadow-2xs"
             >
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.colorHex }} />
+              <CategoryIcon iconKey={c.icon} name={c.name} colorHex={c.colorHex} size="xs" />
               <span className="text-calico-cocoa dark:text-zinc-100">{c.name}</span>
               <button
                 type="button"
                 onClick={() => deleteCustomCategory(activeCategoryTab, c.id || c.name)}
-                className="text-calico-cocoa/30 hover:text-red-500 transition-colors ml-1"
+                className="text-calico-cocoa/30 hover:text-red-500 transition-colors ml-1 p-0.5 rounded-md hover:bg-red-50 dark:hover:bg-red-950/30"
                 title="刪除"
               >
                 <Trash2 className="w-3 h-3" />
@@ -981,41 +1181,98 @@ export const SettingsView: React.FC = () => {
         </div>
 
         {/* Add Category Form */}
-        <form onSubmit={handleCreateCategory} className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
+        <form onSubmit={handleCreateCategory} className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-3">
           <div className="flex items-center space-x-2">
             <input
               type="text"
               placeholder={`輸入新${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'}名稱`}
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
-              className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+              className="flex-1 px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
             />
             <button
               type="submit"
               disabled={!newCatName.trim()}
-              className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-extrabold shadow-xs active:scale-95 disabled:opacity-40"
+              className="px-4 py-2 rounded-xl bg-calico-orange text-white text-xs font-black shadow-xs active:scale-95 disabled:opacity-40 transition-all flex items-center space-x-1"
             >
-              <Plus className="w-3.5 h-3.5 inline mr-0.5" />
-              新增
+              <Plus className="w-3.5 h-3.5" />
+              <span>新增</span>
             </button>
           </div>
 
-          <div className="flex items-center space-x-2 pt-0.5">
-            <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold">挑選顏色：</span>
-            {PALETTE.map((c) => (
-              <button
-                type="button"
-                key={c}
-                onClick={() => setNewCatColor(c)}
-                style={{ backgroundColor: c }}
-                className={`w-4 h-4 rounded-full transition-transform ${
-                  newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white' : 'opacity-70'
-                }`}
-              />
-            ))}
+          {/* Icon Selector Grid */}
+          <div>
+            <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+              選擇類別專屬圖示 (16款)：
+            </span>
+            <div className="grid grid-cols-8 gap-1.5 p-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10">
+              {AVAILABLE_CATEGORY_ICONS.map((item) => {
+                const IconComp = item.icon;
+                const isSelected = newCatIcon === item.id;
+                return (
+                  <button
+                    type="button"
+                    key={item.id}
+                    onClick={() => setNewCatIcon(item.id)}
+                    title={item.label}
+                    className={`p-1.5 rounded-lg flex items-center justify-center transition-all ${
+                      isSelected
+                        ? 'bg-calico-orange text-white shadow-xs ring-2 ring-calico-orange/40 font-bold'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:bg-black/5 dark:hover:bg-white/5'
+                    }`}
+                  >
+                    <IconComp className="w-4 h-4" />
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Color Palette & Custom Color Picker */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
+                選擇類別代表色 (18色或自訂)：
+              </span>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-500 font-mono">
+                  {newCatColor}
+                </span>
+                <label className="relative flex items-center cursor-pointer">
+                  <input
+                    type="color"
+                    value={newCatColor}
+                    onChange={(e) => setNewCatColor(e.target.value)}
+                    className="sr-only"
+                  />
+                  <span
+                    className="w-5 h-5 rounded-md border border-black/20 dark:border-white/20 shadow-2xs block"
+                    style={{ backgroundColor: newCatColor }}
+                    title="自訂調色盤"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-1.5 p-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10">
+              {EXTENDED_COLOR_PALETTE.map((c) => (
+                <button
+                  type="button"
+                  key={c}
+                  onClick={() => setNewCatColor(c)}
+                  style={{ backgroundColor: c }}
+                  className={`w-5 h-5 rounded-md transition-all ${
+                    newCatColor.toLowerCase() === c.toLowerCase()
+                      ? 'ring-2 ring-calico-cocoa dark:ring-white scale-110 shadow-xs'
+                      : 'opacity-80 hover:opacity-100 hover:scale-105'
+                  }`}
+                />
+              ))}
+            </div>
           </div>
         </form>
       </div>
+
 
       {/* ======================================================== */}
       {/* 6. 💰 記帳週期與花費限額 (Budget & Billing Cycle) */}

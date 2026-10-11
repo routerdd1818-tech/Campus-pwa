@@ -24,6 +24,7 @@ import {
   ArrowRight,
   AlertCircle,
 } from 'lucide-react';
+import { CategoryIcon } from '../components/CategoryIcon';
 
 export const TodayView: React.FC = () => {
   const {
@@ -537,10 +538,15 @@ export const TodayView: React.FC = () => {
                 className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs"
               >
                 <div className="flex items-center space-x-2.5">
-                  <span
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: tx.categoryColorHex || '#E67E22' }}
-                  />
+                  <div
+                    style={{
+                      backgroundColor: `${tx.categoryColorHex || '#E67E22'}25`,
+                      color: tx.categoryColorHex || '#E67E22',
+                    }}
+                    className="w-7 h-7 rounded-xl flex items-center justify-center shrink-0 shadow-2xs"
+                  >
+                    <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-3.5 h-3.5" />
+                  </div>
                   <div>
                     <p className="font-bold text-calico-cocoa dark:text-zinc-100">
                       {tx.categoryName} {tx.notes ? `(${tx.notes})` : ''}

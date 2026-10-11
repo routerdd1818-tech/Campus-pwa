@@ -160,12 +160,14 @@ export interface SharedScheduleData {
   ownerName: string;
   isSharingEnabled: boolean;
   coursesData: Course[];
+  courses?: Course[];
   todosData: Todo[];
   accountingData: Transaction[];
   calendarEventsData: CalendarEvent[];
   isExpenseSharingEnabled: boolean;
   updatedAt?: string;
 }
+
 
 export interface SavedFriendRecord {
   shareCode: string;
