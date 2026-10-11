@@ -164,19 +164,19 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
           </div>
 
           {/* Deadline / Period Selector Section */}
-          <div className="p-3.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-3">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1.5">
+          <div className="p-3.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-3 overflow-hidden">
+            <div className="flex items-center justify-between gap-1 flex-wrap">
+              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1.5 shrink-0">
                 <Calendar className="w-3.5 h-3.5 text-calico-orange" />
                 <span>截止日期與排程設定</span>
               </label>
 
               {/* Segmented Toggle: 單日截止 vs 選擇區間 */}
-              <div className="p-0.5 rounded-xl bg-black/5 dark:bg-white/10 flex items-center text-xs font-bold">
+              <div className="p-0.5 rounded-xl bg-black/5 dark:bg-white/10 flex items-center text-xs font-bold shrink-0">
                 <button
                   type="button"
                   onClick={() => setIsPeriodTask(false)}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg transition-all ${
                     !isPeriodTask
                       ? 'bg-calico-orange text-white shadow-xs font-black'
                       : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -187,7 +187,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                 <button
                   type="button"
                   onClick={() => setIsPeriodTask(true)}
-                  className={`px-3 py-1 rounded-lg transition-all ${
+                  className={`px-2.5 sm:px-3 py-1 rounded-lg transition-all ${
                     isPeriodTask
                       ? 'bg-calico-orange text-white shadow-xs font-black'
                       : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -200,8 +200,8 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
 
             {isPeriodTask ? (
               <div className="space-y-2.5 animate-fade-in pt-1">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
+                <div className="grid grid-cols-2 gap-2 min-w-0 w-full">
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
                       開始日期
                     </label>
@@ -213,10 +213,11 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                         setStartDate(e.target.value);
                         if (!endDate || e.target.value > endDate) setEndDate(e.target.value);
                       }}
-                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+                      className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold appearance-none [-webkit-appearance:none]"
+                      style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                     />
                   </div>
-                  <div>
+                  <div className="min-w-0">
                     <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
                       結束日期
                     </label>
@@ -226,7 +227,8 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                       value={endDate}
                       min={startDate}
                       onChange={(e) => setEndDate(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+                      className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold appearance-none [-webkit-appearance:none]"
+                      style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                     />
                   </div>
                 </div>
@@ -237,7 +239,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                     <Repeat className="w-3 h-3" />
                     <span>重複頻率（可選）</span>
                   </label>
-                  <div className="grid grid-cols-4 gap-1.5">
+                  <div className="grid grid-cols-4 gap-1.5 min-w-0">
                     {(
                       [
                         { val: 'none', label: '單次區間' },
@@ -250,7 +252,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                         type="button"
                         key={r.val}
                         onClick={() => setRecurrence(r.val)}
-                        className={`py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
+                        className={`py-1.5 px-0.5 rounded-xl text-[10.5px] sm:text-[11px] font-bold transition-all truncate text-center ${
                           recurrence === r.val
                             ? 'bg-calico-cocoa text-white dark:bg-white dark:text-zinc-900 shadow-xs'
                             : 'bg-white/60 dark:bg-zinc-900/60 text-calico-cocoa/70 dark:text-zinc-400'
@@ -263,16 +265,51 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                 </div>
               </div>
             ) : (
-              <div>
+              <div className="space-y-2">
                 <input
                   type="datetime-local"
                   value={dueDate}
                   onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+                  className="w-full min-w-0 max-w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50 appearance-none [-webkit-appearance:none]"
+                  style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                 />
+
+                {/* Quick Presets for iPhone one-tap setting */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  {[
+                    { label: '今天 18:00', getVal: () => `${new Date().toISOString().slice(0, 10)}T18:00` },
+                    { label: '今晚 23:59', getVal: () => `${new Date().toISOString().slice(0, 10)}T23:59` },
+                    {
+                      label: '明天 12:00',
+                      getVal: () => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 1);
+                        return `${d.toISOString().slice(0, 10)}T12:00`;
+                      },
+                    },
+                    {
+                      label: '明天 23:59',
+                      getVal: () => {
+                        const d = new Date();
+                        d.setDate(d.getDate() + 1);
+                        return `${d.toISOString().slice(0, 10)}T23:59`;
+                      },
+                    },
+                  ].map((p) => (
+                    <button
+                      type="button"
+                      key={p.label}
+                      onClick={() => setDueDate(p.getVal())}
+                      className="px-2 py-1 rounded-lg bg-black/5 dark:bg-white/10 text-[10px] font-bold text-calico-cocoa/70 dark:text-zinc-300 hover:bg-calico-orange/15 hover:text-calico-orange transition-all shrink-0"
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
               </div>
             )}
           </div>
+
 
           {/* Category selection & Custom Category Creator */}
           <div>

@@ -172,8 +172,8 @@ export const EventModal: React.FC<EventModalProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-2.5">
-              <div>
+            <div className="grid grid-cols-2 gap-2 min-w-0 w-full">
+              <div className="min-w-0">
                 <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-1">
                   開始日期
                 </label>
@@ -187,11 +187,12 @@ export const EventModal: React.FC<EventModalProps> = ({
                       setEndDate(e.target.value);
                     }
                   }}
-                  className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
+                  className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold appearance-none [-webkit-appearance:none]"
+                  style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                 />
               </div>
 
-              <div>
+              <div className="min-w-0">
                 <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-1">
                   結束日期
                 </label>
@@ -201,15 +202,16 @@ export const EventModal: React.FC<EventModalProps> = ({
                   value={endDate}
                   min={startDate}
                   onChange={(e) => setEndDate(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
+                  className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold appearance-none [-webkit-appearance:none]"
+                  style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                 />
               </div>
             </div>
 
             {/* If not all day, time pickers */}
             {!isAllDay && (
-              <div className="grid grid-cols-2 gap-2.5 pt-1">
-                <div>
+              <div className="grid grid-cols-2 gap-2 min-w-0 w-full pt-1">
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                     <Clock className="w-3 h-3" />
                     <span>開始時間</span>
@@ -218,10 +220,12 @@ export const EventModal: React.FC<EventModalProps> = ({
                     type="time"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
+                    className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold appearance-none [-webkit-appearance:none]"
+                    style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
-                <div>
+
+                <div className="min-w-0">
                   <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                     <Clock className="w-3 h-3" />
                     <span>結束時間</span>
@@ -230,11 +234,13 @@ export const EventModal: React.FC<EventModalProps> = ({
                     type="time"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold"
+                    className="w-full min-w-0 max-w-full px-2.5 py-2 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-semibold appearance-none [-webkit-appearance:none]"
+                    style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
                   />
                 </div>
               </div>
             )}
+
           </div>
 
           {/* Category */}

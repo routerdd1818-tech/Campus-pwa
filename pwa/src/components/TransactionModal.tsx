@@ -295,7 +295,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             )}
 
             {/* Category Grid - Enhanced spacing & never clipped by borders */}
-            <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-48 overflow-y-auto p-1.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5">
+            <div className="grid grid-cols-4 gap-2 sm:gap-2.5 max-h-60 sm:max-h-64 overflow-y-auto p-2 pb-3.5 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 scrollbar-thin">
               {currentCategories.map((c) => {
                 const isSelected = categoryName === c.name;
                 return (
@@ -306,7 +306,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                     style={{
                       borderColor: isSelected ? c.colorHex : 'transparent',
                     }}
-                    className={`py-2 px-1.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center space-y-1.5 border transition-all ${
+                    className={`py-2 px-1 rounded-2xl text-xs font-bold flex flex-col items-center justify-center space-y-1.5 border transition-all min-w-0 ${
                       isSelected
                         ? 'bg-white dark:bg-zinc-800 ring-2 shadow-xs font-black text-calico-cocoa dark:text-zinc-100'
                         : 'border-transparent bg-white/70 dark:bg-zinc-800/60 text-calico-cocoa/70 dark:text-zinc-300 hover:bg-white hover:border-black/5'

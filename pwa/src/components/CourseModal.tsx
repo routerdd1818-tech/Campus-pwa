@@ -77,6 +77,8 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   const [endTime, setEndTime] = useState(defaultEndTime || '12:00');
   const [colorHex, setColorHex] = useState('#E67E22');
 
+  const [selectedPeriodLabels, setSelectedPeriodLabels] = useState<string[]>([]);
+
   React.useEffect(() => {
     if (isOpen) {
       setName(course?.name || '');
@@ -84,11 +86,19 @@ export const CourseModal: React.FC<CourseModalProps> = ({
       setClassroom(course?.classroom || '');
       setInstructor(course?.instructor || '');
       setDayOfWeek(course?.dayOfWeek || defaultDay);
-      setStartTime(course?.startTime || defaultStartTime || '09:10');
-      setEndTime(course?.endTime || defaultEndTime || '12:00');
+      const st = course?.startTime || defaultStartTime || '09:10';
+      const et = course?.endTime || defaultEndTime || '12:00';
+      setStartTime(st);
+      setEndTime(et);
       setColorHex(course?.colorHex || '#E67E22');
+
+      // Initialize selected periods if matching presets
+      const matched = presets
+        .filter((p) => p.start >= st && p.end <= et)
+        .map((p) => p.label);
+      setSelectedPeriodLabels(matched);
     }
-  }, [isOpen, course, defaultDay, defaultStartTime, defaultEndTime]);
+  }, [isOpen, course, defaultDay, defaultStartTime, defaultEndTime, presets]);
 
   if (!isOpen) return null;
 
@@ -111,14 +121,35 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     onClose();
   };
 
-  const applyPeriodPreset = (p: { start: string; end: string }) => {
-    setStartTime(p.start);
-    setEndTime(p.end);
+  // ⏰ Multi-period toggle & auto-range calculation
+  const handleTogglePeriod = (p: { label: string; start: string; end: string }) => {
+    let nextLabels: string[];
+    if (selectedPeriodLabels.includes(p.label)) {
+      nextLabels = selectedPeriodLabels.filter((l) => l !== p.label);
+    } else {
+      nextLabels = [...selectedPeriodLabels, p.label];
+    }
+    setSelectedPeriodLabels(nextLabels);
+
+    if (nextLabels.length > 0) {
+      const activePresets = presets.filter((item) => nextLabels.includes(item.label));
+      if (activePresets.length > 0) {
+        // Find earliest start time and latest end time across all selected periods
+        const starts = activePresets.map((item) => item.start).sort();
+        const ends = activePresets.map((item) => item.end).sort();
+        setStartTime(starts[0]);
+        setEndTime(ends[ends.length - 1]);
+      }
+    }
+  };
+
+  const handleClearPeriods = () => {
+    setSelectedPeriodLabels([]);
   };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6 overflow-x-hidden">
         {/* Sticky Header */}
         <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
           <h3 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
@@ -150,8 +181,8 @@ export const CourseModal: React.FC<CourseModalProps> = ({
           </div>
 
           {/* Classroom & Instructor */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-2 gap-3 min-w-0">
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                 <MapPin className="w-3.5 h-3.5" />
                 <span>上課教室</span>
@@ -164,7 +195,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                 className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                 <User className="w-3.5 h-3.5" />
                 <span>授課教授</span>
@@ -202,29 +233,47 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             </div>
           </div>
 
-          {/* Period quick preset chips */}
+          {/* Period quick preset chips with Multi-Selection Support */}
           <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center space-x-1">
-              <Clock className="w-3.5 h-3.5" />
-              <span>節次快捷設定</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {presets.map((p) => (
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                <Clock className="w-3.5 h-3.5 text-calico-orange" />
+                <span>節次快捷設定（支援多選連堂）</span>
+              </label>
+              {selectedPeriodLabels.length > 0 && (
                 <button
                   type="button"
-                  key={p.label}
-                  onClick={() => applyPeriodPreset(p)}
-                  className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/10 text-[11px] font-bold text-calico-cocoa/75 dark:text-zinc-300 hover:bg-calico-orange/20 transition-colors"
+                  onClick={handleClearPeriods}
+                  className="text-[10px] font-bold text-calico-orange hover:underline"
                 >
-                  {p.label}
+                  清除選取 ({selectedPeriodLabels.length})
                 </button>
-              ))}
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {presets.map((p) => {
+                const isSelected = selectedPeriodLabels.includes(p.label);
+                return (
+                  <button
+                    type="button"
+                    key={p.label}
+                    onClick={() => handleTogglePeriod(p)}
+                    className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition-all ${
+                      isSelected
+                        ? 'bg-calico-orange text-white shadow-xs ring-2 ring-calico-orange/40 font-black scale-105'
+                        : 'bg-black/5 dark:bg-white/10 text-calico-cocoa/75 dark:text-zinc-300 hover:bg-calico-orange/15'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
           {/* Time Picker */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
+          <div className="grid grid-cols-2 gap-2.5 min-w-0 w-full">
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                 <Clock className="w-3.5 h-3.5" />
                 <span>開始時間</span>
@@ -232,11 +281,15 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               <input
                 type="time"
                 value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  setSelectedPeriodLabels([]);
+                }}
+                className="w-full min-w-0 max-w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50 appearance-none [-webkit-appearance:none]"
+                style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
               />
             </div>
-            <div>
+            <div className="min-w-0">
               <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
                 <Clock className="w-3.5 h-3.5" />
                 <span>結束時間</span>
@@ -244,11 +297,16 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               <input
                 type="time"
                 value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  setSelectedPeriodLabels([]);
+                }}
+                className="w-full min-w-0 max-w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50 appearance-none [-webkit-appearance:none]"
+                style={{ minWidth: 0, maxWidth: '100%', boxSizing: 'border-box' }}
               />
             </div>
           </div>
+
 
           {/* Color Presets & Custom Picker */}
           <div>

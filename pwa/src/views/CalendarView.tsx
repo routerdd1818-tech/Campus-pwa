@@ -215,7 +215,7 @@ export const CalendarView: React.FC = () => {
       id: e.id,
       title: e.title,
       startDate: e.startDate,
-      endDate: e.endDate,
+      endDate: e.endDate || e.startDate,
       colorHex: e.colorHex || '#E67E22',
       category: e.category,
       isAllDay: e.isAllDay,
@@ -238,7 +238,25 @@ export const CalendarView: React.FC = () => {
         isCompleted: t.isCompleted,
       }));
 
-    return [...eventItems, ...periodTodoItems];
+    const singleDueTodos: UnifiedSpanItem[] = todos
+      .filter((t) => !t.startDate && t.dueDate && !t.isCompleted)
+      .map((t) => {
+        const d = t.dueDate!.slice(0, 10);
+        return {
+          id: t.id,
+          title: t.title,
+          startDate: d,
+          endDate: d,
+          colorHex: t.colorHex || '#10B981',
+          category: t.category,
+          isAllDay: true,
+          notes: t.notes,
+          type: 'todo' as const,
+          isCompleted: t.isCompleted,
+        };
+      });
+
+    return [...eventItems, ...periodTodoItems, ...singleDueTodos];
   }, [calendarEvents, todos]);
 
   // Group month grid days into weeks of 7 for continuous ribbons
@@ -249,6 +267,97 @@ export const CalendarView: React.FC = () => {
     }
     return weeks;
   }, [monthGridDays]);
+
+  interface WeekSegment {
+    item: UnifiedSpanItem;
+    startCol: number;
+    endCol: number;
+    span: number;
+    isStart: boolean;
+    isEnd: boolean;
+  }
+
+  const computeWeekTracks = (weekDays: typeof monthGridDays, allItems: UnifiedSpanItem[]) => {
+    if (weekDays.length !== 7) return { tracks: [] as WeekSegment[][], dayOverflowCount: Array(7).fill(0) };
+    const weekStartStr = weekDays[0].dateStr;
+    const weekEndStr = weekDays[6].dateStr;
+
+    // Items active during this week
+    const weekItems = allItems.filter(
+      (item) => item.startDate <= weekEndStr && (item.endDate || item.startDate) >= weekStartStr
+    );
+
+    const segments: WeekSegment[] = weekItems.map((item) => {
+      const itemEnd = item.endDate || item.startDate;
+      let startCol = 0;
+      if (item.startDate >= weekStartStr) {
+        const idx = weekDays.findIndex((d) => d.dateStr === item.startDate);
+        startCol = idx >= 0 ? idx : 0;
+      }
+      let endCol = 6;
+      if (itemEnd <= weekEndStr) {
+        const idx = weekDays.findIndex((d) => d.dateStr === itemEnd);
+        endCol = idx >= 0 ? idx : 6;
+      }
+
+      return {
+        item,
+        startCol,
+        endCol,
+        span: endCol - startCol + 1,
+        isStart: item.startDate >= weekStartStr,
+        isEnd: itemEnd <= weekEndStr,
+      };
+    });
+
+    // Sort: multi-day first by span descending, then startCol ascending
+    segments.sort((a, b) => {
+      if (b.span !== a.span) return b.span - a.span;
+      if (a.startCol !== b.startCol) return a.startCol - b.startCol;
+      return a.item.startDate.localeCompare(b.item.startDate);
+    });
+
+    const maxTracks = 3;
+    const tracks: WeekSegment[][] = [];
+    const trackOccupied: boolean[][] = [];
+    const unassigned: WeekSegment[] = [];
+
+    for (const seg of segments) {
+      let placed = false;
+      for (let t = 0; t < maxTracks; t++) {
+        if (!trackOccupied[t]) trackOccupied[t] = Array(7).fill(false);
+        let conflict = false;
+        for (let c = seg.startCol; c <= seg.endCol; c++) {
+          if (trackOccupied[t][c]) {
+            conflict = true;
+            break;
+          }
+        }
+        if (!conflict) {
+          for (let c = seg.startCol; c <= seg.endCol; c++) {
+            trackOccupied[t][c] = true;
+          }
+          if (!tracks[t]) tracks[t] = [];
+          tracks[t].push(seg);
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        unassigned.push(seg);
+      }
+    }
+
+    const dayOverflowCount = Array(7).fill(0);
+    for (const u of unassigned) {
+      for (let c = u.startCol; c <= u.endCol; c++) {
+        dayOverflowCount[c]++;
+      }
+    }
+
+    return { tracks, dayOverflowCount };
+  };
+
 
   // -------------------------------------------------------------
   // ☀️ Today's Summary Data (Courses + Todos + Accounting)
@@ -599,135 +708,161 @@ export const CalendarView: React.FC = () => {
             ))}
           </div>
 
-          {/* 7-Column Month Grid Table (Image 3 Style: Clean cells with compact pill tags) */}
-          <div className="grid grid-cols-7 border-t border-l border-black/10 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-zinc-900/40 shadow-2xs">
-            {monthGridDays.map((cell, idx) => {
-              const colIdx = idx % 7; // 0 = Sun, 6 = Sat
-              const isSelected = cell.dateStr === selectedDateStr;
-              const isToday = cell.dateStr === todayStr;
-
-              const cellDate = new Date(cell.dateStr);
-              const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
-
-              // Items on this date:
-              // 1. Events active on this day
-              const dayEvents = calendarEvents.filter(
-                (e) => cell.dateStr >= e.startDate && cell.dateStr <= (e.endDate || e.startDate)
-              );
-
-              // 2. Todos active on this day
-              const dayTodos = todos.filter(
-                (t) =>
-                  !t.isCompleted &&
-                  ((t.startDate && t.endDate && cell.dateStr >= t.startDate && cell.dateStr <= t.endDate) ||
-                    (t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr))
-              );
-
-              // 3. Courses on this weekday
-              const dayCourses = courses.filter((c) => c.dayOfWeek === cellDayOfWeek);
-
-              const totalItems = dayEvents.length + dayTodos.length;
-              const maxPills = 3;
+          {/* 7-Column Month Grid Table with Continuous Spanning Ribbons */}
+          <div className="border-t border-l border-black/10 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-zinc-900/40 shadow-2xs">
+            {monthWeeks.map((weekDays, wIdx) => {
+              const { tracks, dayOverflowCount } = computeWeekTracks(weekDays, allSpanItems);
 
               return (
                 <div
-                  key={cell.dateStr}
-                  onClick={() => setSelectedDateStr(cell.dateStr)}
-                  className={`border-r border-b border-black/10 dark:border-white/10 p-1 sm:p-1.5 min-h-[76px] sm:min-h-[92px] flex flex-col justify-start transition-all cursor-pointer relative select-none ${
-                    isSelected
-                      ? 'bg-calico-orange/10 ring-2 ring-inset ring-calico-orange z-10'
-                      : isToday
-                      ? 'bg-red-50/40 dark:bg-red-950/20'
-                      : !cell.isCurrentMonth
-                      ? 'bg-black/[0.02] dark:bg-white/[0.02]'
-                      : 'hover:bg-calico-orange/5'
-                  }`}
+                  key={`week-${wIdx}`}
+                  className="relative border-b border-black/10 dark:border-white/10 min-h-[82px] sm:min-h-[96px] flex flex-col justify-start"
                 >
-                  {/* Top row of cell: date number */}
-                  <div className="flex items-center justify-between mb-1">
-                    {isToday ? (
-                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-red-500 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shadow-xs">
-                        {cell.dayNum}
-                      </div>
-                    ) : (
-                      <span
-                        className={`text-[11px] sm:text-xs font-bold leading-tight ${
-                          !cell.isCurrentMonth
-                            ? colIdx === 0
-                              ? 'text-red-300 dark:text-red-900/50'
-                              : colIdx === 6
-                              ? 'text-blue-300 dark:text-blue-900/50'
-                              : 'text-zinc-300 dark:text-zinc-600'
-                            : colIdx === 0
-                            ? 'text-red-500 font-extrabold'
-                            : colIdx === 6
-                            ? 'text-blue-500 font-extrabold'
-                            : 'text-zinc-800 dark:text-zinc-200 font-bold'
-                        }`}
-                      >
-                        {!cell.isCurrentMonth && (cell.dayNum === 1 || idx === 0)
-                          ? `${new Date(cell.dateStr).getMonth() + 1}/${cell.dayNum}`
-                          : cell.dayNum}
-                      </span>
-                    )}
+                  {/* 1. Underlying 7-Day Background Cells (Clickable day slots) */}
+                  <div className="absolute inset-0 grid grid-cols-7 w-full h-full">
+                    {weekDays.map((cell) => {
+                      const isSelected = cell.dateStr === selectedDateStr;
+                      const isToday = cell.dateStr === todayStr;
 
-                    {/* Subtle course count dot */}
-                    {dayCourses.length > 0 && cell.isCurrentMonth && (
-                      <span
-                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
-                        title={`${dayCourses.length} 門課程`}
-                      />
-                    )}
+                      return (
+                        <div
+                          key={`bg-${cell.dateStr}`}
+                          onClick={() => setSelectedDateStr(cell.dateStr)}
+                          className={`border-r border-black/10 dark:border-white/10 h-full transition-all cursor-pointer relative select-none ${
+                            isSelected
+                              ? 'bg-calico-orange/10 ring-2 ring-inset ring-calico-orange z-10'
+                              : isToday
+                              ? 'bg-red-50/40 dark:bg-red-950/20'
+                              : !cell.isCurrentMonth
+                              ? 'bg-black/[0.02] dark:bg-white/[0.02]'
+                              : 'hover:bg-calico-orange/5'
+                          }`}
+                        />
+                      );
+                    })}
                   </div>
 
-                  {/* Stack of compact pill tags (Image 3 Style) */}
-                  <div className="space-y-0.5 overflow-hidden w-full">
-                    {/* Event pills */}
-                    {dayEvents.slice(0, maxPills).map((ev) => (
+                  {/* 2. Cell Header Row: Date numbers + Course indicator dots */}
+                  <div className="relative z-20 grid grid-cols-7 w-full pointer-events-none p-1 sm:p-1.5 pb-0.5">
+                    {weekDays.map((cell, colIdx) => {
+                      const isToday = cell.dateStr === todayStr;
+                      const cellDate = new Date(cell.dateStr);
+                      const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
+                      const dayCourses = courses.filter((c) => c.dayOfWeek === cellDayOfWeek);
+
+                      return (
+                        <div key={`header-${cell.dateStr}`} className="flex items-center justify-between px-0.5">
+                          {isToday ? (
+                            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-red-500 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shadow-xs">
+                              {cell.dayNum}
+                            </div>
+                          ) : (
+                            <span
+                              className={`text-[11px] sm:text-xs font-bold leading-tight ${
+                                !cell.isCurrentMonth
+                                  ? colIdx === 0
+                                    ? 'text-red-300 dark:text-red-900/50'
+                                    : colIdx === 6
+                                    ? 'text-blue-300 dark:text-blue-900/50'
+                                    : 'text-zinc-300 dark:text-zinc-600'
+                                  : colIdx === 0
+                                  ? 'text-red-500 font-extrabold'
+                                  : colIdx === 6
+                                  ? 'text-blue-500 font-extrabold'
+                                  : 'text-zinc-800 dark:text-zinc-200 font-bold'
+                              }`}
+                            >
+                              {!cell.isCurrentMonth && (cell.dayNum === 1 || (wIdx === 0 && colIdx === 0))
+                                ? `${new Date(cell.dateStr).getMonth() + 1}/${cell.dayNum}`
+                                : cell.dayNum}
+                            </span>
+                          )}
+
+                          {/* Subtle course count dot */}
+                          {dayCourses.length > 0 && cell.isCurrentMonth && (
+                            <span
+                              className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+                              title={`${dayCourses.length} 門課程`}
+                            />
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 3. Event Spanning Tracks (Continuous ribbons across columns) */}
+                  <div className="relative z-20 w-full space-y-1 px-0.5 pb-1 mt-1">
+                    {tracks.map((trackSegs, tIdx) => (
                       <div
-                        key={`ev-${ev.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedDateStr(cell.dateStr);
-                          setEventToEdit(ev);
-                          setIsEventModalOpen(true);
-                        }}
-                        style={{
-                          backgroundColor: `${ev.colorHex}22`,
-                          borderColor: `${ev.colorHex}55`,
-                          color: ev.colorHex,
-                        }}
-                        className="w-full px-1 py-0.5 rounded text-[9px] sm:text-[9.5px] font-bold truncate border flex items-center space-x-1 cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all leading-tight shadow-2xs"
-                        title={`${ev.title} (${ev.startDate} ~ ${ev.endDate})`}
+                        key={`track-${wIdx}-${tIdx}`}
+                        className="grid grid-cols-7 gap-x-0.5 h-4.5 sm:h-5 items-center relative"
                       >
-                        <span
-                          className="w-1.5 h-1.5 rounded-full shrink-0"
-                          style={{ backgroundColor: ev.colorHex }}
-                        />
-                        <span className="truncate">{ev.title}</span>
+                        {trackSegs.map((seg) => {
+                          const isEvent = seg.item.type === 'event';
+                          const color = seg.item.colorHex || '#FF6B00';
+
+                          return (
+                            <div
+                              key={`seg-${seg.item.id}-${seg.startCol}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedDateStr(seg.item.startDate);
+                                if (isEvent) {
+                                  const ev = calendarEvents.find((x) => x.id === seg.item.id);
+                                  if (ev) {
+                                    setEventToEdit(ev);
+                                    setIsEventModalOpen(true);
+                                  }
+                                }
+                              }}
+                              style={{
+                                gridColumnStart: seg.startCol + 1,
+                                gridColumnEnd: seg.endCol + 2,
+                                gridRowStart: 1,
+                                backgroundColor: `${color}25`,
+                                borderColor: `${color}88`,
+                                color: color,
+                              }}
+                              className={`h-full flex items-center px-1 text-[9px] sm:text-[9.5px] font-bold border truncate cursor-pointer hover:brightness-95 active:scale-[0.99] transition-all leading-tight shadow-2xs ${
+                                seg.isStart ? 'rounded-l-md ml-0.5' : 'rounded-l-none border-l-0 pl-1'
+                              } ${
+                                seg.isEnd ? 'rounded-r-md mr-0.5' : 'rounded-r-none border-r-0 pr-1'
+                              }`}
+                              title={`${seg.item.title} (${seg.item.startDate} ~ ${seg.item.endDate})`}
+                            >
+                              {!seg.isStart && (
+                                <span className="opacity-70 text-[8px] mr-0.5 shrink-0 select-none">◀</span>
+                              )}
+                              <span
+                                className="w-1.5 h-1.5 rounded-full shrink-0 mr-1"
+                                style={{ backgroundColor: color }}
+                              />
+                              <span className="truncate">{seg.item.title}</span>
+                              {!seg.isEnd && (
+                                <span className="opacity-70 text-[8px] ml-auto pl-0.5 shrink-0 select-none">▶</span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     ))}
 
-                    {/* Todo pills */}
-                    {dayTodos.slice(0, Math.max(0, maxPills - dayEvents.length)).map((td) => (
-                      <div
-                        key={`td-${td.id}`}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedDateStr(cell.dateStr);
-                        }}
-                        className="w-full px-1 py-0.5 rounded text-[9px] sm:text-[9.5px] font-bold truncate border border-emerald-400/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center space-x-1 cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all leading-tight shadow-2xs"
-                        title={td.title}
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-500" />
-                        <span className="truncate">{td.title}</span>
-                      </div>
-                    ))}
-
-                    {/* Overflow count */}
-                    {totalItems > maxPills && (
-                      <div className="text-[8.5px] font-extrabold text-calico-cocoa/50 dark:text-zinc-400 pl-0.5 leading-none">
-                        +{totalItems - maxPills} 更多
+                    {/* 4. Overflow indicator row */}
+                    {dayOverflowCount.some((cnt) => cnt > 0) && (
+                      <div className="grid grid-cols-7 gap-x-0.5 pointer-events-none">
+                        {dayOverflowCount.map((cnt, colIdx) => (
+                          <div
+                            key={`overflow-${colIdx}`}
+                            style={{ gridColumnStart: colIdx + 1, gridRowStart: 1 }}
+                            className="text-left px-1"
+                          >
+                            {cnt > 0 && (
+                              <span className="text-[8px] sm:text-[8.5px] font-black text-calico-cocoa/50 dark:text-zinc-400">
+                                +{cnt} 更多
+                              </span>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>

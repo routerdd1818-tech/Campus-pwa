@@ -158,37 +158,101 @@ Deno.serve(async (req: Request) => {
 
       const matchedShareCode = bindResult?.bound_share_code ?? extractedCode ?? "";
 
-      // 5. 若有 replyToken 且有 Access Token，自動在 LINE 聊天室回覆綁定結果與專屬 LINE ID
+      // 5. 快速快捷選單 (LINE Quick Reply Menu)
+      const commonQuickReplies = {
+        items: [
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "🐾 快速綁定分享碼",
+              text: "綁定分享碼",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "⏰ 測試晨報推播",
+              text: "測試推播",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "📋 查詢綁定狀態",
+              text: "查詢綁定狀態",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "🆔 查詢我的 LINE ID",
+              text: "查詢我的ID",
+            },
+          },
+        ],
+      };
+
+      // 6. 若有 replyToken 且有 Access Token，自動在 LINE 聊天室回覆綁定結果與專屬快捷選單
       if (replyToken && lineAccessToken) {
         let replyMessage = "";
+
         if (eventType === "follow") {
           if (matchedShareCode) {
             replyMessage =
-              `🎉 歡迎加入 Campus 課表小幫手！\n\n` +
+              `🎉 歡迎加入 Campus 可樂小幫手！\n\n` +
               `👤 哈囉 ${displayName}，系統已自動識別您的 LINE ID 並成功綁定課表分享碼【${matchedShareCode}】！\n\n` +
-              `✅ 請直接返回 Campus App，您的 LINE 推播已自動啟用，無須手動輸入 ID。`;
+              `✅ 每日晨報推播已自動啟用，請點擊下方快捷選單隨時測試或查詢。`;
           } else {
             replyMessage =
-              `🎉 歡迎加入 Campus 課表小幫手！\n\n` +
-              `👤 哈囉 ${displayName}，系統已自動記錄您的 LINE ID：\n${lineUserId}\n\n` +
-              `📲 請返回 Campus App 點擊「自動偵測並帶入 LINE ID」，或直接在此聊天室傳送您的 6 碼課表分享碼即可完成綁定！`;
+              `🎉 歡迎加入 Campus 可樂小幫手！\n\n` +
+              `👤 哈囉 ${displayName}，很高興為您服務！\n` +
+              `📲 請直接在此聊天室傳送您的「6 碼課表分享碼」（例如：CAMP88），系統將立即自動為您綁定每日課表與晨報推播！\n\n` +
+              `💡 您也可以點選下方快捷選單快速操作：`;
           }
-        } else if (eventType === "message" && matchedShareCode && extractedCode) {
+        } else if (eventType === "message" && extractedCode) {
           replyMessage =
-            `✅ 課表綁定成功！\n\n` +
+            `🎉 恭喜！課表分享碼綁定成功！\n\n` +
             `👤 帳號：${displayName}\n` +
-            `🔗 已綁定課表分享碼：【${matchedShareCode}】\n` +
-            `🆔 您的 LINE ID：${lineUserId}\n\n` +
-            `返回 Campus App 後即可自動同步並接收每日課表與待辦提醒！`;
+            `🔗 已綁定課表分享碼：【${extractedCode}】\n` +
+            `🆔 LINE ID：${lineUserId}\n\n` +
+            `✅ 每日晨報推播已成功開啟！返回 Campus App 即可同步完成，也可以點選下方快捷選單進行測試！`;
+        } else if (eventType === "message" && (messageText === "綁定分享碼" || messageText === "綁定")) {
+          replyMessage =
+            `🐾 快速綁定課表分享碼：\n\n` +
+            `請直接回覆您的 6 碼分享碼（例如：CAMP88 或 綁定 CAMP88）。\n` +
+            `系統會在收到後 1 秒內為您自動綁定每日晨報！`;
+        } else if (eventType === "message" && (messageText.includes("測試推播") || messageText.includes("測試"))) {
+          replyMessage =
+            `🔔 叮咚！這是來自 Campus 可樂管家的推播測試！\n\n` +
+            `👤 您好 ${displayName}，您的 LINE 推播連線完全正常！\n` +
+            (matchedShareCode
+              ? `🔗 目前綁定課表：【${matchedShareCode}】\n`
+              : `⚠️ 尚未綁定課表，請傳送 6 碼分享碼進行綁定！\n`) +
+            `每日晨報將在設定時間準時送達，祝您學習順心！🐾`;
         } else if (
           eventType === "message" &&
-          (messageText.toUpperCase().includes("ID") || messageText.includes("查詢") || messageText.includes("綁定"))
+          (messageText.includes("狀態") || messageText.includes("查詢綁定"))
+        ) {
+          replyMessage =
+            `📋 您的 LINE 推播綁定狀態：\n\n` +
+            `👤 暱稱：${displayName}\n` +
+            `🆔 LINE User ID：${lineUserId}\n` +
+            (matchedShareCode
+              ? `🔗 已綁定課表分享碼：【${matchedShareCode}】\n✅ 每日晨報：已啟用`
+              : `⚠️ 尚未綁定課表分享碼\n💡 請直接回覆 6 碼分享碼（如 CAMP88）即可立刻綁定！`);
+        } else if (
+          eventType === "message" &&
+          (messageText.toUpperCase().includes("ID") || messageText.includes("我的ID"))
         ) {
           replyMessage =
             `🆔 您的專屬 LINE User ID 為：\n${lineUserId}\n\n` +
             (matchedShareCode
               ? `🔗 目前已綁定課表分享碼：【${matchedShareCode}】`
-              : `💡 您也可以直接傳送 6 碼「課表分享碼」自動完成綁定！`);
+              : `💡 您可以直接傳送 6 碼「課表分享碼」自動完成綁定！`);
         }
 
         if (replyMessage) {
@@ -200,11 +264,18 @@ Deno.serve(async (req: Request) => {
             },
             body: JSON.stringify({
               replyToken,
-              messages: [{ type: "text", text: replyMessage }],
+              messages: [
+                {
+                  type: "text",
+                  text: replyMessage,
+                  quickReply: commonQuickReplies,
+                },
+              ],
             }),
           });
         }
       }
+
 
       results.push({
         eventType,
