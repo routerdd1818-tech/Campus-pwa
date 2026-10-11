@@ -243,61 +243,41 @@ export const ScheduleView: React.FC = () => {
           </button>
         </div>
 
-        {/* Buttons */}
-        <div className="flex items-center space-x-2">
+        {/* Buttons - Aligned Uniform Controls */}
+        <div className="flex items-center space-x-1.5">
           {viewMode === 'week' && (
-            <>
-              {/* 5天 / 7天切換 */}
-              <button
-                onClick={() => setIncludeWeekend((prev) => !prev)}
-                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                  includeWeekend
-                    ? 'bg-calico-cocoa text-white border-calico-cocoa'
-                    : 'bg-white/80 dark:bg-zinc-800 border-black/10 dark:border-white/10 text-calico-cocoa/80 dark:text-zinc-300'
-                }`}
-                title="切換是否顯示週六與週日"
-              >
-                {includeWeekend ? '含週末 (7天)' : '僅工作日 (5天)'}
-              </button>
-
-              {/* 全屏完整 vs 自由滾動 */}
-              <button
-                onClick={() => setFitToScreen((prev) => !prev)}
-                className={`hidden sm:inline-flex px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all ${
-                  fitToScreen
-                    ? 'bg-calico-orange/15 text-calico-orange border-calico-orange/30'
-                    : 'bg-white/80 dark:bg-zinc-800 border-black/10 dark:border-white/10 text-calico-cocoa/80 dark:text-zinc-300'
-                }`}
-                title="切換適配螢幕或水平橫向滑動"
-              >
-                {fitToScreen ? '全屏完整' : '自由滾動'}
-              </button>
-            </>
+            <button
+              onClick={() => setIncludeWeekend((prev) => !prev)}
+              className={`h-8 px-2.5 rounded-xl text-xs font-bold border transition-all flex items-center justify-center ${
+                includeWeekend
+                  ? 'bg-calico-cocoa text-white border-calico-cocoa shadow-2xs'
+                  : 'bg-white/80 dark:bg-zinc-800 border-black/10 dark:border-white/10 text-calico-cocoa/80 dark:text-zinc-300'
+              }`}
+              title="切換是否顯示週六與週日"
+            >
+              {includeWeekend ? '7天' : '5天'}
+            </button>
           )}
 
           <button
             onClick={() => setIsPeriodModalOpen(true)}
-            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 font-bold text-xs hover:border-calico-orange/40 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+            className="w-8 h-8 rounded-xl bg-white/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:border-calico-orange/40 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
             title="自訂每節課時間與節次"
           >
-            <Clock className="w-3.5 h-3.5 text-calico-orange" />
-            <span className="hidden sm:inline">節次時間</span>
-            <span className="sm:hidden">時間</span>
+            <Clock className="w-4 h-4 text-calico-orange" />
           </button>
 
           <button
             onClick={() => setIsOcrModalOpen(true)}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-xs hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs"
-            title="AI 課表辨識"
+            className="w-8 h-8 rounded-xl bg-calico-orange/15 text-calico-orange flex items-center justify-center hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs"
+            title="AI 圖片課表自動辨識"
           >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">AI 圖片辨識</span>
-            <span className="sm:hidden">AI 辨識</span>
+            <Sparkles className="w-4 h-4" />
           </button>
 
           <button
             onClick={handleAddNewCourse}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
+            className="h-8 flex items-center space-x-1 px-3 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
           >
             <Plus className="w-4 h-4" />
             <span>加課</span>

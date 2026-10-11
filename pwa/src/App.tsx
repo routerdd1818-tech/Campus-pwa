@@ -5,6 +5,7 @@ import { TabBar } from './components/TabBar';
 import { PwaInstallBanner } from './components/PwaInstallBanner';
 import { AuthModal } from './components/AuthModal';
 import { LineBotModal } from './components/LineBotModal';
+import { TodayView } from './views/TodayView';
 import { CalendarView } from './views/CalendarView';
 import { ScheduleView } from './views/ScheduleView';
 import { TodosView } from './views/TodosView';
@@ -36,6 +37,7 @@ const MainContent: React.FC = () => {
 
       {/* Main View Container */}
       <main className="flex-1 max-w-md w-full mx-auto px-4 pt-2 pb-28">
+        {activeTab === 'today' && <TodayView />}
         {activeTab === 'schedule' && <ScheduleView />}
         {activeTab === 'calendar' && <CalendarView />}
         {activeTab === 'todos' && <TodosView />}

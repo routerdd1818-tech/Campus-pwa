@@ -210,6 +210,47 @@ export const CalendarView: React.FC = () => {
     return [...eventItems, ...periodTodoItems];
   };
 
+  // Memoized all span items across calendar & period todos
+  const allSpanItems = useMemo<UnifiedSpanItem[]>(() => {
+    const eventItems: UnifiedSpanItem[] = calendarEvents.map((e) => ({
+      id: e.id,
+      title: e.title,
+      startDate: e.startDate,
+      endDate: e.endDate,
+      colorHex: e.colorHex || '#E67E22',
+      category: e.category,
+      isAllDay: e.isAllDay,
+      notes: e.notes,
+      type: 'event',
+    }));
+
+    const periodTodoItems: UnifiedSpanItem[] = todos
+      .filter((t) => t.startDate && t.endDate)
+      .map((t) => ({
+        id: t.id,
+        title: t.title,
+        startDate: t.startDate!,
+        endDate: t.endDate!,
+        colorHex: t.colorHex || '#DD6B20',
+        category: t.category,
+        isAllDay: true,
+        notes: t.notes,
+        type: 'todo',
+        isCompleted: t.isCompleted,
+      }));
+
+    return [...eventItems, ...periodTodoItems];
+  }, [calendarEvents, todos]);
+
+  // Group month grid days into weeks of 7 for continuous ribbons
+  const monthWeeks = useMemo(() => {
+    const weeks: (typeof monthGridDays)[] = [];
+    for (let i = 0; i < monthGridDays.length; i += 7) {
+      weeks.push(monthGridDays.slice(i, i + 7));
+    }
+    return weeks;
+  }, [monthGridDays]);
+
   // -------------------------------------------------------------
   // ☀️ Today's Summary Data (Courses + Todos + Accounting)
   // -------------------------------------------------------------
@@ -549,91 +590,140 @@ export const CalendarView: React.FC = () => {
             ))}
           </div>
 
-          {/* 7xN Calendar Days Grid */}
-          <div className="grid grid-cols-7 gap-1">
-            {monthGridDays.map((cell) => {
-              const isSelected = cell.dateStr === selectedDateStr;
-              const isToday = cell.dateStr === todayStr;
+          {/* Week-by-Week Grid with Seamless Continuous Ribbons */}
+          <div className="space-y-2">
+            {monthWeeks.map((week, weekIdx) => {
+              const weekStart = week[0].dateStr;
+              const weekEnd = week[6].dateStr;
 
-              // Unified span items covering this date
-              const daySpanItems = getAllSpanItemsForDate(cell.dateStr);
-
-              // Does this date have course or todo?
-              const cellDate = new Date(cell.dateStr);
-              const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
-              const hasCourse = courses.some((c) => c.dayOfWeek === cellDayOfWeek);
-              const hasTodo = todos.some(
-                (t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted
+              // Spanning items active during this week
+              const weekSpanItems = allSpanItems.filter(
+                (item) => item.startDate <= weekEnd && item.endDate >= weekStart
               );
 
               return (
                 <div
-                  key={cell.dateStr}
-                  onClick={() => setSelectedDateStr(cell.dateStr)}
-                  className={`min-h-[58px] sm:min-h-[64px] p-1 rounded-2xl flex flex-col justify-between cursor-pointer transition-all border ${
-                    isSelected
-                      ? 'bg-calico-orange/15 border-calico-orange shadow-ios-sm ring-1 ring-calico-orange'
-                      : isToday
-                      ? 'bg-amber-50/80 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/40'
-                      : cell.isCurrentMonth
-                      ? 'bg-calico-cream/30 dark:bg-zinc-800/30 border-black/5 dark:border-white/5 hover:border-calico-orange/30'
-                      : 'bg-black/2 dark:bg-white/2 border-transparent opacity-40'
-                  }`}
+                  key={`week-${weekIdx}-${weekStart}`}
+                  className="p-1.5 rounded-2xl bg-calico-cream/35 dark:bg-zinc-800/30 border border-black/5 dark:border-white/5 transition-colors"
                 >
-                  {/* Day Number Header */}
-                  <div className="flex items-center justify-between">
-                    <span
-                      className={`text-xs font-black leading-none ${
-                        isToday
-                          ? 'w-5 h-5 rounded-full bg-calico-orange text-white flex items-center justify-center font-black shadow-xs'
-                          : isSelected
-                          ? 'text-calico-orange'
-                          : 'text-calico-cocoa/80 dark:text-zinc-200'
-                      }`}
-                    >
-                      {cell.dayNum}
-                    </span>
+                  {/* Top: 7 Day Cells */}
+                  <div className="grid grid-cols-7 gap-1 text-center">
+                    {week.map((cell) => {
+                      const isSelected = cell.dateStr === selectedDateStr;
+                      const isToday = cell.dateStr === todayStr;
 
-                    {/* Indicators */}
-                    <div className="flex items-center space-x-0.5">
-                      {hasCourse && <span className="w-1.5 h-1.5 rounded-full bg-calico-orange" />}
-                      {hasTodo && <span className="w-1.5 h-1.5 rounded-full bg-calico-sage" />}
-                    </div>
-                  </div>
-
-                  {/* 🌟 TimeTree Multi-Day Continuous Span Ribbons */}
-                  <div className="space-y-0.5 mt-1 overflow-hidden">
-                    {daySpanItems.slice(0, 2).map((item) => {
-                      const isStart = cell.dateStr === item.startDate;
-                      const isEnd = cell.dateStr === item.endDate;
-                      const isSingle = item.startDate === item.endDate;
+                      const cellDate = new Date(cell.dateStr);
+                      const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
+                      const hasCourse = courses.some((c) => c.dayOfWeek === cellDayOfWeek);
+                      const hasTodo = todos.some(
+                        (t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted
+                      );
 
                       return (
-                        <div
-                          key={item.id}
-                          style={{
-                            backgroundColor: `${item.colorHex}22`,
-                            color: item.colorHex,
-                            borderColor: `${item.colorHex}50`,
-                          }}
-                          className={`text-[9px] font-black leading-tight px-1 py-0.5 truncate border transition-all ${
-                            isSingle
-                              ? 'rounded-md'
-                              : isStart
-                              ? 'rounded-l-md rounded-r-none border-r-0'
-                              : isEnd
-                              ? 'rounded-r-md rounded-l-none border-l-0'
-                              : 'rounded-none border-x-0'
+                        <button
+                          key={cell.dateStr}
+                          onClick={() => setSelectedDateStr(cell.dateStr)}
+                          className={`py-1 rounded-xl flex flex-col items-center justify-center transition-all ${
+                            isSelected
+                              ? 'bg-calico-orange text-white shadow-ios-sm font-black ring-2 ring-calico-orange/30'
+                              : isToday
+                              ? 'bg-calico-orange/15 text-calico-orange font-black'
+                              : cell.isCurrentMonth
+                              ? 'text-calico-cocoa/90 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 font-bold'
+                              : 'text-calico-cocoa/30 dark:text-zinc-600 font-normal'
                           }`}
-                          title={`${item.title} (${item.startDate} ~ ${item.endDate})`}
                         >
-                          {isStart || isSingle ? item.title : '⋯'}
-                        </div>
+                          <span className="text-xs leading-none">{cell.dayNum}</span>
+
+                          {/* Dots */}
+                          <div className="flex items-center space-x-0.5 mt-1 h-1.5">
+                            {hasCourse && (
+                              <span
+                                className={`w-1 h-1 rounded-full ${
+                                  isSelected ? 'bg-white' : 'bg-calico-orange'
+                                }`}
+                              />
+                            )}
+                            {hasTodo && (
+                              <span
+                                className={`w-1 h-1 rounded-full ${
+                                  isSelected ? 'bg-white/80' : 'bg-calico-sage'
+                                }`}
+                              />
+                            )}
+                          </div>
+                        </button>
                       );
                     })}
-
-                    {daySpanSpanOverflow(daySpanItems.length)}
                   </div>
+
+                  {/* Bottom: Continuous Multi-Day Ribbons across this week */}
+                  {weekSpanItems.length > 0 && (
+                    <div className="grid grid-cols-7 gap-x-1 gap-y-1 mt-1.5 pt-1.5 border-t border-black/5 dark:border-white/5">
+                      {weekSpanItems.slice(0, 3).map((item) => {
+                        const isStartOfWeek = item.startDate < weekStart;
+                        const isEndOfWeek = item.endDate > weekEnd;
+
+                        const startIdx = isStartOfWeek
+                          ? 0
+                          : Math.max(0, week.findIndex((d) => d.dateStr === item.startDate));
+                        const endIdx = isEndOfWeek
+                          ? 6
+                          : week.findIndex((d) => d.dateStr === item.endDate);
+
+                        const safeEndIdx = endIdx === -1 ? 6 : endIdx;
+                        const startCol = startIdx + 1;
+                        const endCol = safeEndIdx + 2;
+
+                        return (
+                          <div
+                            key={item.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedDateStr(item.startDate >= weekStart ? item.startDate : weekStart);
+                            }}
+                            style={{
+                              gridColumn: `${startCol} / ${endCol}`,
+                              backgroundColor: `${item.colorHex}22`,
+                              borderColor: `${item.colorHex}60`,
+                              color: item.colorHex,
+                            }}
+                            className={`h-5 px-1.5 py-0.5 text-[9.5px] font-black border flex items-center space-x-1 truncate cursor-pointer transition-all hover:brightness-105 active:scale-[0.99] shadow-2xs ${
+                              !isStartOfWeek && !isEndOfWeek
+                                ? 'rounded-md'
+                                : !isStartOfWeek && isEndOfWeek
+                                ? 'rounded-l-md rounded-r-none border-r-0'
+                                : isStartOfWeek && !isEndOfWeek
+                                ? 'rounded-r-md rounded-l-none border-l-0'
+                                : 'rounded-none border-x-0'
+                            }`}
+                            title={`${item.title} (${item.startDate} ~ ${item.endDate})`}
+                          >
+                            {item.type === 'todo' ? (
+                              <Plane className="w-2.5 h-2.5 shrink-0" />
+                            ) : (
+                              <Tag className="w-2.5 h-2.5 shrink-0" />
+                            )}
+                            <span className="truncate">{item.title}</span>
+                            {!isStartOfWeek && (
+                              <span className="text-[8.5px] opacity-75 shrink-0 font-normal ml-0.5">
+                                {item.startDate.slice(5)}~{item.endDate.slice(5)}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {weekSpanItems.length > 3 && (
+                        <div
+                          style={{ gridColumn: '1 / 8' }}
+                          className="text-[9px] font-bold text-center text-calico-cocoa/50 dark:text-zinc-500 py-0.5"
+                        >
+                          +{weekSpanItems.length - 3} 更多行程
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}

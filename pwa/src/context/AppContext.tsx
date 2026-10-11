@@ -253,8 +253,8 @@ interface BudgetInfo {
 }
 
 interface AppContextType {
-  activeTab: 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings';
-  setActiveTab: (tab: 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings') => void;
+  activeTab: 'today' | 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings';
+  setActiveTab: (tab: 'today' | 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings') => void;
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null, rememberPassword?: string | null) => void;
   logoutUser: () => void;
@@ -321,7 +321,7 @@ function getScopedKey(userId: string | null | undefined, key: string): string {
 }
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [activeTab, setActiveTab] = useState<'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings'>('schedule');
+  const [activeTab, setActiveTab] = useState<'today' | 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings'>('today');
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [catMood, setCatMood] = useState<'happy' | 'sleeping' | 'thinking' | 'proud'>('happy');
