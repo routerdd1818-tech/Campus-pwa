@@ -46,6 +46,10 @@ export const TodayView: React.FC = () => {
     catMood,
     setCatMood,
     setActiveTab,
+    setIsFortuneModalOpen,
+    setIsFoodRouletteOpen,
+    setIsPomodoroOpen,
+    setIsGpaModalOpen,
   } = useApp();
 
   const now = new Date();
@@ -173,6 +177,47 @@ export const TodayView: React.FC = () => {
             <span>記一筆</span>
           </button>
         </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 🐾 可樂管家校園百寶箱 (Campus Fun Tools Quick Bar) */}
+      {/* ======================================================== */}
+      <div className="grid grid-cols-4 gap-2">
+        <button
+          onClick={() => setIsFortuneModalOpen(true)}
+          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-amber-400 active:scale-95 transition-all group"
+        >
+          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">🎋</span>
+          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">今日吉籤</span>
+          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">測點名考運</span>
+        </button>
+
+        <button
+          onClick={() => setIsFoodRouletteOpen(true)}
+          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-calico-orange active:scale-95 transition-all group"
+        >
+          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">🍱</span>
+          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">吃啥轉盤</span>
+          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">拯救選擇題</span>
+        </button>
+
+        <button
+          onClick={() => setIsPomodoroOpen(true)}
+          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-indigo-400 active:scale-95 transition-all group"
+        >
+          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">⏱️</span>
+          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">伴讀番茄</span>
+          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">25分衝刺</span>
+        </button>
+
+        <button
+          onClick={() => setIsGpaModalOpen(true)}
+          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-emerald-400 active:scale-95 transition-all group"
+        >
+          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">🎓</span>
+          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">GPA試算</span>
+          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">學分歐趴</span>
+        </button>
       </div>
 
       {/* ======================================================== */}

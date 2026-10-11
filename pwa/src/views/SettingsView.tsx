@@ -1,34 +1,51 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   bindLineFollower,
   sendTestLineMessage,
   resetSupabaseClient,
+  publishSharedSchedule,
+  fetchSharedScheduleByCode,
   DEFAULT_SUPABASE_URL,
+  DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
+import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
+import { ClassPeriod, SharedScheduleData } from '../types';
 import {
-  Cloud,
+  User,
+  Clock,
   MessageCircle,
-  Calendar,
-  Save,
+  Tag,
+  DollarSign,
+  Share2,
+  Palette,
+  Download,
+  Upload,
+  RotateCcw,
+  Trash2,
+  Plus,
+  Check,
   CheckCircle2,
+  Sparkles,
+  ShieldCheck,
   RefreshCw,
   Send,
   UserCheck,
-  ShieldCheck,
-  DollarSign,
-  Download,
-  User,
-  LogOut,
   LogIn,
-  ExternalLink,
-  Sparkles,
-  Clock,
-  Tag,
-  Plus,
-  Trash2,
-  Layers,
-  Palette,
+  LogOut,
+  Copy,
+  Save,
+  Moon,
+  Sun,
+  Laptop,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
+  Users,
+  Database,
+  UtensilsCrossed,
+  Timer,
+  GraduationCap,
 } from 'lucide-react';
 
 const PALETTE = ['#E67E22', '#48BB78', '#3182CE', '#805AD5', '#D53F8C', '#ED8936', '#E53E3E', '#3D2F2E', '#38B2AC'];
@@ -43,39 +60,84 @@ export const SettingsView: React.FC = () => {
     logoutUser,
     updateCurrentUserDisplayName,
     setIsAuthModalOpen,
-    setIsLineBotModalOpen,
-    setIsPeriodModalOpen,
     customExpenseCategories,
     customIncomeCategories,
     customTodoCategories,
     addCustomCategory,
     deleteCustomCategory,
+    classPeriods,
+    updateClassPeriods,
+    savedFriends,
+    saveFriendRecord,
+    removeFriendRecord,
+    courses,
+    todos,
+    transactions,
+    calendarEvents,
     lastSyncedAt,
     nextSyncDisplay,
     triggerManualUpload,
+    catMood,
+    setCatMood,
+    restoreBackupData,
+    resetAllData,
+    setIsFortuneModalOpen,
+    setIsFoodRouletteOpen,
+    setIsPomodoroOpen,
+    setIsGpaModalOpen,
   } = useApp();
 
-  const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || DEFAULT_SUPABASE_URL);
-  const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseAnonKey || '');
-  const [shareCode, setShareCode] = useState(currentUser?.shareCode || settings.shareCode || 'CAMP88');
+  // 1. Account & Profile
   const [ownerName, setOwnerName] = useState(currentUser?.displayName || settings.ownerName || '同學');
-  const [lineUserId, setLineUserId] = useState(currentUser?.lineUserId || settings.lineUserId || '');
-  const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
-  const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
-  const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
-  const [resetDay, setResetDay] = useState(settings.accountingResetDay ?? 1);
+  const [shareCode, setShareCode] = useState(currentUser?.shareCode || settings.shareCode || 'CAMP88');
 
-  // Scheduled Cloud Upload & Sync states (預設 4 小時 = 240 分鐘)
+  // 2. Cloud & Auto-Sync
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(settings.autoSyncEnabled ?? true);
   const [autoSyncTime, setAutoSyncTime] = useState(settings.autoSyncTime || '23:00');
   const [autoSyncIntervalMinutes, setAutoSyncIntervalMinutes] = useState(settings.autoSyncIntervalMinutes ?? 240);
+  const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || DEFAULT_SUPABASE_URL);
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY);
+  const [showAdvancedSupabase, setShowAdvancedSupabase] = useState(false);
 
-  // Category Manager Tab
+  // 3. LINE Bot
+  const [lineUserId, setLineUserId] = useState(currentUser?.lineUserId || settings.lineUserId || '');
+  const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
+  const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
+  const [isLinePushEnabled, setIsLinePushEnabled] = useState(settings.isLinePushEnabled ?? true);
+  const [isClaimingLineId, setIsClaimingLineId] = useState(false);
+  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+
+  // 4. Class Periods
+  const [periods, setPeriods] = useState<ClassPeriod[]>(classPeriods && classPeriods.length > 0 ? classPeriods : DEFAULT_CLASS_PERIODS);
+  const [showPeriodsList, setShowPeriodsList] = useState(true);
+
+  // 5. Custom Categories
   const [activeCategoryTab, setActiveCategoryTab] = useState<'expense' | 'income' | 'todo'>('expense');
   const [newCatName, setNewCatName] = useState('');
   const [newCatColor, setNewCatColor] = useState(PALETTE[0]);
 
-  // Sync state if currentUser changes
+  // 6. Budget
+  const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
+  const [resetDay, setResetDay] = useState(settings.accountingResetDay ?? 1);
+
+  // 7. Friend Sharing
+  const [isShareCourses, setIsShareCourses] = useState(settings.isShareCourses ?? true);
+  const [isShareAccounting, setIsShareAccounting] = useState(settings.isShareAccounting ?? true);
+  const [isShareCalendar, setIsShareCalendar] = useState(settings.isShareCalendar ?? true);
+  const [friendCodeInput, setFriendCodeInput] = useState('');
+  const [isPublishingShare, setIsPublishingShare] = useState(false);
+  const [isAddingFriend, setIsAddingFriend] = useState(false);
+
+  // 8. Appearance & Mascot
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>(settings.theme || 'light');
+
+  // UI States
+  const [alertMsg, setAlertMsg] = useState<string | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Keep in sync with currentUser
   useEffect(() => {
     if (currentUser) {
       setShareCode(currentUser.shareCode);
@@ -84,12 +146,21 @@ export const SettingsView: React.FC = () => {
     }
   }, [currentUser]);
 
-  const [alertMsg, setAlertMsg] = useState<string | null>(null);
-  const [isClaimingLineId, setIsClaimingLineId] = useState(false);
-  const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+  useEffect(() => {
+    if (classPeriods && classPeriods.length > 0) {
+      setPeriods(classPeriods);
+    }
+  }, [classPeriods]);
 
-  const handleSaveSettings = async () => {
+  const showNotification = (msg: string) => {
+    setAlertMsg(msg);
+    setTimeout(() => setAlertMsg(null), 3500);
+  };
+
+  // 💾 Save All Settings
+  const handleSaveAllSettings = async () => {
     await updateCurrentUserDisplayName(ownerName);
+    updateClassPeriods(periods);
     updateSettings({
       supabaseUrl,
       supabaseAnonKey,
@@ -98,17 +169,126 @@ export const SettingsView: React.FC = () => {
       lineUserId,
       linePushHour: pushHour,
       linePushMinute: pushMinute,
+      isLinePushEnabled,
       customDailyLimit: dailyLimit,
       accountingResetDay: resetDay,
       autoSyncEnabled,
       autoSyncTime,
       autoSyncIntervalMinutes,
+      isShareCourses,
+      isShareAccounting,
+      isShareCalendar,
+      theme,
     });
     resetSupabaseClient(supabaseUrl, supabaseAnonKey);
-    setAlertMsg('設定與自訂暱稱已成功儲存！');
-    setTimeout(() => setAlertMsg(null), 3000);
+    showNotification('✅ 所有設定、課表節次與自訂稱呼已成功儲存！');
   };
 
+  // 📋 Copy Share Code
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(shareCode);
+    setCopiedCode(true);
+    setTimeout(() => setCopiedCode(false), 2000);
+  };
+
+  // 🤖 Claim LINE Follower
+  const handleClaimLineFollower = async () => {
+    setIsClaimingLineId(true);
+    try {
+      const userKey = currentUser ? currentUser.id : 'device_local';
+      const result = await bindLineFollower(shareCode, userKey);
+      if (result && result.ok && result.line_user_id) {
+        setLineUserId(result.line_user_id);
+        updateSettings({ lineUserId: result.line_user_id });
+        showNotification(`🎉 成功自動綁定 LINE ID：${result.line_user_id}`);
+      } else {
+        showNotification('尚未偵測到新好友事件，請先在 LINE 搜尋機器人加好友或傳送分享碼！');
+      }
+    } catch {
+      showNotification('連線錯誤，請確認網路與 Supabase 連線狀態');
+    } finally {
+      setIsClaimingLineId(false);
+    }
+  };
+
+  // 💬 Send Test Push
+  const handleSendTestPush = async () => {
+    if (!lineUserId) {
+      showNotification('請先填入或自動認領 LINE User ID！');
+      return;
+    }
+    setIsSendingTestPush(true);
+    try {
+      const ok = await sendTestLineMessage(
+        lineUserId,
+        `🐾 哈囉 ${ownerName}！這是來自 Campus 可樂校園的專屬推播測試！\n專屬課表代碼：${shareCode}\n今日花費限額：$${dailyLimit} 元。\n每日晨報將於 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時送達！`
+      );
+      if (ok) {
+        showNotification('🚀 測試推播已發送，請檢查您的 LINE 聊天室！');
+      } else {
+        showNotification('發送失敗，請確認 Supabase app_api_configs 是否已儲存 line_channel_access_token');
+      }
+    } finally {
+      setIsSendingTestPush(false);
+    }
+  };
+
+  // ⏰ Period Time Changes
+  const handlePeriodTimeChange = (id: number, field: 'startTime' | 'endTime', value: string) => {
+    setPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, [field]: value } : p)));
+  };
+
+  const handlePeriodNameChange = (id: number, value: string) => {
+    setPeriods((prev) => prev.map((p) => (p.id === id ? { ...p, name: value } : p)));
+  };
+
+  const handleAddPeriod = () => {
+    const nextId = periods.length > 0 ? Math.max(...periods.map((p) => p.id)) + 1 : 1;
+    const lastPeriod = periods[periods.length - 1];
+    const newPeriod: ClassPeriod = {
+      id: nextId,
+      name: `第 ${periods.filter((p) => !p.isNoon).length + 1} 節`,
+      displayCode: String(periods.filter((p) => !p.isNoon).length + 1),
+      startTime: lastPeriod ? lastPeriod.endTime : '19:30',
+      endTime: '20:20',
+      isNoon: false,
+    };
+    const updated = [...periods, newPeriod];
+    setPeriods(updated);
+    updateClassPeriods(updated);
+    showNotification('已新增節次！');
+  };
+
+  const handleDeletePeriod = (id: number) => {
+    if (periods.length <= 1) return;
+    const updated = periods.filter((p) => p.id !== id);
+    setPeriods(updated);
+    updateClassPeriods(updated);
+  };
+
+  const handleApplyTemplate = (type: 'default' | 'eight_am') => {
+    if (type === 'default') {
+      setPeriods(DEFAULT_CLASS_PERIODS);
+      updateClassPeriods(DEFAULT_CLASS_PERIODS);
+      showNotification('已載入大專標準課表範本 (08:10 起)！');
+    } else {
+      const template = DEFAULT_CLASS_PERIODS.map((p) => {
+        if (p.isNoon) return { ...p, startTime: '12:00', endTime: '13:10' };
+        const [sh] = p.startTime.split(':').map(Number);
+        const [eh] = p.endTime.split(':').map(Number);
+        return {
+          ...p,
+          startTime: `${String(sh).padStart(2, '0')}:00`,
+          endTime: `${String(eh).padStart(2, '0')}:50`,
+        };
+      });
+      setPeriods(template);
+      updateClassPeriods(template);
+      showNotification('已載入整點大學範本 (08:00 起)！');
+    }
+  };
+
+  // 🏷️ Category Management
   const handleCreateCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatName.trim()) return;
@@ -118,79 +298,153 @@ export const SettingsView: React.FC = () => {
       icon: 'tag',
     });
     setNewCatName('');
-    setAlertMsg(`已新增 ${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'} 分類！`);
-    setTimeout(() => setAlertMsg(null), 2500);
+    showNotification(`已新增 ${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'} 分類！`);
   };
 
-  const handleClaimLineFollower = async () => {
-    setIsClaimingLineId(true);
-    try {
-      const result = await bindLineFollower(shareCode, 'pwa_browser_client');
-      if (result && result.ok && result.line_user_id) {
-        setLineUserId(result.line_user_id);
-        updateSettings({ lineUserId: result.line_user_id });
-        setAlertMsg(`成功自動綁定 LINE ID: ${result.line_user_id}`);
-      } else {
-        setAlertMsg('尚未偵測到新加入好友的使用者，請先在 LINE 點擊加入機器人好友或傳送代碼！');
-      }
-    } catch {
-      setAlertMsg('連線錯誤，請確認 Supabase 設定與網路狀態');
-    } finally {
-      setIsClaimingLineId(false);
-      setTimeout(() => setAlertMsg(null), 4000);
+  // 🤝 Friend Sharing Operations
+  const handlePublishSchedule = async () => {
+    setIsPublishingShare(true);
+    const scheduleData: SharedScheduleData = {
+      shareCode,
+      ownerName,
+      isSharingEnabled: isShareCourses,
+      coursesData: isShareCourses ? courses.filter((c) => c.isSharedWithFriends !== false) : [],
+      todosData: isShareCalendar ? todos.filter((t) => t.isCompleted === false) : [],
+      accountingData: isShareAccounting ? transactions.filter((t) => t.isSharedWithFriends !== false) : [],
+      calendarEventsData: isShareCalendar ? calendarEvents.filter((e) => e.isSharedWithFriends !== false) : [],
+      isExpenseSharingEnabled: isShareAccounting,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const ok = await publishSharedSchedule(scheduleData);
+    setIsPublishingShare(false);
+    if (ok) {
+      showNotification(`課表與行事曆已成功同步至雲端共享中心！代碼：${shareCode}`);
+    } else {
+      showNotification('發布失敗，請確認網路連線');
     }
   };
 
-  const handleSendTestPush = async () => {
-    if (!lineUserId) {
-      setAlertMsg('請先填入或自動綁定 LINE User ID！');
+  const handleAddFriend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = friendCodeInput.trim().toUpperCase();
+    if (!clean) return;
+    if (clean === shareCode) {
+      showNotification('不能加入自己的分享代碼喔！');
       return;
     }
-    setIsSendingTestPush(true);
+    setIsAddingFriend(true);
     try {
-      const ok = await sendTestLineMessage(
-        lineUserId,
-        `🐾 哈囉！這是來自 Campus 可樂校園 PWA 的測試推播！\n您設定的課表分享碼為：${shareCode}\n今日預算為：$${dailyLimit} 元。`
-      );
-      if (ok) {
-        setAlertMsg('測試推播已發送，請檢查您的 LINE 聊天室！');
+      const data = await fetchSharedScheduleByCode(clean);
+      if (!data) {
+        showNotification('找不到此代碼的課表，可能對方未開啟共享');
       } else {
-        setAlertMsg('發送失敗，請確認 Supabase app_api_configs 是否已儲存 line_channel_access_token');
+        saveFriendRecord({
+          shareCode: clean,
+          ownerName: data.ownerName || '同學',
+          nickname: data.ownerName || '同學',
+          lastViewedAt: new Date().toISOString(),
+          cachedSchedule: data,
+        });
+        setFriendCodeInput('');
+        showNotification(`成功加入好友【${data.ownerName}】(${clean})！`);
       }
+    } catch {
+      showNotification('連線查詢失敗，請稍後再試');
     } finally {
-      setIsSendingTestPush(false);
-      setTimeout(() => setAlertMsg(null), 4000);
+      setIsAddingFriend(false);
     }
   };
 
+  // 💾 Export & Import JSON Backup
   const handleExportData = () => {
-    const data = {
-      courses: localStorage.getItem('campus_courses'),
-      todos: localStorage.getItem('campus_todos'),
-      transactions: localStorage.getItem('campus_transactions'),
-      calendarEvents: localStorage.getItem('campus_calendar_events'),
-      settings: localStorage.getItem('campus_settings'),
+    const exportPayload = {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      courses,
+      todos,
+      transactions,
+      calendarEvents,
+      classPeriods: periods,
+      customExpenseCategories,
+      customIncomeCategories,
+      customTodoCategories,
+      savedFriends,
+      settings: {
+        ...settings,
+        ownerName,
+        shareCode,
+        dailyLimit,
+        resetDay,
+        lineUserId,
+        pushHour,
+        pushMinute,
+        isLinePushEnabled,
+        autoSyncEnabled,
+        autoSyncTime,
+        autoSyncIntervalMinutes,
+        theme,
+      },
     };
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `campus_backup_${Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
+    showNotification('📦 資料已成功匯出備份 JSON！');
+  };
+
+  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target?.result as string);
+        const ok = restoreBackupData(parsed);
+        if (ok) {
+          showNotification('🎉 備份檔案已成功還原並生效！');
+        } else {
+          showNotification('還原失敗：檔案格式不正確');
+        }
+      } catch {
+        showNotification('解析 JSON 檔案失敗，請確認檔案格式');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleResetAllData = () => {
+    resetAllData();
+    setShowResetConfirm(false);
+    showNotification('⚠️ 已清除所有本機快取並重設為初始狀態！');
   };
 
   return (
-    <div className="space-y-4 pb-28">
-      <div>
-        <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
-          可樂管家個人化與雲端設定
-        </h2>
-        <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400">
-          自動上傳週期、自訂暱稱與種類、LINE 獨立推播與帳號管理
-        </p>
+    <div className="space-y-4 pb-32 animate-fade-in">
+      {/* Page Title */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
+            系統與個人化設定中心
+          </h2>
+          <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 font-bold mt-0.5">
+            所有帳號、課表節次、雲端同步與推播在此統一管理
+          </p>
+        </div>
+
+        <button
+          onClick={handleSaveAllSettings}
+          className="px-3.5 py-2 rounded-2xl bg-calico-orange text-white font-black text-xs shadow-ios hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1 shrink-0"
+        >
+          <Save className="w-3.5 h-3.5" />
+          <span>儲存全部</span>
+        </button>
       </div>
 
+      {/* Alert Banner */}
       {alertMsg && (
         <div className="p-3.5 rounded-2xl bg-calico-sage/15 border border-calico-sage/30 text-calico-cocoa dark:text-zinc-100 text-xs font-bold flex items-center space-x-2 animate-fade-in shadow-2xs">
           <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
@@ -198,7 +452,9 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
-      {/* 0. 👤 User Account & Profile Center */}
+      {/* ======================================================== */}
+      {/* 1. 👤 使用者帳戶與稱呼 (Account & Profile Hub) */}
+      {/* ======================================================== */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -207,7 +463,7 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                使用者帳戶與暱稱管理
+                使用者帳戶與個人稱呼
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
                 {currentUser ? `已登入：@${currentUser.username}` : '訪客模式（未登入）'}
@@ -222,48 +478,73 @@ export const SettingsView: React.FC = () => {
             {currentUser ? (
               <>
                 <UserCheck className="w-3.5 h-3.5" />
-                <span>切換帳號</span>
+                <span>切換 / 登入其他帳號</span>
               </>
             ) : (
               <>
                 <LogIn className="w-3.5 h-3.5" />
-                <span>登入 / 註冊</span>
+                <span>登入 / 註冊帳號</span>
               </>
             )}
           </button>
         </div>
 
-        {/* 自訂暱稱與帳號資訊 */}
         <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2.5 text-xs">
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              自訂暱稱 (顯示名稱)
+              自訂顯示稱呼 (暱稱)
             </label>
             <input
               type="text"
               value={ownerName}
               onChange={(e) => setOwnerName(e.target.value)}
-              placeholder="例如：小明、同學..."
+              placeholder="例如：同學、小明..."
               className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
             />
           </div>
 
-          {currentUser ? (
-            <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/5">
-              <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">專屬課表分享碼</span>
-              <span className="font-mono font-black text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15">
-                {currentUser.shareCode}
+          <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/5">
+            <div>
+              <span className="font-bold text-calico-cocoa/70 dark:text-zinc-400 block text-xs">
+                專屬課表分享碼
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-500">
+                提供給朋友即可一鍵追蹤課表
               </span>
             </div>
-          ) : (
-            <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 pt-1 border-t border-black/5 dark:border-white/5">
-              💡 訪客模式：可自由設定稱呼，登入後可跨裝置同步課表。
-            </p>
+            <div className="flex items-center space-x-1.5">
+              <span className="font-mono font-black text-calico-orange px-2.5 py-1 rounded-lg bg-calico-orange/15 text-xs">
+                {shareCode}
+              </span>
+              <button
+                type="button"
+                onClick={handleCopyCode}
+                className="p-1.5 rounded-lg bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200 hover:bg-calico-orange/15 hover:text-calico-orange active:scale-95 transition-all"
+                title="複製代碼"
+              >
+                {copiedCode ? <Check className="w-3.5 h-3.5 text-calico-sage" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          </div>
+
+          {currentUser && (
+            <div className="pt-1 border-t border-black/5 dark:border-white/5 flex justify-end">
+              <button
+                type="button"
+                onClick={logoutUser}
+                className="text-red-500 hover:text-red-600 text-xs font-bold flex items-center space-x-1 py-1"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span>登出當前帳號</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
 
-      {/* 1. ⏰ Scheduled Cloud Upload & Sync Section (固定上傳時間) */}
+      {/* ======================================================== */}
+      {/* 2. ☁️ 雲端資料庫與自動同步 (Supabase Cloud & Auto-Sync) */}
+      {/* ======================================================== */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
@@ -293,7 +574,6 @@ export const SettingsView: React.FC = () => {
 
         {autoSyncEnabled && (
           <div className="space-y-3 pt-1 border-t border-black/5 dark:border-white/5 animate-fade-in">
-            {/* Fixed Daily Time Picker (e.g. 23:00) */}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
@@ -309,7 +589,7 @@ export const SettingsView: React.FC = () => {
 
               <div>
                 <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-                  定期背景同步頻率
+                  背景定時同步週期
                 </label>
                 <select
                   value={autoSyncIntervalMinutes}
@@ -347,178 +627,128 @@ export const SettingsView: React.FC = () => {
                 <span>{isSyncing ? '同步上傳中...' : '立即手動同步'}</span>
               </button>
             </div>
+
+            {/* Advanced Supabase settings toggle */}
+            <div className="pt-1">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedSupabase(!showAdvancedSupabase)}
+                className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-orange flex items-center space-x-1"
+              >
+                <Database className="w-3.5 h-3.5" />
+                <span>進階 Supabase 雲端資料庫連線</span>
+                {showAdvancedSupabase ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+
+              {showAdvancedSupabase && (
+                <div className="mt-2 p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2 text-xs animate-fade-in">
+                  <div>
+                    <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-0.5">
+                      Supabase Project URL
+                    </label>
+                    <input
+                      type="text"
+                      value={supabaseUrl}
+                      onChange={(e) => setSupabaseUrl(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 mb-0.5">
+                      Supabase Anon Public Key
+                    </label>
+                    <input
+                      type="password"
+                      value={supabaseAnonKey}
+                      onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSupabaseUrl(DEFAULT_SUPABASE_URL);
+                      setSupabaseAnonKey(DEFAULT_SUPABASE_ANON_KEY);
+                      showNotification('已恢復為預設 Supabase 伺服器！');
+                    }}
+                    className="text-[11px] text-calico-orange hover:underline font-bold"
+                  >
+                    恢復預設雲端伺服器
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
 
-      {/* 2. ⏰ 課表每節課時間設定 (自訂起訖時間) */}
-      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
-            <Clock className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-              課表每節課時間自訂
-            </h3>
-            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-              自訂各節次起訖時間、新增夜間部節次，與帳號同步獨立
-            </p>
-          </div>
-        </div>
-        <button
-          type="button"
-          onClick={() => setIsPeriodModalOpen(true)}
-          className="px-3.5 py-2 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-xs hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs shrink-0"
-        >
-          自訂節次
-        </button>
-      </div>
-
-      {/* 3. 🏷️ 自訂記帳與待辦分類種類 (Custom Categories Manager) */}
-      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
-            <Tag className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-              自訂記帳與待辦種類
-            </h3>
-            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-              自訂各項標籤、分類名稱與專屬代表色
-            </p>
-          </div>
-        </div>
-
-        {/* Tab Switcher for Categories */}
-        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5 text-xs font-bold">
-          <button
-            type="button"
-            onClick={() => setActiveCategoryTab('expense')}
-            className={`py-1.5 rounded-xl transition-all ${
-              activeCategoryTab === 'expense'
-                ? 'bg-calico-orange text-white shadow-xs font-black'
-                : 'text-calico-cocoa/60 dark:text-zinc-400'
-            }`}
-          >
-            支出種類 ({customExpenseCategories.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategoryTab('income')}
-            className={`py-1.5 rounded-xl transition-all ${
-              activeCategoryTab === 'income'
-                ? 'bg-calico-sage text-white shadow-xs font-black'
-                : 'text-calico-cocoa/60 dark:text-zinc-400'
-            }`}
-          >
-            收入種類 ({customIncomeCategories.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveCategoryTab('todo')}
-            className={`py-1.5 rounded-xl transition-all ${
-              activeCategoryTab === 'todo'
-                ? 'bg-indigo-600 text-white shadow-xs font-black'
-                : 'text-calico-cocoa/60 dark:text-zinc-400'
-            }`}
-          >
-            待辦標籤 ({customTodoCategories.length})
-          </button>
-        </div>
-
-        {/* Existing categories list */}
-        <div className="flex flex-wrap gap-2 pt-1 max-h-40 overflow-y-auto pr-1">
-          {(activeCategoryTab === 'expense'
-            ? customExpenseCategories
-            : activeCategoryTab === 'income'
-            ? customIncomeCategories
-            : customTodoCategories
-          ).map((c) => (
-            <div
-              key={c.id || c.name}
-              className="px-3 py-1.5 rounded-xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs font-bold"
-            >
-              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.colorHex }} />
-              <span className="text-calico-cocoa dark:text-zinc-100">{c.name}</span>
-              <button
-                type="button"
-                onClick={() => deleteCustomCategory(activeCategoryTab, c.id || c.name)}
-                className="text-calico-cocoa/30 hover:text-red-500 transition-colors ml-1"
-                title="刪除此分類"
-              >
-                <Trash2 className="w-3 h-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-
-        {/* Inline Add Category form */}
-        <form onSubmit={handleCreateCategory} className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
-          <div className="flex items-center space-x-2">
-            <input
-              type="text"
-              placeholder={`輸入新${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'}名稱`}
-              value={newCatName}
-              onChange={(e) => setNewCatName(e.target.value)}
-              className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
-            />
-            <button
-              type="submit"
-              disabled={!newCatName.trim()}
-              className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-extrabold shadow-xs active:scale-95 disabled:opacity-40 transition-all flex items-center space-x-1"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>新增種類</span>
-            </button>
-          </div>
-
-          {/* Color swatches */}
-          <div className="flex items-center space-x-2 pt-0.5">
-            <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold">挑選顏色：</span>
-            {PALETTE.map((c) => (
-              <button
-                type="button"
-                key={c}
-                onClick={() => setNewCatColor(c)}
-                style={{ backgroundColor: c }}
-                className={`w-4 h-4 rounded-full transition-transform ${
-                  newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white' : 'opacity-70'
-                }`}
-              />
-            ))}
-          </div>
-        </form>
-      </div>
-
-      {/* 3. LINE Bot Settings */}
+      {/* ======================================================== */}
+      {/* 3. 🤖 LINE 官方帳號推播中心 (LINE Push Notification Center) */}
+      {/* ======================================================== */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-2.5">
-            <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
+            <div className="p-2 rounded-xl bg-[#06C755]/15 text-[#06C755] dark:text-[#25D366]">
               <MessageCircle className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                LINE 官方帳號每日推播
+                LINE 官方推播中心 (每日晨報)
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                推播獨立區隔，加好友自動綁定 User ID
+                每個帳號獨立推播，加好友自動綁定 User ID
               </p>
             </div>
           </div>
 
-          <button
-            onClick={() => setIsLineBotModalOpen(true)}
-            className="px-2.5 py-1.5 rounded-xl bg-[#06C755]/15 text-[#06C755] dark:text-[#25D366] text-xs font-bold flex items-center space-x-1 hover:bg-[#06C755]/25 active:scale-95 transition-all shrink-0 ml-2"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>推播中心</span>
-          </button>
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={isLinePushEnabled}
+              onChange={(e) => setIsLinePushEnabled(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#06C755]"></div>
+          </label>
         </div>
 
-        <div className="space-y-2.5 pt-1">
+        <div className="space-y-2.5 pt-1 border-t border-black/5 dark:border-white/5">
+          {/* Push Time Selection */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                每日晨報發送時間 (時)
+              </label>
+              <select
+                value={pushHour}
+                onChange={(e) => setPushHour(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+              >
+                {Array.from({ length: 24 }).map((_, i) => (
+                  <option key={i} value={i}>
+                    {String(i).padStart(2, '0')} 點
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                發送時間 (分)
+              </label>
+              <select
+                value={pushMinute}
+                onChange={(e) => setPushMinute(Number(e.target.value))}
+                className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+              >
+                <option value={0}>00 分</option>
+                <option value={15}>15 分</option>
+                <option value={30}>30 分</option>
+                <option value={45}>45 分</option>
+              </select>
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
               已綁定的 LINE User ID
@@ -536,10 +766,10 @@ export const SettingsView: React.FC = () => {
             <button
               onClick={handleClaimLineFollower}
               disabled={isClaimingLineId}
-              className="flex-1 py-2 px-3 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-bold flex items-center justify-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all"
+              className="flex-1 py-2 px-3 rounded-xl bg-[#06C755]/15 text-[#06C755] dark:text-[#25D366] text-xs font-bold flex items-center justify-center space-x-1 hover:bg-[#06C755]/25 active:scale-95 transition-all"
             >
               <UserCheck className="w-3.5 h-3.5" />
-              <span>{isClaimingLineId ? '尋找好友中...' : '自動認領 LINE ID'}</span>
+              <span>{isClaimingLineId ? '尋找新好友中...' : '一鍵自動認領 LINE ID'}</span>
             </button>
 
             <button
@@ -554,7 +784,243 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* 4. Budget & Cycle Settings */}
+      {/* ======================================================== */}
+      {/* 4. ⏰ 課表每節課時間與節次自訂 (Inline Class Period Times) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                課表每節課時間與節次自訂 ({periods.length} 節)
+              </h3>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                依學校鐘聲自訂各節次起訖時間，與帳號同步獨立
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowPeriodsList(!showPeriodsList)}
+            className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200"
+          >
+            {showPeriodsList ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+
+        {showPeriodsList && (
+          <div className="space-y-3 pt-1 border-t border-black/5 dark:border-white/5 animate-fade-in">
+            {/* Quick Templates */}
+            <div className="flex items-center justify-between gap-1 flex-wrap">
+              <span className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                快速範本：
+              </span>
+              <div className="flex items-center space-x-1.5">
+                <button
+                  type="button"
+                  onClick={() => handleApplyTemplate('default')}
+                  className="px-2.5 py-1 rounded-xl bg-calico-cream dark:bg-zinc-800 text-[11px] font-bold text-calico-cocoa/80 dark:text-zinc-300 hover:text-calico-orange transition-all"
+                >
+                  標準大專 (08:10起)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleApplyTemplate('eight_am')}
+                  className="px-2.5 py-1 rounded-xl bg-calico-cream dark:bg-zinc-800 text-[11px] font-bold text-calico-cocoa/80 dark:text-zinc-300 hover:text-calico-orange transition-all"
+                >
+                  整點起 (08:00起)
+                </button>
+              </div>
+            </div>
+
+            {/* Period rows */}
+            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+              {periods.map((p, index) => (
+                <div
+                  key={p.id}
+                  className={`p-2.5 rounded-2xl border transition-all flex items-center justify-between gap-2 ${
+                    p.isNoon
+                      ? 'bg-amber-50/70 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/30'
+                      : 'bg-calico-cream/60 dark:bg-zinc-800/60 border-black/5 dark:border-white/5'
+                  }`}
+                >
+                  <div className="flex items-center space-x-1.5 w-24 shrink-0">
+                    <span className="w-4 h-4 rounded-md bg-black/5 dark:bg-white/10 flex items-center justify-center text-[9px] font-black text-calico-cocoa/60 dark:text-zinc-400">
+                      {index + 1}
+                    </span>
+                    <input
+                      type="text"
+                      value={p.name}
+                      onChange={(e) => handlePeriodNameChange(p.id, e.target.value)}
+                      className="w-full px-1.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+                    />
+                  </div>
+
+                  <div className="flex items-center space-x-1 flex-1 min-w-0">
+                    <input
+                      type="time"
+                      value={p.startTime}
+                      onChange={(e) => handlePeriodTimeChange(p.id, 'startTime', e.target.value)}
+                      className="flex-1 px-1.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono font-bold text-center"
+                    />
+                    <span className="text-xs font-bold text-calico-cocoa/40">~</span>
+                    <input
+                      type="time"
+                      value={p.endTime}
+                      onChange={(e) => handlePeriodTimeChange(p.id, 'endTime', e.target.value)}
+                      className="flex-1 px-1.5 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono font-bold text-center"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeletePeriod(p.id)}
+                    className="p-1 rounded-lg text-calico-cocoa/30 hover:text-red-500 shrink-0"
+                    title="刪除"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleAddPeriod}
+              className="w-full py-2 rounded-2xl border border-dashed border-calico-orange/40 hover:border-calico-orange text-calico-orange bg-calico-orange/5 text-xs font-black transition-all flex items-center justify-center space-x-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>新增課表節次 (如夜間部第 11 節)</span>
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* 5. 🏷️ 自訂記帳與待辦分類 (Custom Categories Manager) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
+            <Tag className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+              自訂記帳與待辦種類
+            </h3>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+              自訂支出、收入與待辦項目的標籤與代表色
+            </p>
+          </div>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('expense')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'expense'
+                ? 'bg-calico-orange text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            支出 ({customExpenseCategories.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('income')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'income'
+                ? 'bg-calico-sage text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            收入 ({customIncomeCategories.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveCategoryTab('todo')}
+            className={`py-1.5 rounded-xl transition-all ${
+              activeCategoryTab === 'todo'
+                ? 'bg-indigo-600 text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            待辦 ({customTodoCategories.length})
+          </button>
+        </div>
+
+        {/* Tags List */}
+        <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+          {(activeCategoryTab === 'expense'
+            ? customExpenseCategories
+            : activeCategoryTab === 'income'
+            ? customIncomeCategories
+            : customTodoCategories
+          ).map((c) => (
+            <div
+              key={c.id || c.name}
+              className="px-2.5 py-1 rounded-xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-1.5 text-xs font-bold"
+            >
+              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: c.colorHex }} />
+              <span className="text-calico-cocoa dark:text-zinc-100">{c.name}</span>
+              <button
+                type="button"
+                onClick={() => deleteCustomCategory(activeCategoryTab, c.id || c.name)}
+                className="text-calico-cocoa/30 hover:text-red-500 transition-colors ml-1"
+                title="刪除"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            </div>
+          ))}
+        </div>
+
+        {/* Add Category Form */}
+        <form onSubmit={handleCreateCategory} className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
+          <div className="flex items-center space-x-2">
+            <input
+              type="text"
+              placeholder={`輸入新${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'}名稱`}
+              value={newCatName}
+              onChange={(e) => setNewCatName(e.target.value)}
+              className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+            />
+            <button
+              type="submit"
+              disabled={!newCatName.trim()}
+              className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-extrabold shadow-xs active:scale-95 disabled:opacity-40"
+            >
+              <Plus className="w-3.5 h-3.5 inline mr-0.5" />
+              新增
+            </button>
+          </div>
+
+          <div className="flex items-center space-x-2 pt-0.5">
+            <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold">挑選顏色：</span>
+            {PALETTE.map((c) => (
+              <button
+                type="button"
+                key={c}
+                onClick={() => setNewCatColor(c)}
+                style={{ backgroundColor: c }}
+                className={`w-4 h-4 rounded-full transition-transform ${
+                  newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white' : 'opacity-70'
+                }`}
+              />
+            ))}
+          </div>
+        </form>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 6. 💰 記帳週期與花費限額 (Budget & Billing Cycle) */}
+      {/* ======================================================== */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center space-x-2.5">
           <div className="p-2 rounded-xl bg-calico-cocoa/10 text-calico-cocoa dark:text-zinc-200">
@@ -565,15 +1031,15 @@ export const SettingsView: React.FC = () => {
               記帳週期與花費限額
             </h3>
             <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-              設定每月發薪/零用錢重置日與每日預算
+              設定每月零用錢重置日與每日預算
             </p>
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 pt-1">
+        <div className="grid grid-cols-2 gap-3 pt-1 border-t border-black/5 dark:border-white/5">
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              每月重置日 (發薪日)
+              每月重置日 (發薪日/生活費)
             </label>
             <input
               type="number"
@@ -600,23 +1066,346 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* Save Button */}
-      <div className="pt-2 flex items-center space-x-3">
-        <button
-          onClick={handleExportData}
-          className="p-3.5 rounded-2xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa/70 dark:text-zinc-300 font-bold text-xs flex items-center space-x-1.5 shadow-ios-sm active:scale-95 transition-all"
-          title="備份匯出 JSON"
-        >
-          <Download className="w-4 h-4" />
-          <span>備份</span>
-        </button>
+      {/* ======================================================== */}
+      {/* 7. 🤝 好友共享代碼與權限管理 (Friend Sharing & Permissions) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                好友課表與記帳共享設定
+              </h3>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                自訂共享權限，互換代碼即可查看課表
+              </p>
+            </div>
+          </div>
 
+          <button
+            type="button"
+            onClick={handlePublishSchedule}
+            disabled={isPublishingShare}
+            className="px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span>{isPublishingShare ? '同步發布中...' : '發布至雲端'}</span>
+          </button>
+        </div>
+
+        {/* Toggles */}
+        <div className="space-y-2 pt-1 border-t border-black/5 dark:border-white/5 text-xs font-bold">
+          <label className="flex items-center justify-between p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60">
+            <span className="text-calico-cocoa dark:text-zinc-200">開放好友查看課表</span>
+            <input
+              type="checkbox"
+              checked={isShareCourses}
+              onChange={(e) => setIsShareCourses(e.target.checked)}
+              className="accent-calico-orange w-4 h-4 rounded cursor-pointer"
+            />
+          </label>
+          <label className="flex items-center justify-between p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60">
+            <span className="text-calico-cocoa dark:text-zinc-200">開放好友查看記帳總覽</span>
+            <input
+              type="checkbox"
+              checked={isShareAccounting}
+              onChange={(e) => setIsShareAccounting(e.target.checked)}
+              className="accent-calico-orange w-4 h-4 rounded cursor-pointer"
+            />
+          </label>
+          <label className="flex items-center justify-between p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60">
+            <span className="text-calico-cocoa dark:text-zinc-200">開放好友查看行事曆</span>
+            <input
+              type="checkbox"
+              checked={isShareCalendar}
+              onChange={(e) => setIsShareCalendar(e.target.checked)}
+              className="accent-calico-orange w-4 h-4 rounded cursor-pointer"
+            />
+          </label>
+        </div>
+
+        {/* Add Friend Code Form */}
+        <form onSubmit={handleAddFriend} className="flex items-center space-x-2 pt-1">
+          <input
+            type="text"
+            placeholder="輸入好友的分享碼 (如 CAMP88)"
+            value={friendCodeInput}
+            onChange={(e) => setFriendCodeInput(e.target.value.toUpperCase())}
+            className="flex-1 px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-bold uppercase"
+          />
+          <button
+            type="submit"
+            disabled={!friendCodeInput.trim() || isAddingFriend}
+            className="px-3.5 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold shadow-xs active:scale-95 disabled:opacity-40"
+          >
+            {isAddingFriend ? '加入中...' : '加入好友'}
+          </button>
+        </form>
+
+        {/* Saved Friends List */}
+        {savedFriends.length > 0 && (
+          <div className="pt-2">
+            <span className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 block mb-1.5">
+              已追蹤的好友課表 ({savedFriends.length})
+            </span>
+            <div className="space-y-1.5">
+              {savedFriends.map((f) => (
+                <div
+                  key={f.shareCode}
+                  className="p-2.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs font-bold"
+                >
+                  <div className="flex items-center space-x-2">
+                    <span className="text-calico-cocoa dark:text-zinc-200">{f.ownerName}</span>
+                    <span className="font-mono text-calico-orange bg-calico-orange/10 px-1.5 py-0.5 rounded text-[10px]">
+                      {f.shareCode}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFriendRecord(f.shareCode)}
+                    className="text-calico-cocoa/30 hover:text-red-500"
+                    title="移除好友"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ======================================================== */}
+      {/* 8. 🎨 系統外觀、主題與可樂管家設定 (Appearance & Mascot) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+            <Palette className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+              外觀色彩與可樂管家偏好
+            </h3>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+              深淺主題模式與校園趣味功能快捷體驗
+            </p>
+          </div>
+        </div>
+
+        {/* Theme Segmented Switcher */}
+        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={() => {
+              setTheme('light');
+              updateSettings({ theme: 'light' });
+            }}
+            className={`py-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 ${
+              theme === 'light'
+                ? 'bg-white text-calico-cocoa shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            <Sun className="w-3.5 h-3.5 text-amber-500" />
+            <span>淺色模式</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTheme('dark');
+              updateSettings({ theme: 'dark' });
+            }}
+            className={`py-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 ${
+              theme === 'dark'
+                ? 'bg-zinc-900 text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5 text-indigo-400" />
+            <span>深色模式</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTheme('system');
+              updateSettings({ theme: 'system' });
+            }}
+            className={`py-2 rounded-xl transition-all flex items-center justify-center space-x-1.5 ${
+              theme === 'system'
+                ? 'bg-calico-orange text-white shadow-xs font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            <Laptop className="w-3.5 h-3.5" />
+            <span>跟隨系統</span>
+          </button>
+        </div>
+
+        {/* Mascot Mood Selector */}
+        <div className="pt-2">
+          <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
+            可樂管家當前心情
+          </label>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { id: 'happy', label: '開心 😺' },
+              { id: 'thinking', label: '認真 🧐' },
+              { id: 'proud', label: '自豪 😎' },
+              { id: 'sleeping', label: '放鬆 😴' },
+            ].map((m) => (
+              <button
+                type="button"
+                key={m.id}
+                onClick={() => setCatMood(m.id as any)}
+                className={`py-2 px-2 rounded-xl text-xs font-bold transition-all border ${
+                  catMood === m.id
+                    ? 'bg-calico-orange/15 border-calico-orange text-calico-orange font-black shadow-2xs'
+                    : 'bg-calico-cream/60 dark:bg-zinc-800/60 border-black/5 dark:border-white/5 text-calico-cocoa/70 dark:text-zinc-400'
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Campus Fun Features Launchpad */}
+        <div className="pt-2">
+          <span className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
+            校園百寶箱小工具快速開啟
+          </span>
+          <div className="grid grid-cols-4 gap-2">
+            <button
+              type="button"
+              onClick={() => setIsFortuneModalOpen(true)}
+              className="p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 text-[11px] font-bold text-calico-cocoa dark:text-zinc-200 hover:border-amber-400 transition-all flex flex-col items-center"
+            >
+              <span>🎋</span>
+              <span className="mt-0.5">每日吉籤</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsFoodRouletteOpen(true)}
+              className="p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 text-[11px] font-bold text-calico-cocoa dark:text-zinc-200 hover:border-calico-orange transition-all flex flex-col items-center"
+            >
+              <span>🍱</span>
+              <span className="mt-0.5">吃啥轉盤</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsPomodoroOpen(true)}
+              className="p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 text-[11px] font-bold text-calico-cocoa dark:text-zinc-200 hover:border-indigo-400 transition-all flex flex-col items-center"
+            >
+              <span>⏱️</span>
+              <span className="mt-0.5">伴讀番茄</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsGpaModalOpen(true)}
+              className="p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 text-[11px] font-bold text-calico-cocoa dark:text-zinc-200 hover:border-emerald-400 transition-all flex flex-col items-center"
+            >
+              <span>🎓</span>
+              <span className="mt-0.5">GPA試算</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 9. 💾 資料備份、還原與重置 (Data Backup, Restore & Reset) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 rounded-xl bg-calico-cocoa/10 text-calico-cocoa dark:text-zinc-200">
+            <Download className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+              資料備份、匯入還原與清除
+            </h3>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+              完整的本機 JSON 匯出備份與還原機制
+            </p>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2.5 pt-1 border-t border-black/5 dark:border-white/5">
+          <button
+            type="button"
+            onClick={handleExportData}
+            className="py-2.5 px-3 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 font-bold text-xs flex items-center justify-center space-x-1.5 hover:bg-calico-orange/15 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+          >
+            <Download className="w-4 h-4" />
+            <span>匯出備份 JSON</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="py-2.5 px-3 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 font-bold text-xs flex items-center justify-center space-x-1.5 hover:bg-calico-orange/15 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+          >
+            <Upload className="w-4 h-4" />
+            <span>匯入還原 JSON</span>
+          </button>
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImportFile}
+            accept=".json,application/json"
+            className="hidden"
+          />
+        </div>
+
+        {/* Clear Data Reset Button */}
+        <div className="pt-2 border-t border-black/5 dark:border-white/5">
+          {!showResetConfirm ? (
+            <button
+              type="button"
+              onClick={() => setShowResetConfirm(true)}
+              className="text-xs font-bold text-red-500 hover:text-red-600 flex items-center space-x-1"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>清除本機快取並重設為初始狀態</span>
+            </button>
+          ) : (
+            <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/30 space-y-2 animate-fade-in">
+              <div className="flex items-center space-x-1.5 text-red-600 dark:text-red-400 text-xs font-black">
+                <AlertTriangle className="w-4 h-4" />
+                <span>確定要清除本機所有資料嗎？此動作無法復原！</span>
+              </div>
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={handleResetAllData}
+                  className="py-1.5 px-3 rounded-xl bg-red-600 text-white text-xs font-black hover:bg-red-700 active:scale-95"
+                >
+                  確認重設
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowResetConfirm(false)}
+                  className="py-1.5 px-3 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200 text-xs font-bold"
+                >
+                  取消
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Save Button */}
+      <div className="pt-2">
         <button
-          onClick={handleSaveSettings}
-          className="flex-1 py-3.5 px-4 rounded-2xl bg-calico-orange text-white font-black shadow-ios active:scale-95 transition-all flex items-center justify-center space-x-2 text-sm tracking-wide hover:brightness-105"
+          onClick={handleSaveAllSettings}
+          className="w-full py-4 px-6 rounded-2xl bg-calico-orange text-white font-black shadow-ios active:scale-95 transition-all flex items-center justify-center space-x-2 text-sm tracking-wide hover:brightness-105"
         >
           <Save className="w-4 h-4" />
-          <span>儲存所有設定</span>
+          <span>儲存全部設定並生效</span>
         </button>
       </div>
     </div>

@@ -243,6 +243,10 @@ const DEFAULT_SETTINGS: UserSettings = {
   autoSyncEnabled: true,
   autoSyncTime: '23:00',
   autoSyncIntervalMinutes: 240, // 4小時為預設值，兼顧省電與雲端備份
+  isShareCourses: true,
+  isShareAccounting: true,
+  isShareCalendar: true,
+  enableFortuneWidget: true,
 };
 
 interface BudgetInfo {
@@ -270,6 +274,17 @@ interface AppContextType {
   setIsEventModalOpen: (open: boolean) => void;
   isPeriodModalOpen: boolean;
   setIsPeriodModalOpen: (open: boolean) => void;
+  // Campus fun features modals
+  isFortuneModalOpen: boolean;
+  setIsFortuneModalOpen: (open: boolean) => void;
+  isFoodRouletteOpen: boolean;
+  setIsFoodRouletteOpen: (open: boolean) => void;
+  isPomodoroOpen: boolean;
+  setIsPomodoroOpen: (open: boolean) => void;
+  isGpaModalOpen: boolean;
+  setIsGpaModalOpen: (open: boolean) => void;
+  restoreBackupData: (data: any) => boolean;
+  resetAllData: () => void;
   eventToEdit: CalendarEvent | null;
   setEventToEdit: (e: CalendarEvent | null) => void;
   courses: Course[];
@@ -346,6 +361,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
   const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
+  const [isFortuneModalOpen, setIsFortuneModalOpen] = useState(false);
+  const [isFoodRouletteOpen, setIsFoodRouletteOpen] = useState(false);
+  const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
+  const [isGpaModalOpen, setIsGpaModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
   // Load from LocalStorage (Scoped per account)
@@ -500,6 +519,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       window.removeEventListener('offline', handleOffline);
     };
   }, []);
+
+  // Theme effect (light / dark / system)
+  useEffect(() => {
+    const theme = settings.theme || 'light';
+    const root = document.documentElement;
+    const applyTheme = (isDark: boolean) => {
+      if (isDark) {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+    };
+
+    if (theme === 'dark') {
+      applyTheme(true);
+    } else if (theme === 'light') {
+      applyTheme(false);
+    } else {
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      applyTheme(mediaQuery.matches);
+      const listener = (e: MediaQueryListEvent) => applyTheme(e.matches);
+      mediaQuery.addEventListener('change', listener);
+      return () => mediaQuery.removeEventListener('change', listener);
+    }
+  }, [settings.theme]);
 
   // Save to LocalStorage whenever state changes (strictly scoped to active user)
   useEffect(() => {
@@ -959,6 +1003,80 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettings((prev) => ({ ...prev, ...partial }));
   };
 
+  const restoreBackupData = (imported: any): boolean => {
+    try {
+      if (!imported || typeof imported !== 'object') return false;
+      const uid = activeUserIdRef.current;
+
+      if (Array.isArray(imported.courses)) {
+        setCourses(imported.courses);
+        localStorage.setItem(getScopedKey(uid, 'courses'), JSON.stringify(imported.courses));
+      }
+      if (Array.isArray(imported.todos)) {
+        setTodos(imported.todos);
+        localStorage.setItem(getScopedKey(uid, 'todos'), JSON.stringify(imported.todos));
+      }
+      if (Array.isArray(imported.transactions)) {
+        setTransactions(imported.transactions);
+        localStorage.setItem(getScopedKey(uid, 'transactions'), JSON.stringify(imported.transactions));
+      }
+      if (Array.isArray(imported.calendarEvents)) {
+        setCalendarEvents(imported.calendarEvents);
+        localStorage.setItem(getScopedKey(uid, 'calendar_events'), JSON.stringify(imported.calendarEvents));
+      }
+      if (Array.isArray(imported.classPeriods)) {
+        setClassPeriods(imported.classPeriods);
+        localStorage.setItem(getScopedKey(uid, 'class_periods'), JSON.stringify(imported.classPeriods));
+      }
+      if (Array.isArray(imported.customExpenseCategories)) {
+        setCustomExpenseCategories(imported.customExpenseCategories);
+        localStorage.setItem(getScopedKey(uid, 'custom_expense_cats'), JSON.stringify(imported.customExpenseCategories));
+      }
+      if (Array.isArray(imported.customIncomeCategories)) {
+        setCustomIncomeCategories(imported.customIncomeCategories);
+        localStorage.setItem(getScopedKey(uid, 'custom_income_cats'), JSON.stringify(imported.customIncomeCategories));
+      }
+      if (Array.isArray(imported.customTodoCategories)) {
+        setCustomTodoCategories(imported.customTodoCategories);
+        localStorage.setItem(getScopedKey(uid, 'custom_todo_cats'), JSON.stringify(imported.customTodoCategories));
+      }
+      if (imported.settings && typeof imported.settings === 'object') {
+        const nextSettings = { ...DEFAULT_SETTINGS, ...imported.settings };
+        setSettings(nextSettings);
+        localStorage.setItem(getScopedKey(uid, 'settings'), JSON.stringify(nextSettings));
+      }
+      return true;
+    } catch (e) {
+      console.error('Failed to restore backup data:', e);
+      return false;
+    }
+  };
+
+  const resetAllData = () => {
+    const uid = activeUserIdRef.current;
+    setCourses(INITIAL_COURSES);
+    setTodos(INITIAL_TODOS);
+    setTransactions(INITIAL_TRANSACTIONS);
+    setCalendarEvents(INITIAL_CALENDAR_EVENTS);
+    setClassPeriods(DEFAULT_CLASS_PERIODS);
+    setCustomExpenseCategories(DEFAULT_EXPENSE_CATEGORIES);
+    setCustomIncomeCategories(DEFAULT_INCOME_CATEGORIES);
+    setCustomTodoCategories(DEFAULT_TODO_CATEGORIES);
+    setSettings(DEFAULT_SETTINGS);
+    setSavedFriends([]);
+
+    localStorage.removeItem(getScopedKey(uid, 'courses'));
+    localStorage.removeItem(getScopedKey(uid, 'todos'));
+    localStorage.removeItem(getScopedKey(uid, 'transactions'));
+    localStorage.removeItem(getScopedKey(uid, 'calendar_events'));
+    localStorage.removeItem(getScopedKey(uid, 'class_periods'));
+    localStorage.removeItem(getScopedKey(uid, 'saved_friends'));
+    localStorage.removeItem(getScopedKey(uid, 'settings'));
+    localStorage.removeItem(getScopedKey(uid, 'custom_expense_cats'));
+    localStorage.removeItem(getScopedKey(uid, 'custom_income_cats'));
+    localStorage.removeItem(getScopedKey(uid, 'custom_todo_cats'));
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -978,6 +1096,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsEventModalOpen,
         isPeriodModalOpen,
         setIsPeriodModalOpen,
+        isFortuneModalOpen,
+        setIsFortuneModalOpen,
+        isFoodRouletteOpen,
+        setIsFoodRouletteOpen,
+        isPomodoroOpen,
+        setIsPomodoroOpen,
+        isGpaModalOpen,
+        setIsGpaModalOpen,
+        restoreBackupData,
+        resetAllData,
         eventToEdit,
         setEventToEdit,
         courses,

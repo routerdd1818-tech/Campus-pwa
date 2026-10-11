@@ -131,6 +131,13 @@ export interface UserSettings {
   customTodoCategories?: CustomCategory[];
   // Customizable class period times
   classPeriods?: ClassPeriod[];
+  // Friend sharing permissions
+  isShareCourses?: boolean;
+  isShareAccounting?: boolean;
+  isShareCalendar?: boolean;
+  // Campus fun features
+  foodRouletteList?: string[];
+  enableFortuneWidget?: boolean;
 }
 
 export interface CalendarEvent {

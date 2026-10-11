@@ -13,6 +13,10 @@ import { AccountingView } from './views/AccountingView';
 import { SettingsView } from './views/SettingsView';
 import { ShareModal } from './components/ShareModal';
 import { PeriodSettingsModal } from './components/PeriodSettingsModal';
+import { CampusFortuneModal } from './components/CampusFortuneModal';
+import { FoodRouletteModal } from './components/FoodRouletteModal';
+import { FocusPomodoroModal } from './components/FocusPomodoroModal';
+import { GpaCalculatorModal } from './components/GpaCalculatorModal';
 
 const MainContent: React.FC = () => {
   const {
@@ -25,6 +29,14 @@ const MainContent: React.FC = () => {
     setIsShareModalOpen,
     isPeriodModalOpen,
     setIsPeriodModalOpen,
+    isFortuneModalOpen,
+    setIsFortuneModalOpen,
+    isFoodRouletteOpen,
+    setIsFoodRouletteOpen,
+    isPomodoroOpen,
+    setIsPomodoroOpen,
+    isGpaModalOpen,
+    setIsGpaModalOpen,
   } = useApp();
 
   return (
@@ -70,6 +82,30 @@ const MainContent: React.FC = () => {
       <PeriodSettingsModal
         isOpen={isPeriodModalOpen}
         onClose={() => setIsPeriodModalOpen(false)}
+      />
+
+      {/* 🎋 可樂管家校園每日吉籤 Modal */}
+      <CampusFortuneModal
+        isOpen={isFortuneModalOpen}
+        onClose={() => setIsFortuneModalOpen(false)}
+      />
+
+      {/* 🍱 午餐吃什麼？校園美食決策轉盤 Modal */}
+      <FoodRouletteModal
+        isOpen={isFoodRouletteOpen}
+        onClose={() => setIsFoodRouletteOpen(false)}
+      />
+
+      {/* ⏱️ 可樂管家伴讀番茄鐘 Modal */}
+      <FocusPomodoroModal
+        isOpen={isPomodoroOpen}
+        onClose={() => setIsPomodoroOpen(false)}
+      />
+
+      {/* 🎓 學期 GPA 與學分歐趴試算 Modal */}
+      <GpaCalculatorModal
+        isOpen={isGpaModalOpen}
+        onClose={() => setIsGpaModalOpen(false)}
       />
     </div>
   );
