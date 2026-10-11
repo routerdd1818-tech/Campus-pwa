@@ -730,80 +730,220 @@ export async function sendTestLineMessage(userId: string, text: string): Promise
 }
 
 // -------------------------------------------------------------
-// 🧠 Gemini AI OCR Gateway
+// 🔑 App API Configs (Remote Vault in Supabase + LocalStorage)
 // -------------------------------------------------------------
-export async function callGeminiOcrGateway(
-  base64Image: string
-): Promise<{ ok: boolean; text?: string; error?: string }> {
+export async function fetchAppApiConfig(configKey: string): Promise<string> {
   try {
     const supabase = getSupabaseClient();
+    const { data } = await supabase
+      .from('app_api_configs')
+      .select('config_value')
+      .eq('config_key', configKey)
+      .maybeSingle();
+    return data?.config_value ? String(data.config_value).trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function saveAppApiConfig(configKey: string, configValue: string): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('app_api_configs').upsert({
+      config_key: configKey,
+      config_value: configValue.trim(),
+      updated_at: new Date().toISOString(),
+    });
+    return !error;
+  } catch (err) {
+    console.warn('saveAppApiConfig error:', err);
+    return false;
+  }
+}
+
+export async function getGeminiApiKey(): Promise<string> {
+  const local = localStorage.getItem('campus_gemini_api_key');
+  if (local && local.trim()) return local.trim();
+
+  // Fallback to Supabase app_api_configs
+  const remote = await fetchAppApiConfig('gemini_api_key');
+  if (remote) {
+    localStorage.setItem('campus_gemini_api_key', remote);
+    return remote;
+  }
+  return '';
+}
+
+export async function saveGeminiApiKey(apiKey: string): Promise<boolean> {
+  const clean = apiKey.trim();
+  localStorage.setItem('campus_gemini_api_key', clean);
+  return await saveAppApiConfig('gemini_api_key', clean);
+}
+
+// -------------------------------------------------------------
+// 🧠 Gemini AI Direct REST Caller (Client-Side, 0-Edge Dependency)
+// -------------------------------------------------------------
+export async function callDirectGeminiApi(
+  base64Image: string,
+  apiKey: string,
+  mimeType: string = 'image/jpeg',
+  customPrompt?: string
+): Promise<{ ok: boolean; text?: string; model?: string; error?: string }> {
+  const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+  const prompt =
+    customPrompt ||
+    '請辨識這張大學/大專課表圖片，並以純 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、periodCodes（該堂課涵蓋的節次代碼或數字陣列，例如 [1, 2] 或 [5, 6, 7] 或 ["5","6","7"]）、startTime（格式如 09:10）、endTime（格式如 12:00）。只回傳純 JSON 陣列，不需任何其他說明文字。';
+
+  // Standard Google Generative Language Models (in priority order)
+  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  let lastError = '';
+
+  for (const model of models) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: prompt },
+                { inline_data: { mime_type: mimeType, data: cleanBase64 } },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.1,
+            responseMimeType: 'application/json',
+          },
+        }),
+      });
+
+      const json = await res.json();
+      if (res.ok) {
+        const text = json?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+          return { ok: true, text, model };
+        }
+      } else {
+        lastError = json?.error?.message || `HTTP ${res.status}`;
+      }
+    } catch (err: any) {
+      lastError = err.message || '網路連線失敗';
+    }
+  }
+
+  return { ok: false, error: lastError || 'Gemini 辨識服務無回應' };
+}
+
+// -------------------------------------------------------------
+// 🧠 Gemini AI OCR Gateway (Hybrid: Direct API + Edge Function)
+// -------------------------------------------------------------
+export async function callGeminiOcrGateway(
+  base64Image: string,
+  mimeType: string = 'image/jpeg',
+  overrideApiKey?: string
+): Promise<{ ok: boolean; text?: string; model?: string; error?: string; needApiKey?: boolean }> {
+  // 1. First priority: Direct Client API call if API key is available
+  const apiKey = (overrideApiKey || (await getGeminiApiKey())).trim();
+  if (apiKey) {
+    const directRes = await callDirectGeminiApi(base64Image, apiKey, mimeType);
+    if (directRes.ok) {
+      return directRes;
+    }
+    // If the direct call failed because of an actual API error (like invalid key or quota)
+    if (directRes.error && !directRes.error.includes('Edge Function')) {
+      return { ok: false, error: directRes.error };
+    }
+  }
+
+  // 2. Second priority: Try Edge Function (if deployed on Supabase)
+  try {
+    const supabase = getSupabaseClient();
+    const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
     const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
       body: {
         action: 'gemini_ocr',
-        models: ['gemini-3.8-flash', 'gemini-2.5-flash'],
-        base64Image,
+        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+        base64Image: cleanBase64,
         prompt:
           '請辨識這張大學/大專課表圖片，並以 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、periodCodes（該堂課涵蓋的節次代碼或數字陣列，例如 [1, 2] 或 [5, 6, 7] 或 ["5","6","7"]）、startTime（格式如 09:10）、endTime（格式如 12:00）。只回傳 JSON 陣列，不需其他文字。',
       },
     });
 
-    if (error) {
-      let detailedMsg = error.message;
-      try {
-        if (error.context && typeof error.context.json === 'function') {
-          const errBody = await error.context.json();
-          if (errBody?.message) detailedMsg = errBody.message;
-        }
-      } catch {}
-      return { ok: false, error: detailedMsg || '辨識服務連線異常，請確認 Supabase 設定' };
+    if (!error && data?.status !== 'error' && data?.text) {
+      return { ok: true, text: data.text, model: data?.model };
     }
 
-    if (data?.status === 'error') {
-      return { ok: false, error: data?.message || '辨識服務回傳錯誤' };
+    if (data?.status === 'error' && data?.message) {
+      return { ok: false, error: data.message };
     }
-
-    if (!data?.text) {
-      return { ok: false, error: '未能自圖片解析出文字內容，請確認圖片清晰度' };
-    }
-
-    return { ok: true, text: data.text };
-  } catch (err: any) {
-    console.warn('callGeminiOcrGateway error:', err);
-    return { ok: false, error: err.message || '辨識服務無回應，請確認網路與服務狀態' };
+  } catch (err) {
+    console.warn('Edge function invoke failed:', err);
   }
+
+  // 3. If neither worked and we don't have an API key configured
+  if (!apiKey) {
+    return {
+      ok: false,
+      needApiKey: true,
+      error: '尚未設定 Google Gemini API Key。請填入您的 Gemini API Key 即可開始辨識！',
+    };
+  }
+
+  return { ok: false, error: '辨識服務連線異常，請確認網路連線或 API Key 是否正確。' };
 }
 
-export async function testGeminiApiConnection(): Promise<{ ok: boolean; model?: string; message?: string }> {
+export async function testGeminiApiConnection(
+  overrideKey?: string
+): Promise<{ ok: boolean; model?: string; message?: string }> {
+  const apiKey = (overrideKey || (await getGeminiApiKey())).trim();
+
+  // Test direct connection first
+  if (apiKey) {
+    const testPng = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA=';
+    const directRes = await callDirectGeminiApi(
+      testPng,
+      apiKey,
+      'image/png',
+      'Ping test. Output JSON: [{"status":"ok"}]'
+    );
+    if (directRes.ok) {
+      return {
+        ok: true,
+        model: directRes.model || 'gemini-2.5-flash',
+        message: `連線成功！Google Gemini 官方 API (${directRes.model || 'gemini-2.5-flash'}) 運作正常`,
+      };
+    }
+    return { ok: false, message: `測試失敗：${directRes.error}` };
+  }
+
+  // Fallback to Edge function test
   try {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
       body: {
         action: 'gemini_ocr',
-        models: ['gemini-3.8-flash', 'gemini-2.5-flash'],
+        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
         base64Image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA=',
         prompt: 'Ping test. Output JSON: [{"status":"ok"}]',
       },
     });
 
-    if (error) {
-      let detailed = error.message;
-      try {
-        if (error.context && typeof error.context.json === 'function') {
-          const errBody = await error.context.json();
-          if (errBody?.message) detailed = errBody.message;
-        }
-      } catch {}
-      return { ok: false, message: detailed || '連線測試異常' };
+    if (!error && data?.status !== 'error') {
+      return {
+        ok: true,
+        model: data?.model || 'gemini-2.5-flash',
+        message: '連線正常！Supabase 雲端 Gateway 運作中',
+      };
     }
+  } catch {}
 
-    if (data?.status === 'error') {
-      return { ok: false, message: data.message || 'Gemini 回傳錯誤' };
-    }
-
-    return { ok: true, model: data?.model || 'gemini-3.8-flash', message: '連線正常！Gemini AI 課表辨識運作中' };
-  } catch (err: any) {
-    return { ok: false, message: err.message || '測試失敗' };
-  }
+  return {
+    ok: false,
+    message: '尚未設定 Gemini API Key，請先於下方填入 API Key 儲存後再測試',
+  };
 }
 
 export async function fetchLineBotInfo(): Promise<{ ok: boolean; data?: any; error?: string }> {
@@ -820,4 +960,5 @@ export async function fetchLineBotInfo(): Promise<{ ok: boolean; data?: any; err
     return { ok: false, error: err.message || '查詢失敗' };
   }
 }
+
 

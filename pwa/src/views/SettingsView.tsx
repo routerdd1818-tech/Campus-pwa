@@ -7,6 +7,10 @@ import {
   publishSharedSchedule,
   fetchSharedScheduleByCode,
   testGeminiApiConnection,
+  getGeminiApiKey,
+  saveGeminiApiKey,
+  fetchAppApiConfig,
+  saveAppApiConfig,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
@@ -48,6 +52,7 @@ import {
   ChevronUp,
   AlertTriangle,
   Users,
+  Key,
   Database,
   UtensilsCrossed,
   Timer,
@@ -151,6 +156,19 @@ export const SettingsView: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  // 9. API Keys Vault (Gemini & LINE)
+  const [geminiApiKey, setGeminiApiKey] = useState('');
+  const [lineChannelToken, setLineChannelToken] = useState('');
+  const [showGeminiKey, setShowGeminiKey] = useState(false);
+  const [showLineToken, setShowLineToken] = useState(false);
+  const [isSavingGeminiKey, setIsSavingGeminiKey] = useState(false);
+  const [isSavingLineToken, setIsSavingLineToken] = useState(false);
+
+  // Load API keys on mount
+  useEffect(() => {
+    getGeminiApiKey().then((k) => setGeminiApiKey(k));
+    fetchAppApiConfig('line_channel_access_token').then((t) => setLineChannelToken(t));
+  }, []);
 
   // Keep in sync with currentUser
   useEffect(() => {
@@ -318,15 +336,47 @@ export const SettingsView: React.FC = () => {
     showNotification(`已新增 ${activeCategoryTab === 'expense' ? '支出' : activeCategoryTab === 'income' ? '收入' : '待辦'} 分類！`);
   };
 
+  // 🔑 Save API Keys
+  const handleSaveGeminiApiKey = async () => {
+    setIsSavingGeminiKey(true);
+    try {
+      const ok = await saveGeminiApiKey(geminiApiKey);
+      if (ok) {
+        showNotification('✅ Gemini API Key 已成功儲存！');
+      } else {
+        showNotification('✅ Gemini API Key 已儲存於本機！');
+      }
+    } finally {
+      setIsSavingGeminiKey(false);
+    }
+  };
+
+  const handleSaveLineToken = async () => {
+    setIsSavingLineToken(true);
+    try {
+      const ok = await saveAppApiConfig('line_channel_access_token', lineChannelToken);
+      if (ok) {
+        showNotification('✅ LINE Channel Access Token 已成功儲存至 Supabase 雲端！');
+      } else {
+        showNotification('⚠️ 儲存失敗，請確認 Supabase 連線狀態');
+      }
+    } finally {
+      setIsSavingLineToken(false);
+    }
+  };
+
   // 🧠 Gemini AI Test
   const handleTestGemini = async () => {
     setIsTestingGemini(true);
     setGeminiTestStatus(null);
     try {
-      const res = await testGeminiApiConnection();
+      if (geminiApiKey.trim()) {
+        await saveGeminiApiKey(geminiApiKey.trim());
+      }
+      const res = await testGeminiApiConnection(geminiApiKey.trim());
       setGeminiTestStatus(res);
       if (res.ok) {
-        showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-3.8-flash'})`);
+        showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-2.5-flash'})`);
       } else {
         showNotification(`⚠️ Gemini 測試失敗：${res.message}`);
       }
@@ -674,8 +724,8 @@ export const SettingsView: React.FC = () => {
               </button>
             </div>
 
-            {/* Google Gemini AI OCR Connection Tester */}
-            <div className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-2 text-xs">
+            {/* Google Gemini AI OCR Configuration & Tester */}
+            <div className="p-3.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-2.5 text-xs">
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-2">
                   <div className="p-1.5 rounded-lg bg-calico-orange/15 text-calico-orange">
@@ -683,23 +733,66 @@ export const SettingsView: React.FC = () => {
                   </div>
                   <div>
                     <span className="font-bold text-calico-cocoa dark:text-zinc-200 block text-xs">
-                      Google Gemini AI 課表辨識檢測
+                      Google Gemini AI 課表辨識設定
                     </span>
                     <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                      最新模型：gemini-3.8-flash (雲端 Gateway 連線)
+                      模型：gemini-2.5-flash (支援前端直連與雲端備援)
                     </span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleTestGemini}
-                  disabled={isTestingGemini}
-                  className="px-3 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange font-bold hover:bg-calico-orange/25 active:scale-95 transition-all flex items-center space-x-1 disabled:opacity-50"
-                >
-                  <RefreshCw className={`w-3 h-3 ${isTestingGemini ? 'animate-spin' : ''}`} />
-                  <span>{isTestingGemini ? '連線測試中...' : '測試連線'}</span>
-                </button>
+                <div className="flex items-center space-x-1.5">
+                  <button
+                    type="button"
+                    onClick={handleTestGemini}
+                    disabled={isTestingGemini}
+                    className="px-2.5 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange font-bold hover:bg-calico-orange/25 active:scale-95 transition-all flex items-center space-x-1 disabled:opacity-50 text-[11px]"
+                  >
+                    <RefreshCw className={`w-3 h-3 ${isTestingGemini ? 'animate-spin' : ''}`} />
+                    <span>{isTestingGemini ? '測試中...' : '測試連線'}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
+                    <Key className="w-3 h-3 text-calico-orange" />
+                    <span>Gemini API Key</span>
+                  </label>
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-calico-orange hover:underline font-bold flex items-center space-x-0.5"
+                  >
+                    <span>免費取得 API Key ↗</span>
+                  </a>
+                </div>
+                <div className="flex items-center space-x-1.5">
+                  <input
+                    type={showGeminiKey ? 'text' : 'password'}
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    placeholder="貼上您的 Gemini API Key (AIzaSy...)"
+                    className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowGeminiKey(!showGeminiKey)}
+                    className="px-2 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa/70 dark:text-zinc-300 text-[11px] font-bold"
+                  >
+                    {showGeminiKey ? '隱藏' : '顯示'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveGeminiApiKey}
+                    disabled={isSavingGeminiKey}
+                    className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-50"
+                  >
+                    {isSavingGeminiKey ? '儲存中...' : '儲存 Key'}
+                  </button>
+                </div>
               </div>
 
               {geminiTestStatus && (
@@ -919,6 +1012,51 @@ export const SettingsView: React.FC = () => {
                 <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#06C755]"></div>
               </label>
             </div>
+          </div>
+
+          {/* LINE Channel Access Token Direct Configuration */}
+          <div className="p-3.5 rounded-2xl bg-[#06C755]/10 border border-[#06C755]/20 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-1">
+                <Key className="w-3.5 h-3.5 text-[#06C755]" />
+                <span>LINE Channel Access Token (長期權限碼)</span>
+              </label>
+              <a
+                href="https://developers.line.biz/console/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-[#06C755] hover:underline font-bold flex items-center space-x-0.5"
+              >
+                <span>LINE Developers 後台 ↗</span>
+              </a>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <input
+                type={showLineToken ? 'text' : 'password'}
+                value={lineChannelToken}
+                onChange={(e) => setLineChannelToken(e.target.value)}
+                placeholder="貼上 Messaging API 頁籤底部的 Channel access token"
+                className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
+              />
+              <button
+                type="button"
+                onClick={() => setShowLineToken(!showLineToken)}
+                className="px-2 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa/70 dark:text-zinc-300 text-[11px] font-bold"
+              >
+                {showLineToken ? '隱藏' : '顯示'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveLineToken}
+                disabled={isSavingLineToken}
+                className="px-3 py-1.5 rounded-xl bg-[#06C755] text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-50"
+              >
+                {isSavingLineToken ? '儲存中...' : '儲存 Token'}
+              </button>
+            </div>
+            <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400">
+              貼上後點擊儲存，將直接寫入 Supabase 的 app_api_configs，雲端定時排程推播即可透過 LINE 官方伺服器發送訊息！
+            </p>
           </div>
 
           <div>

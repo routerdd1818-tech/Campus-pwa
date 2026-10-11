@@ -1,8 +1,20 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Course, ClassPeriod } from '../types';
-import { callGeminiOcrGateway } from '../services/supabase';
+import { callGeminiOcrGateway, getGeminiApiKey, saveGeminiApiKey } from '../services/supabase';
 import { useApp } from '../context/AppContext';
-import { X, Sparkles, Upload, Loader2, CheckCircle2, AlertCircle, Wand2, Clock } from 'lucide-react';
+import {
+  X,
+  Sparkles,
+  Upload,
+  Loader2,
+  CheckCircle2,
+  AlertCircle,
+  Wand2,
+  Clock,
+  Key,
+  ExternalLink,
+  AlertTriangle,
+} from 'lucide-react';
 
 interface OcrModalProps {
   isOpen: boolean;
@@ -101,11 +113,31 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
   const { classPeriods } = useApp();
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [base64Data, setBase64Data] = useState<string | null>(null);
+  const [imageMimeType, setImageMimeType] = useState<string>('image/jpeg');
   const [isLoading, setIsLoading] = useState(false);
   const [parsedCourses, setParsedCourses] = useState<Course[]>([]);
   const [rawOcrItems, setRawOcrItems] = useState<any[]>([]);
   const [autoCalibratePeriods, setAutoCalibratePeriods] = useState<boolean>(true);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Gemini API Key inline configuration
+  const [apiKeyInput, setApiKeyInput] = useState<string>('');
+  const [hasStoredKey, setHasStoredKey] = useState<boolean>(false);
+  const [showKeyConfig, setShowKeyConfig] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      getGeminiApiKey().then((k) => {
+        if (k) {
+          setApiKeyInput(k);
+          setHasStoredKey(true);
+        } else {
+          setHasStoredKey(false);
+          setShowKeyConfig(true);
+        }
+      });
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -117,13 +149,21 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
     setParsedCourses([]);
     setRawOcrItems([]);
 
+    const mime = file.type || 'image/jpeg';
+    setImageMimeType(mime);
+
     const reader = new FileReader();
     reader.onload = () => {
       const result = reader.result as string;
       setImagePreview(result);
-      // Remove data:image/...;base64, prefix
-      const base64 = result.split(',')[1];
-      setBase64Data(base64);
+      const match = result.match(/^data:([^;]+);base64,(.+)$/);
+      if (match) {
+        setImageMimeType(match[1]);
+        setBase64Data(match[2]);
+      } else {
+        const base64 = result.includes(',') ? result.split(',')[1] : result;
+        setBase64Data(base64);
+      }
     };
     reader.readAsDataURL(file);
   };
@@ -162,23 +202,54 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
     }
   };
 
+  const handleSaveApiKey = async () => {
+    if (!apiKeyInput.trim()) {
+      setErrorMsg('請輸入有效的 Google Gemini API Key');
+      return;
+    }
+    await saveGeminiApiKey(apiKeyInput.trim());
+    setHasStoredKey(true);
+    setShowKeyConfig(false);
+    setErrorMsg(null);
+  };
+
   const handleStartOCR = async () => {
     if (!base64Data) return;
+
+    // Check if we need an API key
+    if (!hasStoredKey && !apiKeyInput.trim()) {
+      setShowKeyConfig(true);
+      setErrorMsg('請先填入 Google Gemini API Key 即可開始智慧辨識');
+      return;
+    }
 
     setIsLoading(true);
     setErrorMsg(null);
 
     try {
-      const result = await callGeminiOcrGateway(base64Data);
+      if (apiKeyInput.trim()) {
+        await saveGeminiApiKey(apiKeyInput.trim());
+        setHasStoredKey(true);
+      }
+
+      const result = await callGeminiOcrGateway(base64Data, imageMimeType, apiKeyInput.trim());
       if (!result.ok || !result.text) {
+        if (result.needApiKey) {
+          setShowKeyConfig(true);
+        }
         throw new Error(result.error || '辨識服務無回應，請確認圖片清晰度');
       }
 
       // Clean JSON markdown blocks if any
-      const cleaned = result.text
+      let cleaned = result.text
         .replace(/```json/gi, '')
         .replace(/```/g, '')
         .trim();
+
+      const jsonMatch = cleaned.match(/\[\s*\{[\s\S]*\}\s*\]/);
+      if (jsonMatch) {
+        cleaned = jsonMatch[0];
+      }
 
       const items = JSON.parse(cleaned);
       if (!Array.isArray(items)) {
@@ -189,7 +260,12 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
       const mapped = mapItemsToCourses(items, autoCalibratePeriods);
       setParsedCourses(mapped);
     } catch (err: any) {
-      setErrorMsg(err.message || '辨識失敗，請確認圖片清晰度');
+      let msg = err.message || '辨識失敗，請確認圖片清晰度';
+      if (msg.includes('Edge Function') || msg.includes('API_KEY')) {
+        setShowKeyConfig(true);
+        msg = '請填入您的 Google Gemini API Key（支援前端直連辨識，無需 Edge Function）';
+      }
+      setErrorMsg(msg);
     } finally {
       setIsLoading(false);
     }
@@ -223,8 +299,76 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
           </button>
         </div>
 
+        {/* 🔑 API Key Quick Setup Card */}
+        {showKeyConfig && (
+          <div className="mt-3.5 p-3.5 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800/80 border border-calico-orange/30 space-y-2.5 animate-fade-in text-xs">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-1.5 font-bold text-calico-cocoa dark:text-zinc-200">
+                <Key className="w-3.5 h-3.5 text-calico-orange" />
+                <span>Google Gemini API Key 設定</span>
+              </div>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+                className="text-[10px] text-calico-orange hover:underline font-bold flex items-center space-x-0.5"
+              >
+                <span>免費取得 API Key</span>
+                <ExternalLink className="w-2.5 h-2.5" />
+              </a>
+            </div>
+
+            <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-400">
+              貼上您的 Gemini API Key（格式如：AIzaSy...），自動儲存並記住，直接與 Google 官方連線辨識！
+            </p>
+
+            <div className="flex items-center space-x-1.5">
+              <input
+                type="password"
+                value={apiKeyInput}
+                onChange={(e) => setApiKeyInput(e.target.value)}
+                placeholder="貼上您的 Gemini API Key (AIzaSy...)"
+                className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleSaveApiKey}
+                className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-bold shrink-0 hover:brightness-105 active:scale-95 transition-all"
+              >
+                儲存
+              </button>
+              {hasStoredKey && (
+                <button
+                  type="button"
+                  onClick={() => setShowKeyConfig(false)}
+                  className="px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-300 text-xs font-bold"
+                >
+                  收起
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {hasStoredKey && !showKeyConfig && (
+          <div className="mt-2.5 flex items-center justify-between px-1 text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+            <span className="flex items-center space-x-1">
+              <CheckCircle2 className="w-3.5 h-3.5 text-calico-sage" />
+              <span>Gemini API Key 已設定就緒</span>
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowKeyConfig(true)}
+              className="text-calico-orange hover:underline font-bold flex items-center space-x-0.5"
+            >
+              <Key className="w-2.5 h-2.5" />
+              <span>變更 Key</span>
+            </button>
+          </div>
+        )}
+
         {/* Upload area */}
-        <div className="mt-4">
+        <div className="mt-3">
           <label className="flex flex-col items-center justify-center w-full h-44 rounded-2xl border-2 border-dashed border-calico-orange/40 hover:border-calico-orange bg-calico-cream/40 dark:bg-zinc-800/40 cursor-pointer overflow-hidden transition-all">
             {imagePreview ? (
               <img src={imagePreview} alt="Timetable preview" className="w-full h-full object-contain" />
@@ -245,7 +389,7 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
 
         {/* OCR Trigger button */}
         {imagePreview && parsedCourses.length === 0 && (
-          <div className="mt-4">
+          <div className="mt-3.5">
             <button
               onClick={handleStartOCR}
               disabled={isLoading}
@@ -268,9 +412,21 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
 
         {/* Error message */}
         {errorMsg && (
-          <div className="mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs flex items-center space-x-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
-            <span>{errorMsg}</span>
+          <div className="mt-3 p-3 rounded-2xl bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 text-xs flex items-start space-x-2 animate-fade-in border border-red-500/20">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <span className="font-bold block">{errorMsg}</span>
+              {!showKeyConfig && (
+                <button
+                  type="button"
+                  onClick={() => setShowKeyConfig(true)}
+                  className="mt-1 text-calico-orange underline font-bold inline-flex items-center space-x-0.5"
+                >
+                  <Key className="w-3 h-3" />
+                  <span>點此設定或更新 Gemini API Key ➔</span>
+                </button>
+              )}
+            </div>
           </div>
         )}
 
