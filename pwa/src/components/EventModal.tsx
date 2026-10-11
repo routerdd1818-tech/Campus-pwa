@@ -12,14 +12,27 @@ interface EventModalProps {
 }
 
 const COLOR_PALETTE = [
-  '#E67E22', // 活力橘 (Calico Orange)
-  '#48BB78', // 森林綠 (Sage Green)
-  '#3182CE', // 晴空藍 (Sky Blue)
-  '#805AD5', // 薰衣草紫 (Royal Purple)
-  '#D53F8C', // 櫻花粉 (Berry Pink)
-  '#DD6B20', // 赤陶琥珀 (Amber Terracotta)
-  '#319795', // 藍綠色 (Teal)
-  '#3D2F2E', // 深可可棕 (Calico Cocoa)
+  '#E67E22', // 活力橘
+  '#F97316', // 暖陽橙
+  '#F59E0B', // 琥珀金
+  '#EAB308', // 檸檬黃
+  '#84CC16', // 萊姆綠
+  '#22C55E', // 翠綠
+  '#10B981', // 薄荷綠
+  '#14B8A6', // 湖水綠
+  '#06B6D4', // 青天藍
+  '#0EA5E9', // 天空藍
+  '#3182CE', // 晴空藍
+  '#3B82F6', // 皇家藍
+  '#6366F1', // 靛藍
+  '#805AD5', // 薰衣草紫
+  '#8B5CF6', // 紫羅蘭
+  '#A855F7', // 魅紫
+  '#D53F8C', // 櫻花粉
+  '#EC4899', // 玫瑰粉
+  '#EF4444', // 珊瑚紅
+  '#78716C', // 暖石灰
+  '#3D2F2E', // 可可棕
 ];
 
 const CATEGORIES = ['考試', '活動', '連假', '專案', '生活', '紀念日', '出遊'];
@@ -248,12 +261,38 @@ export const EventModal: React.FC<EventModalProps> = ({
             </div>
           </div>
 
-          {/* Color Palette (TimeTree Style) */}
+          {/* Color Palette (TimeTree Style & Custom Color) */}
           <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
-              橫幅代表色
-            </label>
-            <div className="flex items-center space-x-2.5 overflow-x-auto py-1">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400">
+                橫幅代表色（點選預設或自訂顏色）
+              </label>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[11px] font-mono font-bold text-calico-cocoa/60 dark:text-zinc-400 uppercase">
+                  {colorHex}
+                </span>
+                <div
+                  className="w-4 h-4 rounded-full border border-black/10 dark:border-white/20 shadow-2xs"
+                  style={{ backgroundColor: colorHex }}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 overflow-x-auto py-1 scrollbar-none">
+              {/* Custom Color Button */}
+              <label
+                className="relative flex items-center justify-center w-7 h-7 rounded-full border-2 border-dashed border-calico-orange/60 bg-calico-orange/10 cursor-pointer shrink-0 hover:scale-105 active:scale-95 transition-all shadow-2xs"
+                title="點擊自訂任意顏色"
+              >
+                <input
+                  type="color"
+                  value={colorHex}
+                  onChange={(e) => setColorHex(e.target.value)}
+                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                />
+                <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
+              </label>
+
               {COLOR_PALETTE.map((hex) => (
                 <button
                   key={hex}
@@ -261,7 +300,9 @@ export const EventModal: React.FC<EventModalProps> = ({
                   onClick={() => setColorHex(hex)}
                   style={{ backgroundColor: hex }}
                   className={`w-7 h-7 rounded-full transition-transform flex items-center justify-center shrink-0 ${
-                    colorHex === hex ? 'scale-115 ring-2 ring-offset-2 ring-calico-orange shadow-sm' : 'opacity-80 hover:opacity-100'
+                    colorHex === hex
+                      ? 'scale-115 ring-2 ring-offset-2 ring-calico-orange shadow-sm'
+                      : 'opacity-80 hover:opacity-100'
                   }`}
                 >
                   {colorHex === hex && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}

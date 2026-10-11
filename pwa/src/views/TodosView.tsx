@@ -12,7 +12,6 @@ import {
   Trash2,
   ExternalLink,
   BookOpen,
-  Plane,
   Clock,
   Sparkles,
   Repeat,
@@ -26,11 +25,12 @@ export const TodosView: React.FC = () => {
   const [editingTodo, setEditingTodo] = useState<Todo | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Dynamic filter list
+  const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
+
+  // Dynamic filter list (No segregated period filter)
   const filters = useMemo(() => {
     const list = [
       { id: 'all', label: '全部' },
-      { id: 'period', label: '✈️ 週期與跨日' },
       ...customTodoCategories.map((c) => ({ id: c.name, label: c.name })),
       { id: 'completed', label: '已完成' },
     ];
@@ -41,14 +41,18 @@ export const TodosView: React.FC = () => {
     return todos.filter((t) => {
       if (selectedFilter === 'all') return !t.isCompleted;
       if (selectedFilter === 'completed') return t.isCompleted;
-      if (selectedFilter === 'period') return Boolean(t.startDate && t.endDate) && !t.isCompleted;
       return t.category === selectedFilter && !t.isCompleted;
     });
   }, [todos, selectedFilter]);
 
-  // Statistics
+  // Statistics (No period schedule block)
   const pendingCount = todos.filter((t) => !t.isCompleted).length;
-  const periodCount = todos.filter((t) => !t.isCompleted && Boolean(t.startDate && t.endDate)).length;
+  const todayDueCount = todos.filter(
+    (t) =>
+      !t.isCompleted &&
+      ((t.dueDate && t.dueDate.slice(0, 10) === todayStr) ||
+        (t.startDate && t.endDate && t.startDate <= todayStr && t.endDate >= todayStr))
+  ).length;
   const completedCount = todos.filter((t) => t.isCompleted).length;
 
   const handleToggle = (id: string, currentlyCompleted: boolean) => {
@@ -101,7 +105,7 @@ export const TodosView: React.FC = () => {
             待辦與任務清單
           </h2>
           <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400">
-            可樂管家提醒：{pendingCount} 項進行中，{periodCount} 項週期安排
+            可樂管家提醒：{pendingCount} 項進行中，{completedCount} 項已完成
           </p>
         </div>
 
@@ -117,7 +121,7 @@ export const TodosView: React.FC = () => {
         </button>
       </div>
 
-      {/* KPI Stats Quick Bar */}
+      {/* KPI Stats Quick Bar (No period schedule block) */}
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-2xs">
           <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block">
@@ -128,11 +132,11 @@ export const TodosView: React.FC = () => {
           </span>
         </div>
         <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-2xs">
-          <span className="text-[10px] font-bold text-calico-orange block">
-            ✈️ 週期排程
+          <span className="text-[10px] font-bold text-amber-500 block">
+            今日截止 / 當日
           </span>
-          <span className="text-base font-black text-calico-orange">
-            {periodCount}
+          <span className="text-base font-black text-amber-500">
+            {todayDueCount}
           </span>
         </div>
         <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-2xs">
@@ -209,7 +213,7 @@ export const TodosView: React.FC = () => {
                   {isPeriod && (
                     <div className="mt-1.5 flex items-center space-x-1.5 text-xs font-bold text-calico-orange">
                       <span className="px-2 py-0.5 rounded-lg bg-calico-orange/15 border border-calico-orange/20 flex items-center space-x-1">
-                        <Plane className="w-3 h-3 shrink-0" />
+                        <Calendar className="w-3 h-3 shrink-0" />
                         <span>
                           {todo.startDate} ~ {todo.endDate}
                         </span>

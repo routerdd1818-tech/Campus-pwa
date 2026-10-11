@@ -21,11 +21,10 @@ import {
   Sparkles,
   CalendarDays,
   Coffee,
-  Plane,
   Tag,
 } from 'lucide-react';
 
-const WEEKDAYS_HEADER = ['日', '一', '二', '三', '四', '五', '六'];
+const WEEKDAYS_HEADER = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
 
 interface UnifiedSpanItem {
   id: string;
@@ -398,8 +397,8 @@ export const CalendarView: React.FC = () => {
             {todaySpanItems.length > 0 && (
               <div className="space-y-1.5">
                 <span className="text-xs font-black text-calico-orange flex items-center space-x-1">
-                  <Plane className="w-3.5 h-3.5" />
-                  <span>進行中的跨日/出國行程 ({todaySpanItems.length})</span>
+                  <CalendarDays className="w-3.5 h-3.5" />
+                  <span>進行中的跨日/區間行程 ({todaySpanItems.length})</span>
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {todaySpanItems.map((item) => (
@@ -545,10 +544,10 @@ export const CalendarView: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* 📅 2. 月曆 檢視 (Monthly Calendar with TimeTree Spans) */}
+      {/* 📅 2. 月曆 檢視 (Monthly Calendar - Image 3 Style) */}
       {/* ======================================================== */}
       {calendarMode === 'month' && (
-        <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+        <div className="p-3 sm:p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
           {/* Month Header Switcher */}
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
@@ -567,6 +566,12 @@ export const CalendarView: React.FC = () => {
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
+                onClick={handleGoToday}
+                className="px-2 py-1 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 text-xs font-bold text-calico-cocoa dark:text-zinc-200 active:scale-95 transition-all"
+              >
+                今天
+              </button>
+              <button
                 onClick={handleNextMonth}
                 className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 active:scale-95 transition-all"
                 title="下個月"
@@ -576,13 +581,17 @@ export const CalendarView: React.FC = () => {
             </div>
           </div>
 
-          {/* Weekday Names Header */}
-          <div className="grid grid-cols-7 gap-1 text-center pb-1 border-b border-black/5 dark:border-white/5">
+          {/* Weekday Names Header (Image 3: Sunday Red, Saturday Blue, Weekdays Neutral) */}
+          <div className="grid grid-cols-7 text-center pb-2 border-b border-black/5 dark:border-white/5">
             {WEEKDAYS_HEADER.map((w, idx) => (
               <div
                 key={w}
-                className={`text-[11px] font-black ${
-                  idx === 0 || idx === 6 ? 'text-calico-orange' : 'text-calico-cocoa/60 dark:text-zinc-400'
+                className={`text-xs font-black ${
+                  idx === 0
+                    ? 'text-red-500 dark:text-red-400'
+                    : idx === 6
+                    ? 'text-blue-500 dark:text-blue-400'
+                    : 'text-calico-cocoa/80 dark:text-zinc-300'
                 }`}
               >
                 {w}
@@ -590,140 +599,138 @@ export const CalendarView: React.FC = () => {
             ))}
           </div>
 
-          {/* Week-by-Week Grid with Seamless Continuous Ribbons */}
-          <div className="space-y-2">
-            {monthWeeks.map((week, weekIdx) => {
-              const weekStart = week[0].dateStr;
-              const weekEnd = week[6].dateStr;
+          {/* 7-Column Month Grid Table (Image 3 Style: Clean cells with compact pill tags) */}
+          <div className="grid grid-cols-7 border-t border-l border-black/10 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-zinc-900/40 shadow-2xs">
+            {monthGridDays.map((cell, idx) => {
+              const colIdx = idx % 7; // 0 = Sun, 6 = Sat
+              const isSelected = cell.dateStr === selectedDateStr;
+              const isToday = cell.dateStr === todayStr;
 
-              // Spanning items active during this week
-              const weekSpanItems = allSpanItems.filter(
-                (item) => item.startDate <= weekEnd && item.endDate >= weekStart
+              const cellDate = new Date(cell.dateStr);
+              const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
+
+              // Items on this date:
+              // 1. Events active on this day
+              const dayEvents = calendarEvents.filter(
+                (e) => cell.dateStr >= e.startDate && cell.dateStr <= (e.endDate || e.startDate)
               );
+
+              // 2. Todos active on this day
+              const dayTodos = todos.filter(
+                (t) =>
+                  !t.isCompleted &&
+                  ((t.startDate && t.endDate && cell.dateStr >= t.startDate && cell.dateStr <= t.endDate) ||
+                    (t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr))
+              );
+
+              // 3. Courses on this weekday
+              const dayCourses = courses.filter((c) => c.dayOfWeek === cellDayOfWeek);
+
+              const totalItems = dayEvents.length + dayTodos.length;
+              const maxPills = 3;
 
               return (
                 <div
-                  key={`week-${weekIdx}-${weekStart}`}
-                  className="p-1.5 rounded-2xl bg-calico-cream/35 dark:bg-zinc-800/30 border border-black/5 dark:border-white/5 transition-colors"
+                  key={cell.dateStr}
+                  onClick={() => setSelectedDateStr(cell.dateStr)}
+                  className={`border-r border-b border-black/10 dark:border-white/10 p-1 sm:p-1.5 min-h-[76px] sm:min-h-[92px] flex flex-col justify-start transition-all cursor-pointer relative select-none ${
+                    isSelected
+                      ? 'bg-calico-orange/10 ring-2 ring-inset ring-calico-orange z-10'
+                      : isToday
+                      ? 'bg-red-50/40 dark:bg-red-950/20'
+                      : !cell.isCurrentMonth
+                      ? 'bg-black/[0.02] dark:bg-white/[0.02]'
+                      : 'hover:bg-calico-orange/5'
+                  }`}
                 >
-                  {/* Top: 7 Day Cells */}
-                  <div className="grid grid-cols-7 gap-1 text-center">
-                    {week.map((cell) => {
-                      const isSelected = cell.dateStr === selectedDateStr;
-                      const isToday = cell.dateStr === todayStr;
+                  {/* Top row of cell: date number */}
+                  <div className="flex items-center justify-between mb-1">
+                    {isToday ? (
+                      <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-red-500 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shadow-xs">
+                        {cell.dayNum}
+                      </div>
+                    ) : (
+                      <span
+                        className={`text-[11px] sm:text-xs font-bold leading-tight ${
+                          !cell.isCurrentMonth
+                            ? colIdx === 0
+                              ? 'text-red-300 dark:text-red-900/50'
+                              : colIdx === 6
+                              ? 'text-blue-300 dark:text-blue-900/50'
+                              : 'text-zinc-300 dark:text-zinc-600'
+                            : colIdx === 0
+                            ? 'text-red-500 font-extrabold'
+                            : colIdx === 6
+                            ? 'text-blue-500 font-extrabold'
+                            : 'text-zinc-800 dark:text-zinc-200 font-bold'
+                        }`}
+                      >
+                        {!cell.isCurrentMonth && (cell.dayNum === 1 || idx === 0)
+                          ? `${new Date(cell.dateStr).getMonth() + 1}/${cell.dayNum}`
+                          : cell.dayNum}
+                      </span>
+                    )}
 
-                      const cellDate = new Date(cell.dateStr);
-                      const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
-                      const hasCourse = courses.some((c) => c.dayOfWeek === cellDayOfWeek);
-                      const hasTodo = todos.some(
-                        (t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted
-                      );
-
-                      return (
-                        <button
-                          key={cell.dateStr}
-                          onClick={() => setSelectedDateStr(cell.dateStr)}
-                          className={`py-1 rounded-xl flex flex-col items-center justify-center transition-all ${
-                            isSelected
-                              ? 'bg-calico-orange text-white shadow-ios-sm font-black ring-2 ring-calico-orange/30'
-                              : isToday
-                              ? 'bg-calico-orange/15 text-calico-orange font-black'
-                              : cell.isCurrentMonth
-                              ? 'text-calico-cocoa/90 dark:text-zinc-200 hover:bg-black/5 dark:hover:bg-white/5 font-bold'
-                              : 'text-calico-cocoa/30 dark:text-zinc-600 font-normal'
-                          }`}
-                        >
-                          <span className="text-xs leading-none">{cell.dayNum}</span>
-
-                          {/* Dots */}
-                          <div className="flex items-center space-x-0.5 mt-1 h-1.5">
-                            {hasCourse && (
-                              <span
-                                className={`w-1 h-1 rounded-full ${
-                                  isSelected ? 'bg-white' : 'bg-calico-orange'
-                                }`}
-                              />
-                            )}
-                            {hasTodo && (
-                              <span
-                                className={`w-1 h-1 rounded-full ${
-                                  isSelected ? 'bg-white/80' : 'bg-calico-sage'
-                                }`}
-                              />
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                    {/* Subtle course count dot */}
+                    {dayCourses.length > 0 && cell.isCurrentMonth && (
+                      <span
+                        className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
+                        title={`${dayCourses.length} 門課程`}
+                      />
+                    )}
                   </div>
 
-                  {/* Bottom: Continuous Multi-Day Ribbons across this week */}
-                  {weekSpanItems.length > 0 && (
-                    <div className="grid grid-cols-7 gap-x-1 gap-y-1 mt-1.5 pt-1.5 border-t border-black/5 dark:border-white/5">
-                      {weekSpanItems.slice(0, 3).map((item) => {
-                        const isStartOfWeek = item.startDate < weekStart;
-                        const isEndOfWeek = item.endDate > weekEnd;
+                  {/* Stack of compact pill tags (Image 3 Style) */}
+                  <div className="space-y-0.5 overflow-hidden w-full">
+                    {/* Event pills */}
+                    {dayEvents.slice(0, maxPills).map((ev) => (
+                      <div
+                        key={`ev-${ev.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDateStr(cell.dateStr);
+                          setEventToEdit(ev);
+                          setIsEventModalOpen(true);
+                        }}
+                        style={{
+                          backgroundColor: `${ev.colorHex}22`,
+                          borderColor: `${ev.colorHex}55`,
+                          color: ev.colorHex,
+                        }}
+                        className="w-full px-1 py-0.5 rounded text-[9px] sm:text-[9.5px] font-bold truncate border flex items-center space-x-1 cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all leading-tight shadow-2xs"
+                        title={`${ev.title} (${ev.startDate} ~ ${ev.endDate})`}
+                      >
+                        <span
+                          className="w-1.5 h-1.5 rounded-full shrink-0"
+                          style={{ backgroundColor: ev.colorHex }}
+                        />
+                        <span className="truncate">{ev.title}</span>
+                      </div>
+                    ))}
 
-                        const startIdx = isStartOfWeek
-                          ? 0
-                          : Math.max(0, week.findIndex((d) => d.dateStr === item.startDate));
-                        const endIdx = isEndOfWeek
-                          ? 6
-                          : week.findIndex((d) => d.dateStr === item.endDate);
+                    {/* Todo pills */}
+                    {dayTodos.slice(0, Math.max(0, maxPills - dayEvents.length)).map((td) => (
+                      <div
+                        key={`td-${td.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedDateStr(cell.dateStr);
+                        }}
+                        className="w-full px-1 py-0.5 rounded text-[9px] sm:text-[9.5px] font-bold truncate border border-emerald-400/40 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 flex items-center space-x-1 cursor-pointer hover:brightness-95 active:scale-[0.98] transition-all leading-tight shadow-2xs"
+                        title={td.title}
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-emerald-500" />
+                        <span className="truncate">{td.title}</span>
+                      </div>
+                    ))}
 
-                        const safeEndIdx = endIdx === -1 ? 6 : endIdx;
-                        const startCol = startIdx + 1;
-                        const endCol = safeEndIdx + 2;
-
-                        return (
-                          <div
-                            key={item.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedDateStr(item.startDate >= weekStart ? item.startDate : weekStart);
-                            }}
-                            style={{
-                              gridColumn: `${startCol} / ${endCol}`,
-                              backgroundColor: `${item.colorHex}22`,
-                              borderColor: `${item.colorHex}60`,
-                              color: item.colorHex,
-                            }}
-                            className={`h-5 px-1.5 py-0.5 text-[9.5px] font-black border flex items-center space-x-1 truncate cursor-pointer transition-all hover:brightness-105 active:scale-[0.99] shadow-2xs ${
-                              !isStartOfWeek && !isEndOfWeek
-                                ? 'rounded-md'
-                                : !isStartOfWeek && isEndOfWeek
-                                ? 'rounded-l-md rounded-r-none border-r-0'
-                                : isStartOfWeek && !isEndOfWeek
-                                ? 'rounded-r-md rounded-l-none border-l-0'
-                                : 'rounded-none border-x-0'
-                            }`}
-                            title={`${item.title} (${item.startDate} ~ ${item.endDate})`}
-                          >
-                            {item.type === 'todo' ? (
-                              <Plane className="w-2.5 h-2.5 shrink-0" />
-                            ) : (
-                              <Tag className="w-2.5 h-2.5 shrink-0" />
-                            )}
-                            <span className="truncate">{item.title}</span>
-                            {!isStartOfWeek && (
-                              <span className="text-[8.5px] opacity-75 shrink-0 font-normal ml-0.5">
-                                {item.startDate.slice(5)}~{item.endDate.slice(5)}
-                              </span>
-                            )}
-                          </div>
-                        );
-                      })}
-
-                      {weekSpanItems.length > 3 && (
-                        <div
-                          style={{ gridColumn: '1 / 8' }}
-                          className="text-[9px] font-bold text-center text-calico-cocoa/50 dark:text-zinc-500 py-0.5"
-                        >
-                          +{weekSpanItems.length - 3} 更多行程
-                        </div>
-                      )}
-                    </div>
-                  )}
+                    {/* Overflow count */}
+                    {totalItems > maxPills && (
+                      <div className="text-[8.5px] font-extrabold text-calico-cocoa/50 dark:text-zinc-400 pl-0.5 leading-none">
+                        +{totalItems - maxPills} 更多
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
@@ -802,7 +809,11 @@ export const CalendarView: React.FC = () => {
                           }}
                           className="px-2 py-0.5 rounded-md text-[10px] font-black border flex items-center space-x-1"
                         >
-                          {item.type === 'todo' && <Plane className="w-2.5 h-2.5 shrink-0" />}
+                          {item.type === 'todo' ? (
+                            <CheckSquare className="w-2.5 h-2.5 shrink-0" />
+                          ) : (
+                            <Tag className="w-2.5 h-2.5 shrink-0" />
+                          )}
                           <span>{item.title}</span>
                           <span className="text-[9px] opacity-75">
                             ({item.startDate.slice(5)} ~ {item.endDate.slice(5)})
@@ -882,7 +893,11 @@ export const CalendarView: React.FC = () => {
               >
                 <div>
                   <div className="flex items-center space-x-2">
-                    {item.type === 'todo' && <Plane className="w-3.5 h-3.5 text-calico-orange" />}
+                    {item.type === 'todo' ? (
+                      <CheckSquare className="w-3.5 h-3.5 text-calico-orange" />
+                    ) : (
+                      <Tag className="w-3.5 h-3.5 text-calico-orange" />
+                    )}
                     <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">{item.title}</span>
                     <span
                       style={{ color: item.colorHex }}
@@ -1044,6 +1059,18 @@ export const CalendarView: React.FC = () => {
           });
         }}
       />
+
+      {/* 🚀 Floating Quick Add Button (Image 3 Style FAB) */}
+      <button
+        onClick={() => {
+          setEventToEdit(null);
+          setIsEventModalOpen(true);
+        }}
+        className="fixed bottom-24 right-5 sm:bottom-10 sm:right-10 z-40 w-13 h-13 rounded-full bg-calico-orange text-white shadow-ios-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-orange-500/40 ring-4 ring-white/80 dark:ring-zinc-900/80"
+        title="新增行事曆行程"
+      >
+        <Plus className="w-6 h-6 stroke-[2.5]" />
+      </button>
     </div>
   );
 };

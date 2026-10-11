@@ -12,7 +12,7 @@ import {
   Plus,
   Check,
   Repeat,
-  Plane,
+  Sparkles,
 } from 'lucide-react';
 
 interface TodoModalProps {
@@ -28,7 +28,13 @@ const PRIORITIES: { val: TodoPriority; label: string; color: string }[] = [
   { val: 'high', label: '高優先', color: 'text-red-600 bg-red-100 dark:bg-red-950/40' },
 ];
 
-const PALETTE = ['#E67E22', '#48BB78', '#3182CE', '#805AD5', '#D53F8C', '#ED8936', '#E53E3E', '#3D2F2E'];
+const PALETTE = [
+  '#E67E22', '#F97316', '#F59E0B', '#EAB308',
+  '#84CC16', '#22C55E', '#10B981', '#14B8A6',
+  '#06B6D4', '#0EA5E9', '#3182CE', '#3B82F6',
+  '#6366F1', '#805AD5', '#8B5CF6', '#A855F7',
+  '#D53F8C', '#EC4899', '#EF4444', '#78716C', '#3D2F2E',
+];
 
 export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onSave }) => {
   const { customTodoCategories, addCustomCategory } = useApp();
@@ -129,7 +135,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                 {todo ? '編輯待辦任務' : '新增待辦任務'}
               </h3>
               <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400">
-                支援跨日行程週期、出國旅行與自訂分類
+                支援單日截止、跨日行程與自訂分類
               </p>
             </div>
           </div>
@@ -150,126 +156,123 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
             <input
               type="text"
               required
-              placeholder="例如：12/7~12/14 出國日本遊玩、微積分期中報告"
+              placeholder="例如：微積分期中作業、旅遊自由行、專案簡報"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="w-full px-3.5 py-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-bold text-calico-cocoa dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
             />
           </div>
 
-          {/* Mode switch: Single Day Deadline vs Multi-Day Span Period */}
-          <div className="p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5 grid grid-cols-2 gap-1 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setIsPeriodTask(false)}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center space-x-1 ${
-                !isPeriodTask
-                  ? 'bg-calico-orange text-white shadow-xs font-black'
-                  : 'text-calico-cocoa/60 dark:text-zinc-400'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>單日截止任務</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPeriodTask(true)}
-              className={`py-2 rounded-xl transition-all flex items-center justify-center space-x-1 ${
-                isPeriodTask
-                  ? 'bg-calico-orange text-white shadow-xs font-black'
-                  : 'text-calico-cocoa/60 dark:text-zinc-400'
-              }`}
-            >
-              <Plane className="w-3.5 h-3.5" />
-              <span>跨日活動 / 週期</span>
-            </button>
-          </div>
-
-          {/* Period Date Settings if Multi-Day Span */}
-          {isPeriodTask ? (
-            <div className="p-4 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800/80 border border-calico-orange/20 space-y-3 animate-fade-in">
-              <div className="flex items-center space-x-1.5 text-xs font-black text-calico-orange">
-                <Calendar className="w-4 h-4" />
-                <span>行程起訖區間（例如：12/07 ~ 12/14 出國）</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <div>
-                  <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-                    開始日期
-                  </label>
-                  <input
-                    type="date"
-                    required={isPeriodTask}
-                    value={startDate}
-                    onChange={(e) => {
-                      setStartDate(e.target.value);
-                      if (!endDate || e.target.value > endDate) setEndDate(e.target.value);
-                    }}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-                    結束日期
-                  </label>
-                  <input
-                    type="date"
-                    required={isPeriodTask}
-                    value={endDate}
-                    min={startDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
-                  />
-                </div>
-              </div>
-
-              {/* Recurrence Selector */}
-              <div>
-                <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
-                  <Repeat className="w-3 h-3" />
-                  <span>重複頻率</span>
-                </label>
-                <div className="grid grid-cols-4 gap-1.5">
-                  {(
-                    [
-                      { val: 'none', label: '單次區間' },
-                      { val: 'daily', label: '每天重複' },
-                      { val: 'weekly', label: '每週重複' },
-                      { val: 'monthly', label: '每月重複' },
-                    ] as { val: TodoRecurrence; label: string }[]
-                  ).map((r) => (
-                    <button
-                      type="button"
-                      key={r.val}
-                      onClick={() => setRecurrence(r.val)}
-                      className={`py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
-                        recurrence === r.val
-                          ? 'bg-calico-cocoa text-white dark:bg-white dark:text-zinc-900 shadow-xs'
-                          : 'bg-white/60 dark:bg-zinc-900/60 text-calico-cocoa/70 dark:text-zinc-400'
-                      }`}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : (
-            /* Single Due Date */
-            <div>
-              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
-                <Calendar className="w-3.5 h-3.5" />
-                <span>截止日期與時間</span>
+          {/* Deadline / Period Selector Section */}
+          <div className="p-3.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1.5">
+                <Calendar className="w-3.5 h-3.5 text-calico-orange" />
+                <span>截止日期與排程設定</span>
               </label>
-              <input
-                type="datetime-local"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
-              />
+
+              {/* Segmented Toggle: 單日截止 vs 選擇區間 */}
+              <div className="p-0.5 rounded-xl bg-black/5 dark:bg-white/10 flex items-center text-xs font-bold">
+                <button
+                  type="button"
+                  onClick={() => setIsPeriodTask(false)}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    !isPeriodTask
+                      ? 'bg-calico-orange text-white shadow-xs font-black'
+                      : 'text-calico-cocoa/60 dark:text-zinc-400'
+                  }`}
+                >
+                  單日截止
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsPeriodTask(true)}
+                  className={`px-3 py-1 rounded-lg transition-all ${
+                    isPeriodTask
+                      ? 'bg-calico-orange text-white shadow-xs font-black'
+                      : 'text-calico-cocoa/60 dark:text-zinc-400'
+                  }`}
+                >
+                  選擇區間
+                </button>
+              </div>
             </div>
-          )}
+
+            {isPeriodTask ? (
+              <div className="space-y-2.5 animate-fade-in pt-1">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                      開始日期
+                    </label>
+                    <input
+                      type="date"
+                      required={isPeriodTask}
+                      value={startDate}
+                      onChange={(e) => {
+                        setStartDate(e.target.value);
+                        if (!endDate || e.target.value > endDate) setEndDate(e.target.value);
+                      }}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+                      結束日期
+                    </label>
+                    <input
+                      type="date"
+                      required={isPeriodTask}
+                      value={endDate}
+                      min={startDate}
+                      onChange={(e) => setEndDate(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+                    />
+                  </div>
+                </div>
+
+                {/* Recurrence Selector */}
+                <div className="pt-1">
+                  <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1 flex items-center space-x-1">
+                    <Repeat className="w-3 h-3" />
+                    <span>重複頻率（可選）</span>
+                  </label>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {(
+                      [
+                        { val: 'none', label: '單次區間' },
+                        { val: 'daily', label: '每天重複' },
+                        { val: 'weekly', label: '每週重複' },
+                        { val: 'monthly', label: '每月重複' },
+                      ] as { val: TodoRecurrence; label: string }[]
+                    ).map((r) => (
+                      <button
+                        type="button"
+                        key={r.val}
+                        onClick={() => setRecurrence(r.val)}
+                        className={`py-1.5 px-1 rounded-xl text-[11px] font-bold transition-all ${
+                          recurrence === r.val
+                            ? 'bg-calico-cocoa text-white dark:bg-white dark:text-zinc-900 shadow-xs'
+                            : 'bg-white/60 dark:bg-zinc-900/60 text-calico-cocoa/70 dark:text-zinc-400'
+                        }`}
+                      >
+                        {r.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <div>
+                <input
+                  type="datetime-local"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+                />
+              </div>
+            )}
+          </div>
 
           {/* Category selection & Custom Category Creator */}
           <div>
@@ -310,17 +313,29 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                     <span>新增</span>
                   </button>
                 </div>
-                {/* Color swatches */}
-                <div className="flex items-center space-x-1.5 pt-0.5">
-                  <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold">顏色：</span>
+                {/* Color swatches & custom color */}
+                <div className="flex items-center space-x-1.5 pt-0.5 overflow-x-auto scrollbar-none py-1">
+                  <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 font-bold shrink-0">顏色：</span>
+                  <label
+                    className="relative flex items-center justify-center w-5 h-5 rounded-full border border-dashed border-calico-orange/60 bg-calico-orange/10 cursor-pointer shrink-0"
+                    title="自訂任意顏色"
+                  >
+                    <input
+                      type="color"
+                      value={newCatColor}
+                      onChange={(e) => setNewCatColor(e.target.value)}
+                      className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                    />
+                    <Sparkles className="w-2.5 h-2.5 text-calico-orange" />
+                  </label>
                   {PALETTE.map((c) => (
                     <button
                       type="button"
                       key={c}
                       onClick={() => setNewCatColor(c)}
                       style={{ backgroundColor: c }}
-                      className={`w-4 h-4 rounded-full transition-transform ${
-                        newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white' : 'opacity-80'
+                      className={`w-4 h-4 rounded-full transition-transform shrink-0 ${
+                        newCatColor === c ? 'scale-125 ring-2 ring-calico-cocoa dark:ring-white shadow-2xs' : 'opacity-80'
                       }`}
                     />
                   ))}

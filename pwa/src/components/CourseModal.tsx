@@ -15,14 +15,11 @@ interface CourseModalProps {
 }
 
 const COLOR_PRESETS = [
-  '#E67E22', // Calico Orange
-  '#3D2F2E', // Calico Cocoa
-  '#48BB78', // Sage Green
-  '#3182CE', // Sky Blue
-  '#805AD5', // Royal Purple
-  '#D53F8C', // Berry Pink
-  '#DD6B20', // Amber Terracotta
-  '#319795', // Teal
+  '#E67E22', '#F97316', '#F59E0B', '#EAB308',
+  '#84CC16', '#22C55E', '#10B981', '#14B8A6',
+  '#06B6D4', '#0EA5E9', '#3182CE', '#3B82F6',
+  '#6366F1', '#805AD5', '#8B5CF6', '#A855F7',
+  '#D53F8C', '#EC4899', '#EF4444', '#78716C', '#3D2F2E',
 ];
 
 const WEEKDAY_NAMES = [
@@ -253,20 +250,47 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             </div>
           </div>
 
-          {/* Color Presets */}
+          {/* Color Presets & Custom Picker */}
           <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
-              課程主題色彩
-            </label>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400">
+                課程主題色彩（預設或自訂）
+              </label>
+              <div className="flex items-center space-x-1.5">
+                <span className="text-[11px] font-mono font-bold text-calico-cocoa/60 dark:text-zinc-400 uppercase">
+                  {colorHex}
+                </span>
+                <div
+                  className="w-3.5 h-3.5 rounded-full border border-black/10 dark:border-white/20"
+                  style={{ backgroundColor: colorHex }}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 overflow-x-auto py-1 scrollbar-none">
+              <label
+                className="relative flex items-center justify-center w-7 h-7 rounded-full border-2 border-dashed border-calico-orange/60 bg-calico-orange/10 cursor-pointer shrink-0 hover:scale-105 active:scale-95 transition-all shadow-2xs"
+                title="點擊自訂任意顏色"
+              >
+                <input
+                  type="color"
+                  value={colorHex}
+                  onChange={(e) => setColorHex(e.target.value)}
+                  className="opacity-0 absolute inset-0 w-full h-full cursor-pointer"
+                />
+                <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
+              </label>
+
               {COLOR_PRESETS.map((color) => (
                 <button
                   type="button"
                   key={color}
                   onClick={() => setColorHex(color)}
                   style={{ backgroundColor: color }}
-                  className={`w-7 h-7 rounded-full transition-transform ${
-                    colorHex === color ? 'ring-3 ring-calico-orange ring-offset-2 scale-110' : 'opacity-80 hover:opacity-100'
+                  className={`w-7 h-7 rounded-full transition-transform shrink-0 ${
+                    colorHex === color
+                      ? 'ring-3 ring-calico-orange ring-offset-2 scale-110 shadow-sm'
+                      : 'opacity-80 hover:opacity-100'
                   }`}
                 />
               ))}

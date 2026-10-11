@@ -98,7 +98,7 @@ const INITIAL_COURSES: Course[] = [
 const INITIAL_TODOS: Todo[] = [
   {
     id: 't_travel',
-    title: '✈️ 12/7~12/14 日本東京自由行 (出國度假)',
+    title: '12/7~12/14 日本東京自由行 (度假出遊)',
     startDate: '2026-12-07',
     endDate: '2026-12-14',
     dueDate: '2026-12-07T08:00:00.000Z',

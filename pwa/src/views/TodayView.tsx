@@ -22,7 +22,6 @@ import {
   ChevronRight,
   TrendingDown,
   ArrowRight,
-  Plane,
   AlertCircle,
 } from 'lucide-react';
 
