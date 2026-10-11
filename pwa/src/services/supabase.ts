@@ -794,16 +794,26 @@ export async function callDirectGeminiApi(
     customPrompt ||
     '請辨識這張大學/大專課表圖片，並以純 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、periodCodes（該堂課涵蓋的節次代碼或數字陣列，例如 [1, 2] 或 [5, 6, 7] 或 ["5","6","7"]）、startTime（格式如 09:10）、endTime（格式如 12:00）。只回傳純 JSON 陣列，不需任何其他說明文字。';
 
-  // Standard Google Generative Language Models (in priority order)
-  const models = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
+  // Standard Google Generative Language Models (in priority order for 2026)
+  const models = [
+    'gemini-3.8-flash',
+    'gemini-3.5-flash-lite',
+    'gemini-3.6-flash',
+    'gemini-2.0-flash',
+    'gemini-1.5-flash-latest',
+    'gemini-1.5-flash',
+  ];
   let lastError = '';
 
   for (const model of models) {
     try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-goog-api-key': apiKey,
+        },
         body: JSON.stringify({
           contents: [
             {
@@ -865,7 +875,7 @@ export async function callGeminiOcrGateway(
     const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
       body: {
         action: 'gemini_ocr',
-        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+        models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'],
         base64Image: cleanBase64,
         prompt:
           '請辨識這張大學/大專課表圖片，並以 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、periodCodes（該堂課涵蓋的節次代碼或數字陣列，例如 [1, 2] 或 [5, 6, 7] 或 ["5","6","7"]）、startTime（格式如 09:10）、endTime（格式如 12:00）。只回傳 JSON 陣列，不需其他文字。',
@@ -912,8 +922,8 @@ export async function testGeminiApiConnection(
     if (directRes.ok) {
       return {
         ok: true,
-        model: directRes.model || 'gemini-2.5-flash',
-        message: `連線成功！Google Gemini 官方 API (${directRes.model || 'gemini-2.5-flash'}) 運作正常`,
+        model: directRes.model || 'gemini-3.8-flash',
+        message: `連線成功！Google Gemini 官方 API (${directRes.model || 'gemini-3.8-flash'}) 運作正常`,
       };
     }
     return { ok: false, message: `測試失敗：${directRes.error}` };
@@ -925,7 +935,7 @@ export async function testGeminiApiConnection(
     const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
       body: {
         action: 'gemini_ocr',
-        models: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'],
+        models: ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'],
         base64Image: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAA=',
         prompt: 'Ping test. Output JSON: [{"status":"ok"}]',
       },
@@ -934,7 +944,7 @@ export async function testGeminiApiConnection(
     if (!error && data?.status !== 'error') {
       return {
         ok: true,
-        model: data?.model || 'gemini-2.5-flash',
+        model: data?.model || 'gemini-3.8-flash',
         message: '連線正常！Supabase 雲端 Gateway 運作中',
       };
     }

@@ -376,7 +376,7 @@ export const SettingsView: React.FC = () => {
       const res = await testGeminiApiConnection(geminiApiKey.trim());
       setGeminiTestStatus(res);
       if (res.ok) {
-        showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-2.5-flash'})`);
+        showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-3.8-flash'})`);
       } else {
         showNotification(`⚠️ Gemini 測試失敗：${res.message}`);
       }
@@ -736,7 +736,7 @@ export const SettingsView: React.FC = () => {
                       Google Gemini AI 課表辨識設定
                     </span>
                     <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                      模型：gemini-2.5-flash (支援前端直連與雲端備援)
+                      模型：gemini-3.8-flash (支援前端直連與雲端備援)
                     </span>
                   </div>
                 </div>
