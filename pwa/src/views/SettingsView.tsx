@@ -43,6 +43,7 @@ export const SettingsView: React.FC = () => {
     logoutUser,
     setIsAuthModalOpen,
     setIsLineBotModalOpen,
+    setIsPeriodModalOpen,
     customExpenseCategories,
     customIncomeCategories,
     customTodoCategories,
@@ -341,7 +342,31 @@ export const SettingsView: React.FC = () => {
         )}
       </div>
 
-      {/* 2. 🏷️ 自訂記帳與待辦分類種類 (Custom Categories Manager) */}
+      {/* 2. ⏰ 課表每節課時間設定 (自訂起訖時間) */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between">
+        <div className="flex items-center space-x-2.5">
+          <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
+            <Clock className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+              課表每節課時間自訂
+            </h3>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+              自訂各節次起訖時間、新增夜間部節次，與帳號同步獨立
+            </p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setIsPeriodModalOpen(true)}
+          className="px-3.5 py-2 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-xs hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs shrink-0"
+        >
+          自訂節次
+        </button>
+      </div>
+
+      {/* 3. 🏷️ 自訂記帳與待辦分類種類 (Custom Categories Manager) */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center space-x-2.5">
           <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">

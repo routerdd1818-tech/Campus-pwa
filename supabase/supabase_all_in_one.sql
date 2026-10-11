@@ -138,6 +138,7 @@ CREATE POLICY "Allow public all access on calendar_events" ON public.calendar_ev
 -- 4. 記帳收支明細資料表 (accounting_transactions)
 CREATE TABLE IF NOT EXISTS public.accounting_transactions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id TEXT DEFAULT '',
     amount NUMERIC(12, 2) NOT NULL,
     type TEXT NOT NULL CHECK (type IN ('expense', 'income')),
     category_id UUID,
@@ -156,11 +157,13 @@ CREATE TABLE IF NOT EXISTS public.accounting_transactions (
     related_split_bill_id UUID,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT '';
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS value_score INT DEFAULT 8;
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS peer_rating NUMERIC(3, 1);
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS peer_feedback TEXT DEFAULT '';
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS is_shared_with_friends BOOLEAN DEFAULT true;
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS meal_type TEXT DEFAULT '';
+
 
 -- 5. 分期付款資料表 (accounting_installments)
 CREATE TABLE IF NOT EXISTS public.accounting_installments (

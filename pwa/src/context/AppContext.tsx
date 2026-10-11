@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import {
   Course,
   Todo,
@@ -11,7 +11,10 @@ import {
   SavedFriendRecord,
   SharedScheduleData,
   CustomCategory,
+  ClassPeriod,
 } from '../types';
+import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
+
 import {
   fetchCoursesFromSupabase,
   upsertCourseToSupabase,
@@ -263,12 +266,16 @@ interface AppContextType {
   setIsShareModalOpen: (open: boolean) => void;
   isEventModalOpen: boolean;
   setIsEventModalOpen: (open: boolean) => void;
+  isPeriodModalOpen: boolean;
+  setIsPeriodModalOpen: (open: boolean) => void;
   eventToEdit: CalendarEvent | null;
   setEventToEdit: (e: CalendarEvent | null) => void;
   courses: Course[];
   todos: Todo[];
   transactions: Transaction[];
   calendarEvents: CalendarEvent[];
+  classPeriods: ClassPeriod[];
+  updateClassPeriods: (periods: ClassPeriod[]) => void;
   installments: Installment[];
   splitBills: SplitBill[];
   savedFriends: SavedFriendRecord[];
@@ -309,6 +316,10 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 
+function getScopedKey(userId: string | null | undefined, key: string): string {
+  return userId ? `campus_user_${userId}_${key}` : `campus_guest_${key}`;
+}
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [activeTab, setActiveTab] = useState<'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings'>('schedule');
   const [isSyncing, setIsSyncing] = useState(false);
@@ -316,45 +327,104 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [catMood, setCatMood] = useState<'happy' | 'sleeping' | 'thinking' | 'proud'>('happy');
 
   // 👤 User Account & Modal State
-  const [currentUser, setCurrentUserState] = useState<UserAccount | null>(() => {
+  const initialUser: UserAccount | null = (() => {
     try {
       const saved = localStorage.getItem('campus_auth_session');
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
     }
-  });
+  })();
+
+  const [currentUser, setCurrentUserState] = useState<UserAccount | null>(initialUser);
+  const activeUserIdRef = useRef<string | null>(initialUser?.id || null);
 
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isLineBotModalOpen, setIsLineBotModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [isPeriodModalOpen, setIsPeriodModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
-  // Load from LocalStorage
+  // Load from LocalStorage (Scoped per account)
   const [courses, setCourses] = useState<Course[]>(() => {
-    const saved = localStorage.getItem('campus_courses');
-    return saved ? JSON.parse(saved) : INITIAL_COURSES;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'courses'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_courses');
+      return legacy ? JSON.parse(legacy) : INITIAL_COURSES;
+    }
+    return [];
   });
 
   const [todos, setTodos] = useState<Todo[]>(() => {
-    const saved = localStorage.getItem('campus_todos');
-    return saved ? JSON.parse(saved) : INITIAL_TODOS;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'todos'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_todos');
+      return legacy ? JSON.parse(legacy) : INITIAL_TODOS;
+    }
+    return [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
-    const saved = localStorage.getItem('campus_transactions');
-    return saved ? JSON.parse(saved) : INITIAL_TRANSACTIONS;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'transactions'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_transactions');
+      return legacy ? JSON.parse(legacy) : INITIAL_TRANSACTIONS;
+    }
+    return [];
   });
 
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => {
-    const saved = localStorage.getItem('campus_calendar_events');
-    return saved ? JSON.parse(saved) : INITIAL_CALENDAR_EVENTS;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'calendar_events'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_calendar_events');
+      return legacy ? JSON.parse(legacy) : INITIAL_CALENDAR_EVENTS;
+    }
+    return [];
+  });
+
+  const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'class_periods'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_class_periods');
+      if (legacy) {
+        try { return JSON.parse(legacy); } catch {}
+      }
+    }
+    return DEFAULT_CLASS_PERIODS;
   });
 
   const [savedFriends, setSavedFriends] = useState<SavedFriendRecord[]>(() => {
-    const saved = localStorage.getItem('campus_saved_friends');
-    return saved ? JSON.parse(saved) : [];
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'saved_friends'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_saved_friends');
+      return legacy ? JSON.parse(legacy) : [];
+    }
+    return [];
   });
 
   const [installments, setInstallments] = useState<Installment[]>(() => {
@@ -368,40 +438,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [settings, setSettings] = useState<UserSettings>(() => {
-    const saved = localStorage.getItem('campus_settings');
-    return saved ? { ...DEFAULT_SETTINGS, ...JSON.parse(saved) } : DEFAULT_SETTINGS;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'settings'));
+    if (saved) {
+      try { return { ...DEFAULT_SETTINGS, ...JSON.parse(saved) }; } catch {}
+    }
+    if (!uid) {
+      const legacy = localStorage.getItem('campus_settings');
+      return legacy ? { ...DEFAULT_SETTINGS, ...JSON.parse(legacy) } : DEFAULT_SETTINGS;
+    }
+    return {
+      ...DEFAULT_SETTINGS,
+      ownerName: initialUser?.displayName || (uid ? initialUser!.username : '我的課表'),
+      shareCode: initialUser?.shareCode || DEFAULT_SETTINGS.shareCode,
+      lineUserId: initialUser?.lineUserId || DEFAULT_SETTINGS.lineUserId,
+    };
   });
 
-  // Custom categories state
+  // Custom categories state (scoped per user)
   const [customExpenseCategories, setCustomExpenseCategories] = useState<CustomCategory[]>(() => {
-    try {
-      const saved = localStorage.getItem('campus_custom_expense_cats');
-      return saved ? JSON.parse(saved) : DEFAULT_EXPENSE_CATEGORIES;
-    } catch {
-      return DEFAULT_EXPENSE_CATEGORIES;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'custom_expense_cats'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
     }
+    return DEFAULT_EXPENSE_CATEGORIES;
   });
 
   const [customIncomeCategories, setCustomIncomeCategories] = useState<CustomCategory[]>(() => {
-    try {
-      const saved = localStorage.getItem('campus_custom_income_cats');
-      return saved ? JSON.parse(saved) : DEFAULT_INCOME_CATEGORIES;
-    } catch {
-      return DEFAULT_INCOME_CATEGORIES;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'custom_income_cats'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
     }
+    return DEFAULT_INCOME_CATEGORIES;
   });
 
   const [customTodoCategories, setCustomTodoCategories] = useState<CustomCategory[]>(() => {
-    try {
-      const saved = localStorage.getItem('campus_custom_todo_cats');
-      return saved ? JSON.parse(saved) : DEFAULT_TODO_CATEGORIES;
-    } catch {
-      return DEFAULT_TODO_CATEGORIES;
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'custom_todo_cats'));
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
     }
+    return DEFAULT_TODO_CATEGORIES;
   });
 
   const [lastSyncedAt, setLastSyncedAt] = useState<string | null>(() => {
-    return localStorage.getItem('campus_last_synced_at') || null;
+    return localStorage.getItem(getScopedKey(initialUser?.id, 'last_synced_at')) || null;
   });
 
   // Online / Offline tracking
@@ -416,42 +499,128 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Save to LocalStorage whenever state changes
+  // Save to LocalStorage whenever state changes (strictly scoped to active user)
   useEffect(() => {
-    localStorage.setItem('campus_courses', JSON.stringify(courses));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'courses'), JSON.stringify(courses));
   }, [courses]);
 
   useEffect(() => {
-    localStorage.setItem('campus_todos', JSON.stringify(todos));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'todos'), JSON.stringify(todos));
   }, [todos]);
 
   useEffect(() => {
-    localStorage.setItem('campus_transactions', JSON.stringify(transactions));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'transactions'), JSON.stringify(transactions));
   }, [transactions]);
 
   useEffect(() => {
-    localStorage.setItem('campus_calendar_events', JSON.stringify(calendarEvents));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'calendar_events'), JSON.stringify(calendarEvents));
   }, [calendarEvents]);
 
   useEffect(() => {
-    localStorage.setItem('campus_saved_friends', JSON.stringify(savedFriends));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'class_periods'), JSON.stringify(classPeriods));
+  }, [classPeriods]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'saved_friends'), JSON.stringify(savedFriends));
   }, [savedFriends]);
 
   useEffect(() => {
-    localStorage.setItem('campus_settings', JSON.stringify(settings));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'settings'), JSON.stringify(settings));
   }, [settings]);
 
   useEffect(() => {
-    localStorage.setItem('campus_custom_expense_cats', JSON.stringify(customExpenseCategories));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'custom_expense_cats'), JSON.stringify(customExpenseCategories));
   }, [customExpenseCategories]);
 
   useEffect(() => {
-    localStorage.setItem('campus_custom_income_cats', JSON.stringify(customIncomeCategories));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'custom_income_cats'), JSON.stringify(customIncomeCategories));
   }, [customIncomeCategories]);
 
   useEffect(() => {
-    localStorage.setItem('campus_custom_todo_cats', JSON.stringify(customTodoCategories));
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'custom_todo_cats'), JSON.stringify(customTodoCategories));
   }, [customTodoCategories]);
+
+  const updateClassPeriods = (periods: ClassPeriod[]) => {
+    setClassPeriods(periods);
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'class_periods'), JSON.stringify(periods));
+    setSettings((prev) => ({ ...prev, classPeriods: periods }));
+  };
+
+  const switchUserData = (nextUser: UserAccount | null) => {
+    const oldUid = activeUserIdRef.current;
+    const newUid = nextUser?.id || null;
+
+    if (oldUid === newUid) return;
+
+    // 1. Flush memory data to old user's storage
+    localStorage.setItem(getScopedKey(oldUid, 'courses'), JSON.stringify(courses));
+    localStorage.setItem(getScopedKey(oldUid, 'todos'), JSON.stringify(todos));
+    localStorage.setItem(getScopedKey(oldUid, 'transactions'), JSON.stringify(transactions));
+    localStorage.setItem(getScopedKey(oldUid, 'calendar_events'), JSON.stringify(calendarEvents));
+    localStorage.setItem(getScopedKey(oldUid, 'class_periods'), JSON.stringify(classPeriods));
+    localStorage.setItem(getScopedKey(oldUid, 'saved_friends'), JSON.stringify(savedFriends));
+    localStorage.setItem(getScopedKey(oldUid, 'settings'), JSON.stringify(settings));
+    localStorage.setItem(getScopedKey(oldUid, 'custom_expense_cats'), JSON.stringify(customExpenseCategories));
+    localStorage.setItem(getScopedKey(oldUid, 'custom_income_cats'), JSON.stringify(customIncomeCategories));
+    localStorage.setItem(getScopedKey(oldUid, 'custom_todo_cats'), JSON.stringify(customTodoCategories));
+
+    // 2. Switch active ref
+    activeUserIdRef.current = newUid;
+
+    // 3. Load next user's data from their scoped storage
+    const rawCourses = localStorage.getItem(getScopedKey(newUid, 'courses'));
+    setCourses(rawCourses ? JSON.parse(rawCourses) : (!newUid ? INITIAL_COURSES : []));
+
+    const rawTodos = localStorage.getItem(getScopedKey(newUid, 'todos'));
+    setTodos(rawTodos ? JSON.parse(rawTodos) : (!newUid ? INITIAL_TODOS : []));
+
+    const rawTx = localStorage.getItem(getScopedKey(newUid, 'transactions'));
+    setTransactions(rawTx ? JSON.parse(rawTx) : (!newUid ? INITIAL_TRANSACTIONS : []));
+
+    const rawEvents = localStorage.getItem(getScopedKey(newUid, 'calendar_events'));
+    setCalendarEvents(rawEvents ? JSON.parse(rawEvents) : (!newUid ? INITIAL_CALENDAR_EVENTS : []));
+
+    const rawPeriods = localStorage.getItem(getScopedKey(newUid, 'class_periods'));
+    setClassPeriods(rawPeriods ? JSON.parse(rawPeriods) : DEFAULT_CLASS_PERIODS);
+
+    const rawFriends = localStorage.getItem(getScopedKey(newUid, 'saved_friends'));
+    setSavedFriends(rawFriends ? JSON.parse(rawFriends) : []);
+
+    const rawSettings = localStorage.getItem(getScopedKey(newUid, 'settings'));
+    if (rawSettings) {
+      setSettings(JSON.parse(rawSettings));
+    } else {
+      setSettings({
+        ...DEFAULT_SETTINGS,
+        ownerName: nextUser?.displayName || (newUid ? nextUser!.username : '我的課表'),
+        shareCode: nextUser?.shareCode || DEFAULT_SETTINGS.shareCode,
+        lineUserId: nextUser?.lineUserId || DEFAULT_SETTINGS.lineUserId,
+      });
+    }
+
+    const rawExpCats = localStorage.getItem(getScopedKey(newUid, 'custom_expense_cats'));
+    setCustomExpenseCategories(rawExpCats ? JSON.parse(rawExpCats) : DEFAULT_EXPENSE_CATEGORIES);
+
+    const rawIncCats = localStorage.getItem(getScopedKey(newUid, 'custom_income_cats'));
+    setCustomIncomeCategories(rawIncCats ? JSON.parse(rawIncCats) : DEFAULT_INCOME_CATEGORIES);
+
+    const rawTodoCats = localStorage.getItem(getScopedKey(newUid, 'custom_todo_cats'));
+    setCustomTodoCategories(rawTodoCats ? JSON.parse(rawTodoCats) : DEFAULT_TODO_CATEGORIES);
+
+    const rawSynced = localStorage.getItem(getScopedKey(newUid, 'last_synced_at'));
+    setLastSyncedAt(rawSynced || null);
+  };
 
   // Initial and on-demand cloud sync
   const syncWithSupabase = async (targetUser?: UserAccount | null) => {
@@ -464,18 +633,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const [cloudCourses, cloudTodos, cloudTx, cloudEvents] = await Promise.all([
         fetchCoursesFromSupabase(userKey),
         fetchTodosFromSupabase(userKey),
-        fetchTransactionsFromSupabase(),
+        fetchTransactionsFromSupabase(userKey),
         fetchCalendarEventsFromSupabase(userKey),
       ]);
 
-      if (cloudCourses.length > 0) setCourses(cloudCourses);
-      if (cloudTodos.length > 0) setTodos(cloudTodos);
-      if (cloudTx.length > 0) setTransactions(cloudTx);
-      if (cloudEvents.length > 0) setCalendarEvents(cloudEvents);
+      // Guard: only apply if the current active user hasn't changed during fetch
+      if ((activeUser?.id || null) === activeUserIdRef.current) {
+        if (userKey) {
+          setCourses(cloudCourses);
+          setTodos(cloudTodos);
+          setTransactions(cloudTx);
+          setCalendarEvents(cloudEvents);
+        } else {
+          if (cloudCourses.length > 0) setCourses(cloudCourses);
+          if (cloudTodos.length > 0) setTodos(cloudTodos);
+          if (cloudTx.length > 0) setTransactions(cloudTx);
+          if (cloudEvents.length > 0) setCalendarEvents(cloudEvents);
+        }
+      }
 
       const nowIso = new Date().toISOString();
       setLastSyncedAt(nowIso);
-      localStorage.setItem('campus_last_synced_at', nowIso);
+      localStorage.setItem(getScopedKey(userKey, 'last_synced_at'), nowIso);
     } catch (e) {
       console.warn('Cloud sync error:', e);
     } finally {
@@ -526,6 +705,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes, lastSyncedAt]);
 
   const setCurrentUser = (user: UserAccount | null, rememberPassword?: string | null) => {
+    switchUserData(user);
     setCurrentUserState(user);
     if (user) {
       localStorage.setItem('campus_auth_session', JSON.stringify(user));
@@ -546,14 +726,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       localStorage.removeItem('campus_auth_session');
       localStorage.removeItem('campus_auth_cred');
+      syncWithSupabase(null);
     }
   };
 
   const logoutUser = () => {
-    setCurrentUserState(null);
-    localStorage.removeItem('campus_auth_session');
-    localStorage.removeItem('campus_auth_cred');
-    syncWithSupabase(null);
+    setCurrentUser(null);
   };
 
   // Auto-login on startup
@@ -716,7 +894,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addTransaction = async (t: Transaction) => {
     const enriched = { ...t, userId: currentUser?.id || t.userId };
     setTransactions((prev) => [enriched, ...prev]);
-    await upsertTransactionToSupabase(enriched);
+    await upsertTransactionToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
@@ -774,12 +952,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsShareModalOpen,
         isEventModalOpen,
         setIsEventModalOpen,
+        isPeriodModalOpen,
+        setIsPeriodModalOpen,
         eventToEdit,
         setEventToEdit,
         courses,
         todos,
         transactions,
         calendarEvents,
+        classPeriods,
+        updateClassPeriods,
         installments,
         splitBills,
         savedFriends,

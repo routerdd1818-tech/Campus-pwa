@@ -129,6 +129,8 @@ export interface UserSettings {
   customExpenseCategories?: CustomCategory[];
   customIncomeCategories?: CustomCategory[];
   customTodoCategories?: CustomCategory[];
+  // Customizable class period times
+  classPeriods?: ClassPeriod[];
 }
 
 export interface CalendarEvent {

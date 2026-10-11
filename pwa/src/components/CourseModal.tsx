@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Course, DayOfWeek } from '../types';
+import { useApp } from '../context/AppContext';
 import { X, Trash2, Clock, MapPin, User, BookOpen, Sparkles } from 'lucide-react';
 
 interface CourseModalProps {
@@ -58,6 +59,18 @@ export const CourseModal: React.FC<CourseModalProps> = ({
   defaultStartTime,
   defaultEndTime,
 }) => {
+  const { classPeriods } = useApp();
+  const presets = useMemo(() => {
+    if (classPeriods && classPeriods.length > 0) {
+      return classPeriods.map((p) => ({
+        label: p.name,
+        start: p.startTime,
+        end: p.endTime,
+      }));
+    }
+    return PERIOD_PRESETS;
+  }, [classPeriods]);
+
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [classroom, setClassroom] = useState('');
@@ -199,7 +212,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
               <span>節次快捷設定</span>
             </label>
             <div className="flex flex-wrap gap-1.5">
-              {PERIOD_PRESETS.map((p) => (
+              {presets.map((p) => (
                 <button
                   type="button"
                   key={p.label}

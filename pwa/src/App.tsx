@@ -11,6 +11,7 @@ import { TodosView } from './views/TodosView';
 import { AccountingView } from './views/AccountingView';
 import { SettingsView } from './views/SettingsView';
 import { ShareModal } from './components/ShareModal';
+import { PeriodSettingsModal } from './components/PeriodSettingsModal';
 
 const MainContent: React.FC = () => {
   const {
@@ -21,6 +22,8 @@ const MainContent: React.FC = () => {
     setIsLineBotModalOpen,
     isShareModalOpen,
     setIsShareModalOpen,
+    isPeriodModalOpen,
+    setIsPeriodModalOpen,
   } = useApp();
 
   return (
@@ -59,6 +62,12 @@ const MainContent: React.FC = () => {
       <ShareModal
         isOpen={isShareModalOpen}
         onClose={() => setIsShareModalOpen(false)}
+      />
+
+      {/* ⏰ Class Period Customizable Times Modal */}
+      <PeriodSettingsModal
+        isOpen={isPeriodModalOpen}
+        onClose={() => setIsPeriodModalOpen(false)}
       />
     </div>
   );

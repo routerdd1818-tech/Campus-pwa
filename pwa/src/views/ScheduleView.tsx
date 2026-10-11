@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Course, DayOfWeek } from '../types';
+import { Course, DayOfWeek, ClassPeriod } from '../types';
 import { CourseModal } from '../components/CourseModal';
 import { OcrModal } from '../components/OcrModal';
+import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import {
   Plus,
   Sparkles,
@@ -67,7 +68,15 @@ function getDateStringForWeekday(targetDay: DayOfWeek): string {
 }
 
 export const ScheduleView: React.FC = () => {
-  const { courses, addCourse, updateCourse, deleteCourse } = useApp();
+  const {
+    courses,
+    addCourse,
+    updateCourse,
+    deleteCourse,
+    classPeriods,
+    isPeriodModalOpen,
+    setIsPeriodModalOpen,
+  } = useApp();
 
   const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
   const [includeWeekend, setIncludeWeekend] = useState(false);
@@ -87,6 +96,14 @@ export const ScheduleView: React.FC = () => {
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
   const [isOcrModalOpen, setIsOcrModalOpen] = useState(false);
 
+  // Active periods to render based on customizable settings
+  const periodsToRender = useMemo<ClassPeriod[]>(() => {
+    if (classPeriods && classPeriods.length > 0) {
+      return classPeriods;
+    }
+    return DEFAULT_CLASS_PERIODS;
+  }, [classPeriods]);
+
   // Active displayed weekdays
   const displayedDays = useMemo(() => {
     return includeWeekend ? ALL_WEEKDAYS : ALL_WEEKDAYS.slice(0, 5);
@@ -99,11 +116,11 @@ export const ScheduleView: React.FC = () => {
   }, []);
 
   // Determine if a course matches a given period
-  const matchesPeriod = (course: Course, period: PeriodDef): boolean => {
+  const matchesPeriod = (course: Course, period: ClassPeriod): boolean => {
     const cStart = timeToMinutes(course.startTime);
     const cEnd = timeToMinutes(course.endTime);
-    const pStart = timeToMinutes(period.start);
-    const pEnd = timeToMinutes(period.end);
+    const pStart = timeToMinutes(period.startTime);
+    const pEnd = timeToMinutes(period.endTime);
 
     if (period.isNoon) {
       // Allow flexible noon span 12:00~13:30
@@ -259,6 +276,16 @@ export const ScheduleView: React.FC = () => {
           )}
 
           <button
+            onClick={() => setIsPeriodModalOpen(true)}
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-white/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 font-bold text-xs hover:border-calico-orange/40 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+            title="自訂每節課時間與節次"
+          >
+            <Clock className="w-3.5 h-3.5 text-calico-orange" />
+            <span className="hidden sm:inline">節次時間</span>
+            <span className="sm:hidden">時間</span>
+          </button>
+
+          <button
             onClick={() => setIsOcrModalOpen(true)}
             className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-xs hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs"
             title="AI 課表辨識"
@@ -293,7 +320,11 @@ export const ScheduleView: React.FC = () => {
                 }`}
               >
                 {/* 節次欄位 */}
-                <div className="flex flex-col items-center justify-center py-1 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/40 text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400">
+                <div
+                  onClick={() => setIsPeriodModalOpen(true)}
+                  className="flex flex-col items-center justify-center py-1 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/40 text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 cursor-pointer hover:text-calico-orange transition-colors"
+                  title="點擊設定節次時間"
+                >
                   <span>節次</span>
                 </div>
 
@@ -319,26 +350,28 @@ export const ScheduleView: React.FC = () => {
 
               {/* 節次與課程矩陣 */}
               <div className="mt-2 space-y-1.5">
-                {PERIOD_SCHEDULE.map((period) => (
+                {periodsToRender.map((period) => (
                   <div
                     key={period.id}
                     className={`grid gap-1 items-stretch ${
                       displayedDays.length === 7 ? 'grid-cols-8' : 'grid-cols-6'
                     } ${period.isNoon ? 'min-h-[46px]' : 'min-h-[52px]'}`}
                   >
-                    {/* 節次編號與時間標籤 */}
+                    {/* 節次編號與時間標籤（點擊可自訂時間） */}
                     <div
-                      className={`flex flex-col items-center justify-center p-1 rounded-xl text-center border transition-colors ${
+                      onClick={() => setIsPeriodModalOpen(true)}
+                      className={`flex flex-col items-center justify-center p-1 rounded-xl text-center border cursor-pointer hover:border-calico-orange/50 transition-colors ${
                         period.isNoon
                           ? 'bg-calico-orange/15 border-calico-orange/30 text-calico-orange font-bold'
                           : 'bg-calico-cream/70 dark:bg-zinc-800/50 border-black/5 dark:border-white/5 text-calico-cocoa/80 dark:text-zinc-300'
                       }`}
+                      title="點擊自訂節次起訖時間"
                     >
                       <span className={`leading-none font-black ${period.isNoon ? 'text-[11px]' : 'text-xs'}`}>
-                        {period.code}
+                        {period.displayCode || period.name}
                       </span>
                       <span className="text-[8px] opacity-75 mt-0.5 leading-none font-medium">
-                        {period.start}
+                        {period.startTime}
                       </span>
                     </div>
 
@@ -377,9 +410,9 @@ export const ScheduleView: React.FC = () => {
                         <button
                           key={w.val}
                           type="button"
-                          onClick={() => handleAddSlot(w.val, period.start, period.end)}
+                          onClick={() => handleAddSlot(w.val, period.startTime, period.endTime)}
                           className="rounded-xl border border-dashed border-black/10 dark:border-white/10 hover:border-calico-orange/40 hover:bg-calico-orange/5 transition-all group flex items-center justify-center"
-                          title={`點擊快速在此節次新增課程（${w.name} ${period.start}-${period.end}）`}
+                          title={`點擊快速在此節次新增課程（${w.name} ${period.startTime}-${period.endTime}）`}
                         >
                           <Plus className="w-3 h-3 text-calico-orange opacity-0 group-hover:opacity-100 transition-opacity" />
                         </button>

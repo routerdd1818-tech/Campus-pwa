@@ -141,7 +141,9 @@ export async function fetchCoursesFromSupabase(deviceIdOrUserId?: string): Promi
     const supabase = getSupabaseClient();
     let query = supabase.from('courses').select('*').order('day_of_week', { ascending: true });
     if (deviceIdOrUserId) {
-      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+      query = query.eq('device_id', deviceIdOrUserId);
+    } else {
+      query = query.or('device_id.eq.,device_id.is.null,device_id.eq.guest');
     }
 
     const { data, error } = await query;
@@ -207,7 +209,9 @@ export async function fetchTodosFromSupabase(deviceIdOrUserId?: string): Promise
     const supabase = getSupabaseClient();
     let query = supabase.from('todos').select('*').order('created_at', { ascending: false });
     if (deviceIdOrUserId) {
-      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+      query = query.eq('device_id', deviceIdOrUserId);
+    } else {
+      query = query.or('device_id.eq.,device_id.is.null,device_id.eq.guest');
     }
 
     const { data, error } = await query;
@@ -220,6 +224,8 @@ export async function fetchTodosFromSupabase(deviceIdOrUserId?: string): Promise
       title: t.title,
       notes: t.notes || '',
       dueDate: t.due_date || undefined,
+      startDate: t.start_date ? t.start_date.slice(0, 10) : undefined,
+      endDate: t.start_date ? t.due_date?.slice(0, 10) : undefined,
       isCompleted: t.is_completed ?? false,
       priority: t.priority || 'medium',
       category: t.category || '作業',
@@ -241,7 +247,8 @@ export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string
       device_id: deviceIdOrUserId || todo.userId || '',
       title: todo.title,
       notes: todo.notes,
-      due_date: todo.dueDate,
+      start_date: todo.startDate ? new Date(todo.startDate).toISOString() : undefined,
+      due_date: todo.dueDate || (todo.endDate ? new Date(todo.endDate).toISOString() : undefined),
       is_completed: todo.isCompleted,
       priority: todo.priority,
       category: todo.category,
@@ -266,24 +273,33 @@ export async function deleteTodoFromSupabase(todoId: string): Promise<boolean> {
 }
 
 // -------------------------------------------------------------
-// 💰 Accounting Transactions
+// 💰 Accounting Transactions (Filtered by User / Device)
 // -------------------------------------------------------------
-export async function fetchTransactionsFromSupabase(): Promise<Transaction[]> {
+export async function fetchTransactionsFromSupabase(deviceIdOrUserId?: string): Promise<Transaction[]> {
   try {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase
+    let query = supabase
       .from('accounting_transactions')
       .select('*')
       .order('date', { ascending: false });
+
+    if (deviceIdOrUserId) {
+      query = query.eq('device_id', deviceIdOrUserId);
+    } else {
+      query = query.or('device_id.eq.,device_id.is.null,device_id.eq.guest');
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     if (!data) return [];
 
     return data.map((t: any) => ({
       id: t.id,
+      userId: t.device_id || undefined,
       amount: Number(t.amount) || 0,
       type: t.type || 'expense',
       categoryName: t.category_name || '餐飲',
-      categoryIcon: t.category_icon || 'cart',
+      categoryIcon: t.category_icon || 'tag',
       categoryColorHex: t.category_color_hex || '#E67E22',
       paymentMethodName: t.payment_method_name || '現金',
       date: t.date || new Date().toISOString(),
@@ -297,11 +313,12 @@ export async function fetchTransactionsFromSupabase(): Promise<Transaction[]> {
   }
 }
 
-export async function upsertTransactionToSupabase(t: Transaction): Promise<boolean> {
+export async function upsertTransactionToSupabase(t: Transaction, deviceIdOrUserId?: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounting_transactions').upsert({
       id: t.id,
+      device_id: deviceIdOrUserId || t.userId || '',
       amount: t.amount,
       type: t.type,
       category_name: t.categoryName,
@@ -337,7 +354,9 @@ export async function fetchCalendarEventsFromSupabase(deviceIdOrUserId?: string)
     const supabase = getSupabaseClient();
     let query = supabase.from('calendar_events').select('*').order('start_date', { ascending: true });
     if (deviceIdOrUserId) {
-      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+      query = query.eq('device_id', deviceIdOrUserId);
+    } else {
+      query = query.or('device_id.eq.,device_id.is.null,device_id.eq.guest');
     }
     const { data, error } = await query;
     if (error || !data) return [];
@@ -368,6 +387,7 @@ export async function upsertCalendarEventToSupabase(event: CalendarEvent, device
     const { error } = await supabase.from('calendar_events').upsert({
       id: event.id,
       device_id: deviceIdOrUserId || event.userId || '',
+
       title: event.title,
       start_date: event.startDate,
       end_date: event.endDate,
