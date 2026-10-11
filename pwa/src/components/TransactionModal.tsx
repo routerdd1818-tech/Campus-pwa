@@ -36,6 +36,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   const [notes, setNotes] = useState<string>('');
   const [valueScore, setValueScore] = useState<number>(8);
 
+  React.useEffect(() => {
+    if (isOpen) {
+      setType('expense');
+      setAmount('');
+      setCategoryName('餐飲');
+      setPaymentMethod('LINE Pay');
+      setNotes('');
+      setValueScore(8);
+    }
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   const currentCategories = type === 'expense' ? EXPENSE_CATEGORIES : INCOME_CATEGORIES;
@@ -64,14 +75,14 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-4 border-b border-black/5 dark:border-white/5">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
+        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
           <div className="flex items-center space-x-2">
             <div className="p-1.5 rounded-xl bg-calico-orange/15 text-calico-orange">
               <Wallet className="w-5 h-5" />
             </div>
-            <h3 className="text-lg font-extrabold text-calico-cocoa dark:text-zinc-100">
+            <h3 className="text-lg font-black text-calico-cocoa dark:text-zinc-100">
               記上一筆收支
             </h3>
           </div>

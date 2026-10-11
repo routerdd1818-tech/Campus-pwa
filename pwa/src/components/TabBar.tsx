@@ -22,7 +22,7 @@ export const TabBar: React.FC = () => {
   ];
 
   return (
-    <nav className="fixed bottom-0 left-0 right-0 z-50 px-4 pb-safe pt-2 pointer-events-none">
+    <nav className="fixed bottom-0 left-0 right-0 z-30 px-4 pb-safe pt-2 pointer-events-none">
       <div className="max-w-md mx-auto pointer-events-auto">
         <div className="flex items-center justify-around px-3 py-2.5 rounded-full bg-white/85 dark:bg-calico-darkCard/90 backdrop-blur-xl border border-black/5 dark:border-white/10 shadow-ios-lg">
           {tabs.map((tab) => {

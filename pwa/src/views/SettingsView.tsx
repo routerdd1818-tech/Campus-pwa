@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   bindLineFollower,
@@ -18,20 +18,43 @@ import {
   ShieldCheck,
   DollarSign,
   Download,
+  User,
+  LogOut,
+  LogIn,
+  ExternalLink,
+  Sparkles,
 } from 'lucide-react';
 
 export const SettingsView: React.FC = () => {
-  const { settings, updateSettings, isSyncing, syncWithSupabase } = useApp();
+  const {
+    settings,
+    updateSettings,
+    isSyncing,
+    syncWithSupabase,
+    currentUser,
+    logoutUser,
+    setIsAuthModalOpen,
+    setIsLineBotModalOpen,
+  } = useApp();
 
   const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseAnonKey || '');
-  const [shareCode, setShareCode] = useState(settings.shareCode || 'CAMP88');
-  const [ownerName, setOwnerName] = useState(settings.ownerName || '我的課表');
-  const [lineUserId, setLineUserId] = useState(settings.lineUserId || '');
+  const [shareCode, setShareCode] = useState(currentUser?.shareCode || settings.shareCode || 'CAMP88');
+  const [ownerName, setOwnerName] = useState(currentUser?.displayName || settings.ownerName || '我的課表');
+  const [lineUserId, setLineUserId] = useState(currentUser?.lineUserId || settings.lineUserId || '');
   const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
   const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
   const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
   const [resetDay, setResetDay] = useState(settings.accountingResetDay ?? 1);
+
+  // Sync state if currentUser changes
+  useEffect(() => {
+    if (currentUser) {
+      setShareCode(currentUser.shareCode);
+      setOwnerName(currentUser.displayName);
+      if (currentUser.lineUserId) setLineUserId(currentUser.lineUserId);
+    }
+  }, [currentUser]);
 
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
   const [isClaimingLineId, setIsClaimingLineId] = useState(false);
@@ -129,6 +152,83 @@ export const SettingsView: React.FC = () => {
         </div>
       )}
 
+      {/* 0. 👤 User Account & Profile Center */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
+              <User className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                使用者帳戶中心
+              </h3>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                {currentUser ? `登入身分：@${currentUser.username}` : '訪客模式（未登入）'}
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => setIsAuthModalOpen(true)}
+            className="px-3 py-1.5 rounded-xl bg-calico-orange/15 text-calico-orange hover:bg-calico-orange/25 active:scale-95 transition-all text-xs font-bold flex items-center space-x-1"
+          >
+            {currentUser ? (
+              <>
+                <UserCheck className="w-3.5 h-3.5" />
+                <span>切換帳號</span>
+              </>
+            ) : (
+              <>
+                <LogIn className="w-3.5 h-3.5" />
+                <span>登入 / 註冊</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {currentUser ? (
+          <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2 text-xs">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">顯示姓名</span>
+              <span className="font-black text-calico-cocoa dark:text-zinc-200">{currentUser.displayName}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">專屬課表分享碼</span>
+              <span className="font-mono font-black text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15">
+                {currentUser.shareCode}
+              </span>
+            </div>
+            {currentUser.lineUserId ? (
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">綁定 LINE ID</span>
+                <span className="font-mono text-calico-sage truncate max-w-[150px]">{currentUser.lineUserId}</span>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">LINE 推播</span>
+                <button
+                  onClick={() => setIsLineBotModalOpen(true)}
+                  className="text-xs font-bold text-calico-orange underline"
+                >
+                  前往綁定
+                </button>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between">
+            <span>註冊或登入後，課表與待辦會自動依帳號獨立保存！</span>
+            <button
+              onClick={() => setIsAuthModalOpen(true)}
+              className="px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold text-[11px] shrink-0 ml-2 shadow-xs"
+            >
+              馬上註冊
+            </button>
+          </div>
+        )}
+      </div>
+
       {/* 1. Supabase Cloud Vault Section */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center space-x-2.5">
@@ -187,18 +287,28 @@ export const SettingsView: React.FC = () => {
 
       {/* 2. LINE Bot Settings */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
-        <div className="flex items-center space-x-2.5">
-          <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
-            <MessageCircle className="w-5 h-5" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-calico-sage/15 text-calico-sage">
+              <MessageCircle className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                LINE 官方帳號每日晨報推播
+              </h3>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                加好友自動綁定 User ID，每天早上準時推播今日課表與待辦
+              </p>
+            </div>
           </div>
-          <div>
-            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-              LINE 官方帳號每日晨報推播
-            </h3>
-            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-              加好友自動綁定 User ID，每天早上準時推播今日課表與待辦
-            </p>
-          </div>
+
+          <button
+            onClick={() => setIsLineBotModalOpen(true)}
+            className="px-2.5 py-1.5 rounded-xl bg-[#06C755]/15 text-[#06C755] dark:text-[#25D366] text-xs font-bold flex items-center space-x-1 hover:bg-[#06C755]/25 active:scale-95 transition-all shrink-0 ml-2"
+          >
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>推播中心</span>
+          </button>
         </div>
 
         <div className="space-y-2.5 pt-1">

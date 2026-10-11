@@ -17,12 +17,23 @@ const PRIORITIES: { val: TodoPriority; label: string; color: string }[] = [
 ];
 
 export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onSave }) => {
-  const [title, setTitle] = useState(todo?.title || '');
-  const [notes, setNotes] = useState(todo?.notes || '');
-  const [category, setCategory] = useState<TodoCategory>(todo?.category || '作業');
-  const [priority, setPriority] = useState<TodoPriority>(todo?.priority || 'medium');
-  const [dueDate, setDueDate] = useState(todo?.dueDate ? todo.dueDate.slice(0, 16) : '');
-  const [paperUrl, setPaperUrl] = useState(todo?.paperUrl || '');
+  const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [category, setCategory] = useState<TodoCategory>('作業');
+  const [priority, setPriority] = useState<TodoPriority>('medium');
+  const [dueDate, setDueDate] = useState('');
+  const [paperUrl, setPaperUrl] = useState('');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setTitle(todo?.title || '');
+      setNotes(todo?.notes || '');
+      setCategory(todo?.category || '作業');
+      setPriority(todo?.priority || 'medium');
+      setDueDate(todo?.dueDate ? todo.dueDate.slice(0, 16) : '');
+      setPaperUrl(todo?.paperUrl || '');
+    }
+  }, [isOpen, todo]);
 
   if (!isOpen) return null;
 
@@ -45,10 +56,10 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-4 border-b border-black/5 dark:border-white/5">
-          <h3 className="text-lg font-extrabold text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
+        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+          <h3 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
             <CheckSquare className="w-5 h-5 text-calico-orange" />
             <span>{todo ? '編輯待辦' : '新增待辦任務'}</span>
           </h3>

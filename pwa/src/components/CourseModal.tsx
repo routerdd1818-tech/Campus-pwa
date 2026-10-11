@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Course, DayOfWeek } from '../types';
-import { X, Trash2, Clock, MapPin, User, BookOpen } from 'lucide-react';
+import { X, Trash2, Clock, MapPin, User, BookOpen, Sparkles } from 'lucide-react';
 
 interface CourseModalProps {
   course?: Course | null;
@@ -8,6 +8,9 @@ interface CourseModalProps {
   onClose: () => void;
   onSave: (course: Course) => void;
   onDelete?: (id: string) => void;
+  defaultDay?: DayOfWeek;
+  defaultStartTime?: string;
+  defaultEndTime?: string;
 }
 
 const COLOR_PRESETS = [
@@ -31,21 +34,51 @@ const WEEKDAY_NAMES = [
   { val: 7, label: '週日' },
 ];
 
+const PERIOD_PRESETS = [
+  { label: '第1節', start: '08:10', end: '09:00' },
+  { label: '第2節', start: '09:10', end: '10:00' },
+  { label: '第3節', start: '10:10', end: '11:00' },
+  { label: '第4節', start: '11:10', end: '12:00' },
+  { label: '中午', start: '12:10', end: '13:20' },
+  { label: '第5節', start: '13:20', end: '14:10' },
+  { label: '第6節', start: '14:20', end: '15:10' },
+  { label: '第7節', start: '15:30', end: '16:20' },
+  { label: '第8節', start: '16:30', end: '17:20' },
+  { label: '第9節', start: '17:30', end: '18:20' },
+  { label: '第10節', start: '18:30', end: '19:20' },
+];
+
 export const CourseModal: React.FC<CourseModalProps> = ({
   course,
   isOpen,
   onClose,
   onSave,
   onDelete,
+  defaultDay = 1,
+  defaultStartTime,
+  defaultEndTime,
 }) => {
-  const [name, setName] = useState(course?.name || '');
-  const [code, setCode] = useState(course?.code || '');
-  const [classroom, setClassroom] = useState(course?.classroom || '');
-  const [instructor, setInstructor] = useState(course?.instructor || '');
-  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(course?.dayOfWeek || 1);
-  const [startTime, setStartTime] = useState(course?.startTime || '09:00');
-  const [endTime, setEndTime] = useState(course?.endTime || '12:00');
-  const [colorHex, setColorHex] = useState(course?.colorHex || '#E67E22');
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [classroom, setClassroom] = useState('');
+  const [instructor, setInstructor] = useState('');
+  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>(defaultDay);
+  const [startTime, setStartTime] = useState(defaultStartTime || '09:10');
+  const [endTime, setEndTime] = useState(defaultEndTime || '12:00');
+  const [colorHex, setColorHex] = useState('#E67E22');
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setName(course?.name || '');
+      setCode(course?.code || '');
+      setClassroom(course?.classroom || '');
+      setInstructor(course?.instructor || '');
+      setDayOfWeek(course?.dayOfWeek || defaultDay);
+      setStartTime(course?.startTime || defaultStartTime || '09:10');
+      setEndTime(course?.endTime || defaultEndTime || '12:00');
+      setColorHex(course?.colorHex || '#E67E22');
+    }
+  }, [isOpen, course, defaultDay, defaultStartTime, defaultEndTime]);
 
   if (!isOpen) return null;
 
@@ -68,11 +101,17 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     onClose();
   };
 
+  const applyPeriodPreset = (p: { start: string; end: string }) => {
+    setStartTime(p.start);
+    setEndTime(p.end);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between pb-4 border-b border-black/5 dark:border-white/5">
-          <h3 className="text-lg font-extrabold text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
+        {/* Sticky Header */}
+        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+          <h3 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-calico-orange" />
             <span>{course ? '編輯課程' : '新增課程'}</span>
           </h3>
@@ -135,7 +174,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
               上課星期
             </label>
-            <div className="grid grid-cols-7 gap-1.5">
+            <div className="grid grid-cols-7 gap-1">
               {WEEKDAY_NAMES.map((w) => (
                 <button
                   type="button"
@@ -148,6 +187,26 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                   }`}
                 >
                   {w.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Period quick preset chips */}
+          <div>
+            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center space-x-1">
+              <Clock className="w-3.5 h-3.5" />
+              <span>節次快捷設定</span>
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              {PERIOD_PRESETS.map((p) => (
+                <button
+                  type="button"
+                  key={p.label}
+                  onClick={() => applyPeriodPreset(p)}
+                  className="px-2.5 py-1 rounded-lg bg-black/5 dark:bg-white/10 text-[11px] font-bold text-calico-cocoa/75 dark:text-zinc-300 hover:bg-calico-orange/20 transition-colors"
+                >
+                  {p.label}
                 </button>
               ))}
             </div>
@@ -201,8 +260,8 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="pt-3 flex items-center space-x-3">
+          {/* Action Buttons (Generous bottom spacing so never blocked by TabBar!) */}
+          <div className="pt-4 flex items-center space-x-3">
             {course && onDelete && (
               <button
                 type="button"
@@ -210,7 +269,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
                   onDelete(course.id);
                   onClose();
                 }}
-                className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-500 hover:bg-red-100 active:scale-95 transition-all"
+                className="p-3.5 rounded-xl bg-red-50 dark:bg-red-950/30 text-red-500 hover:bg-red-100 active:scale-95 transition-all shrink-0"
                 title="刪除課程"
               >
                 <Trash2 className="w-5 h-5" />
@@ -218,7 +277,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             )}
             <button
               type="submit"
-              className="flex-1 py-3 px-4 rounded-xl bg-calico-orange text-white font-extrabold shadow-sm hover:brightness-105 active:scale-95 transition-all text-sm tracking-wide"
+              className="flex-1 py-3.5 px-4 rounded-xl bg-calico-orange text-white font-extrabold shadow-sm hover:brightness-105 active:scale-95 transition-all text-sm tracking-wide"
             >
               {course ? '儲存變更' : '新增至課表'}
             </button>

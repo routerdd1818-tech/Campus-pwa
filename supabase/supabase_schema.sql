@@ -23,8 +23,23 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
 -- ============================================================================
--- PART 1: 課表、待辦、共用行事曆與記帳核心資料表
+-- PART 1: 課表、待辦、共用行事曆、記帳與使用者多帳號資料表
 -- ============================================================================
+
+-- 0. 使用者帳號資料表 (user_accounts)
+CREATE TABLE IF NOT EXISTS public.user_accounts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    username TEXT UNIQUE NOT NULL,
+    password_hash TEXT NOT NULL,
+    display_name TEXT DEFAULT '同學',
+    share_code TEXT NOT NULL,
+    line_user_id TEXT DEFAULT '',
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.user_accounts ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow public all access on user_accounts" ON public.user_accounts;
+CREATE POLICY "Allow public all access on user_accounts" ON public.user_accounts FOR ALL TO public USING (true) WITH CHECK (true);
 
 -- 1. 課程資料表 (courses)
 CREATE TABLE IF NOT EXISTS public.courses (

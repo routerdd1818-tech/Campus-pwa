@@ -1,7 +1,17 @@
 export type DayOfWeek = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
+export interface ClassPeriod {
+  id: number;
+  name: string;
+  displayCode: string;
+  startTime: string;
+  endTime: string;
+  isNoon?: boolean;
+}
+
 export interface Course {
   id: string;
+  userId?: string;
   name: string;
   code?: string;
   classroom?: string;
@@ -10,6 +20,7 @@ export interface Course {
   startTime: string;    // HH:mm (e.g. "09:00")
   endTime: string;      // HH:mm (e.g. "12:00")
   colorHex: string;
+  periodId?: number;
   isSharedWithFriends?: boolean;
 }
 
@@ -18,6 +29,7 @@ export type TodoCategory = '作業' | '考試' | '報告' | '生活' | '個人' 
 
 export interface Todo {
   id: string;
+  userId?: string;
   title: string;
   notes?: string;
   dueDate?: string; // ISO string
@@ -31,6 +43,7 @@ export interface Todo {
 
 export interface Transaction {
   id: string;
+  userId?: string;
   amount: number;
   type: 'expense' | 'income';
   categoryName: string;
@@ -45,6 +58,7 @@ export interface Transaction {
 
 export interface Installment {
   id: string;
+  userId?: string;
   title: string;
   totalAmount: number;
   totalPeriods: number;
@@ -59,6 +73,7 @@ export interface Installment {
 
 export interface SplitBill {
   id: string;
+  userId?: string;
   title: string;
   totalAmount: number;
   myAmount: number;
@@ -66,6 +81,18 @@ export interface SplitBill {
   date: string;
   notes?: string;
   isSettled: boolean;
+}
+
+export interface UserAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  shareCode: string;
+  lineUserId?: string;
+  linePushHour?: number;
+  linePushMinute?: number;
+  isLinePushEnabled?: boolean;
+  createdAt?: string;
 }
 
 export interface UserSettings {

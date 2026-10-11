@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { Course, Todo, Transaction, Installment, SplitBill, UserSettings } from '../types';
+import { Course, Todo, Transaction, Installment, SplitBill, UserSettings, UserAccount } from '../types';
 import {
   fetchCoursesFromSupabase,
   upsertCourseToSupabase,
@@ -10,6 +10,7 @@ import {
   fetchTransactionsFromSupabase,
   upsertTransactionToSupabase,
   deleteTransactionFromSupabase,
+  loginUserAccount,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
@@ -153,6 +154,13 @@ interface BudgetInfo {
 interface AppContextType {
   activeTab: 'schedule' | 'todos' | 'accounting' | 'settings';
   setActiveTab: (tab: 'schedule' | 'todos' | 'accounting' | 'settings') => void;
+  currentUser: UserAccount | null;
+  setCurrentUser: (user: UserAccount | null, rememberPassword?: string | null) => void;
+  logoutUser: () => void;
+  isAuthModalOpen: boolean;
+  setIsAuthModalOpen: (open: boolean) => void;
+  isLineBotModalOpen: boolean;
+  setIsLineBotModalOpen: (open: boolean) => void;
   courses: Course[];
   todos: Todo[];
   transactions: Transaction[];
@@ -173,7 +181,7 @@ interface AppContextType {
   addTransaction: (t: Transaction) => Promise<void>;
   deleteTransaction: (id: string) => Promise<void>;
   updateSettings: (s: Partial<UserSettings>) => void;
-  syncWithSupabase: () => Promise<void>;
+  syncWithSupabase: (targetUser?: UserAccount | null) => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -183,6 +191,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isSyncing, setIsSyncing] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [catMood, setCatMood] = useState<'happy' | 'sleeping' | 'thinking' | 'proud'>('happy');
+
+  // 👤 User Account & Modal State
+  const [currentUser, setCurrentUserState] = useState<UserAccount | null>(() => {
+    try {
+      const saved = localStorage.getItem('campus_auth_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isLineBotModalOpen, setIsLineBotModalOpen] = useState(false);
 
   // Load from LocalStorage
   const [courses, setCourses] = useState<Course[]>(() => {
@@ -245,13 +266,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [settings]);
 
   // Initial cloud sync
-  const syncWithSupabase = async () => {
+  const syncWithSupabase = async (targetUser?: UserAccount | null) => {
     if (!navigator.onLine) return;
     setIsSyncing(true);
+    const activeUser = targetUser !== undefined ? targetUser : currentUser;
+    const userKey = activeUser ? activeUser.id : undefined;
+
     try {
       const [cloudCourses, cloudTodos, cloudTx] = await Promise.all([
-        fetchCoursesFromSupabase(),
-        fetchTodosFromSupabase(),
+        fetchCoursesFromSupabase(userKey),
+        fetchTodosFromSupabase(userKey),
         fetchTransactionsFromSupabase(),
       ]);
 
@@ -265,8 +289,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const setCurrentUser = (user: UserAccount | null, rememberPassword?: string | null) => {
+    setCurrentUserState(user);
+    if (user) {
+      localStorage.setItem('campus_auth_session', JSON.stringify(user));
+      if (rememberPassword !== undefined) {
+        if (rememberPassword) {
+          localStorage.setItem('campus_auth_cred', JSON.stringify({ u: user.username, p: rememberPassword }));
+        } else {
+          localStorage.removeItem('campus_auth_cred');
+        }
+      }
+      setSettings((prev) => ({
+        ...prev,
+        shareCode: user.shareCode || prev.shareCode,
+        ownerName: user.displayName || prev.ownerName,
+        lineUserId: user.lineUserId || prev.lineUserId,
+      }));
+      syncWithSupabase(user);
+    } else {
+      localStorage.removeItem('campus_auth_session');
+      localStorage.removeItem('campus_auth_cred');
+    }
+  };
+
+  const logoutUser = () => {
+    setCurrentUserState(null);
+    localStorage.removeItem('campus_auth_session');
+    localStorage.removeItem('campus_auth_cred');
+    syncWithSupabase(null);
+  };
+
+  // Auto-login on startup
   useEffect(() => {
-    syncWithSupabase();
+    const attemptAutoLogin = async () => {
+      try {
+        const savedCred = localStorage.getItem('campus_auth_cred');
+        if (savedCred && !currentUser) {
+          const { u, p } = JSON.parse(savedCred);
+          if (u && p) {
+            const res = await loginUserAccount(u, p);
+            if (res.ok && res.user) {
+              setCurrentUserState(res.user);
+              localStorage.setItem('campus_auth_session', JSON.stringify(res.user));
+              syncWithSupabase(res.user);
+              return;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Auto login exception:', err);
+      }
+      syncWithSupabase();
+    };
+
+    attemptAutoLogin();
   }, []);
 
   // Budget calculation
@@ -306,14 +383,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Actions
   const addCourse = async (course: Course) => {
-    setCourses((prev) => [...prev, course]);
-    await upsertCourseToSupabase(course);
+    const enriched = { ...course, userId: currentUser?.id || course.userId };
+    setCourses((prev) => [...prev, enriched]);
+    await upsertCourseToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
   const updateCourse = async (course: Course) => {
-    setCourses((prev) => prev.map((c) => (c.id === course.id ? course : c)));
-    await upsertCourseToSupabase(course);
+    const enriched = { ...course, userId: currentUser?.id || course.userId };
+    setCourses((prev) => prev.map((c) => (c.id === enriched.id ? enriched : c)));
+    await upsertCourseToSupabase(enriched, currentUser?.id);
   };
 
   const deleteCourse = async (id: string) => {
@@ -322,8 +401,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTodo = async (todo: Todo) => {
-    setTodos((prev) => [todo, ...prev]);
-    await upsertTodoToSupabase(todo);
+    const enriched = { ...todo, userId: currentUser?.id || todo.userId };
+    setTodos((prev) => [enriched, ...prev]);
+    await upsertTodoToSupabase(enriched, currentUser?.id);
     setCatMood('thinking');
   };
 
@@ -331,8 +411,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTodos((prev) =>
       prev.map((t) => {
         if (t.id === id) {
-          const next = { ...t, isCompleted: !t.isCompleted };
-          upsertTodoToSupabase(next);
+          const next = { ...t, isCompleted: !t.isCompleted, userId: currentUser?.id || t.userId };
+          upsertTodoToSupabase(next, currentUser?.id);
           if (next.isCompleted) setCatMood('proud');
           return next;
         }
@@ -347,8 +427,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTransaction = async (t: Transaction) => {
-    setTransactions((prev) => [t, ...prev]);
-    await upsertTransactionToSupabase(t);
+    const enriched = { ...t, userId: currentUser?.id || t.userId };
+    setTransactions((prev) => [enriched, ...prev]);
+    await upsertTransactionToSupabase(enriched);
     setCatMood('happy');
   };
 
@@ -366,6 +447,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       value={{
         activeTab,
         setActiveTab,
+        currentUser,
+        setCurrentUser,
+        logoutUser,
+        isAuthModalOpen,
+        setIsAuthModalOpen,
+        isLineBotModalOpen,
+        setIsLineBotModalOpen,
         courses,
         todos,
         transactions,

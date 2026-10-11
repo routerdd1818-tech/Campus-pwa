@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Course, Todo, Transaction, Installment, SplitBill } from '../types';
+import { Course, Todo, Transaction, Installment, SplitBill, UserAccount } from '../types';
 
 export const DEFAULT_SUPABASE_URL = 'https://dxoobrrjzaovwpyagzgn.supabase.co';
 export const DEFAULT_SUPABASE_ANON_KEY =
@@ -25,17 +25,132 @@ export function resetSupabaseClient(url: string, key: string): SupabaseClient {
 }
 
 // -------------------------------------------------------------
-// Courses
+// 👤 User Account & Authentication (Multi-User Isolation)
 // -------------------------------------------------------------
-export async function fetchCoursesFromSupabase(): Promise<Course[]> {
+export async function registerUserAccount(
+  username: string,
+  passwordHash: string,
+  displayName: string
+): Promise<{ ok: boolean; user?: UserAccount; error?: string }> {
   try {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from('courses').select('*').order('day_of_week', { ascending: true });
+    const cleanUsername = username.trim().toLowerCase();
+
+    // Check if user already exists
+    const { data: existing } = await supabase
+      .from('user_accounts')
+      .select('id')
+      .eq('username', cleanUsername)
+      .maybeSingle();
+
+    if (existing) {
+      return { ok: false, error: '該帳號已被註冊，請直接登入或使用其他帳號！' };
+    }
+
+    // Generate unique 6-character shareCode
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let code = 'CAMP';
+    for (let i = 0; i < 2; i++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+
+    const newAccount = {
+      username: cleanUsername,
+      password_hash: passwordHash,
+      display_name: displayName.trim() || '同學',
+      share_code: code,
+      line_user_id: '',
+    };
+
+    const { data: inserted, error: insertErr } = await supabase
+      .from('user_accounts')
+      .insert(newAccount)
+      .select('*')
+      .single();
+
+    if (insertErr || !inserted) {
+      // Fallback: If user_accounts table not yet created on Supabase, create local-first account
+      const localAccount: UserAccount = {
+        id: `u_${Date.now()}`,
+        username: cleanUsername,
+        displayName: displayName.trim() || '同學',
+        shareCode: code,
+      };
+      return { ok: true, user: localAccount };
+    }
+
+    return {
+      ok: true,
+      user: {
+        id: inserted.id,
+        username: inserted.username,
+        displayName: inserted.display_name,
+        shareCode: inserted.share_code,
+        lineUserId: inserted.line_user_id || '',
+        createdAt: inserted.created_at,
+      },
+    };
+  } catch (err: any) {
+    return { ok: false, error: err.message || '註冊失敗，請檢查網路連線' };
+  }
+}
+
+export async function loginUserAccount(
+  username: string,
+  passwordHash: string
+): Promise<{ ok: boolean; user?: UserAccount; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanUsername = username.trim().toLowerCase();
+
+    const { data, error } = await supabase
+      .from('user_accounts')
+      .select('*')
+      .eq('username', cleanUsername)
+      .maybeSingle();
+
+    if (error || !data) {
+      return { ok: false, error: '找不到此帳號，請確認輸入或點擊「註冊新帳號」！' };
+    }
+
+    if (data.password_hash !== passwordHash) {
+      return { ok: false, error: '密碼不正確，請重新輸入！' };
+    }
+
+    return {
+      ok: true,
+      user: {
+        id: data.id,
+        username: data.username,
+        displayName: data.display_name,
+        shareCode: data.share_code,
+        lineUserId: data.line_user_id || '',
+        createdAt: data.created_at,
+      },
+    };
+  } catch (err: any) {
+    return { ok: false, error: err.message || '登入失敗，請檢查網路狀態' };
+  }
+}
+
+// -------------------------------------------------------------
+// 📚 Courses (Filtered by User / Device)
+// -------------------------------------------------------------
+export async function fetchCoursesFromSupabase(deviceIdOrUserId?: string): Promise<Course[]> {
+  try {
+    const supabase = getSupabaseClient();
+    let query = supabase.from('courses').select('*').order('day_of_week', { ascending: true });
+    if (deviceIdOrUserId) {
+      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     if (!data) return [];
 
     return data.map((c: any) => ({
       id: c.id,
+      userId: c.device_id || undefined,
       name: c.name,
       code: c.code || '',
       classroom: c.classroom || '',
@@ -52,11 +167,12 @@ export async function fetchCoursesFromSupabase(): Promise<Course[]> {
   }
 }
 
-export async function upsertCourseToSupabase(course: Course): Promise<boolean> {
+export async function upsertCourseToSupabase(course: Course, deviceIdOrUserId?: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('courses').upsert({
       id: course.id,
+      device_id: deviceIdOrUserId || course.userId || '',
       name: course.name,
       code: course.code,
       classroom: course.classroom,
@@ -84,17 +200,23 @@ export async function deleteCourseFromSupabase(courseId: string): Promise<boolea
 }
 
 // -------------------------------------------------------------
-// Todos
+// ✅ Todos
 // -------------------------------------------------------------
-export async function fetchTodosFromSupabase(): Promise<Todo[]> {
+export async function fetchTodosFromSupabase(deviceIdOrUserId?: string): Promise<Todo[]> {
   try {
     const supabase = getSupabaseClient();
-    const { data, error } = await supabase.from('todos').select('*').order('created_at', { ascending: false });
+    let query = supabase.from('todos').select('*').order('created_at', { ascending: false });
+    if (deviceIdOrUserId) {
+      query = query.or(`device_id.eq.${deviceIdOrUserId},device_id.eq.`);
+    }
+
+    const { data, error } = await query;
     if (error) throw error;
     if (!data) return [];
 
     return data.map((t: any) => ({
       id: t.id,
+      userId: t.device_id || undefined,
       title: t.title,
       notes: t.notes || '',
       dueDate: t.due_date || undefined,
@@ -111,11 +233,12 @@ export async function fetchTodosFromSupabase(): Promise<Todo[]> {
   }
 }
 
-export async function upsertTodoToSupabase(todo: Todo): Promise<boolean> {
+export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('todos').upsert({
       id: todo.id,
+      device_id: deviceIdOrUserId || todo.userId || '',
       title: todo.title,
       notes: todo.notes,
       due_date: todo.dueDate,
@@ -143,7 +266,7 @@ export async function deleteTodoFromSupabase(todoId: string): Promise<boolean> {
 }
 
 // -------------------------------------------------------------
-// Accounting Transactions
+// 💰 Accounting Transactions
 // -------------------------------------------------------------
 export async function fetchTransactionsFromSupabase(): Promise<Transaction[]> {
   try {
@@ -207,8 +330,75 @@ export async function deleteTransactionFromSupabase(id: string): Promise<boolean
 }
 
 // -------------------------------------------------------------
-// LINE Bot & RPC
+// 🤖 LINE Bot Push Settings & Isolation per User
 // -------------------------------------------------------------
+export async function saveUserLineBotPushSettings(
+  userKey: string,
+  lineUserId: string,
+  shareCode: string,
+  userName: string,
+  pushHour: number,
+  pushMinute: number,
+  isEnabled: boolean,
+  coursesData: Course[] = [],
+  todosData: Todo[] = []
+): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const targetUserId = lineUserId.trim() || `AUTO_${shareCode.toUpperCase()}`;
+
+    const { error } = await supabase.from('line_bot_settings').upsert({
+      user_id: targetUserId,
+      device_id: userKey,
+      user_name: userName || '我的課表',
+      share_code: shareCode.toUpperCase(),
+      push_hour: pushHour,
+      push_minute: pushMinute,
+      is_enabled: isEnabled,
+      include_schedule: true,
+      include_todos: true,
+      include_weekly_plan: true,
+      courses_data: coursesData,
+      todos_data: todosData,
+      updated_at: new Date().toISOString(),
+    });
+
+    // Update user_accounts table if user is registered
+    if (userKey && !userKey.startsWith('dev_')) {
+      await supabase
+        .from('user_accounts')
+        .update({
+          line_user_id: lineUserId.trim(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', userKey);
+    }
+
+    return !error;
+  } catch {
+    return false;
+  }
+}
+
+export async function fetchUserLineBotPushSettings(userKey: string, shareCode: string) {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanCode = shareCode.trim().toUpperCase();
+
+    const { data } = await supabase
+      .from('line_bot_settings')
+      .select('*')
+      .or(`device_id.eq.${userKey},share_code.eq.${cleanCode}`)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    return data;
+  } catch {
+    return null;
+  }
+}
+
 export async function bindLineFollower(shareCode: string, deviceId: string) {
   try {
     const supabase = getSupabaseClient();
@@ -240,7 +430,7 @@ export async function sendTestLineMessage(userId: string, text: string): Promise
 }
 
 // -------------------------------------------------------------
-// Gemini AI OCR Gateway
+// 🧠 Gemini AI OCR Gateway
 // -------------------------------------------------------------
 export async function callGeminiOcrGateway(base64Image: string): Promise<string | null> {
   try {
