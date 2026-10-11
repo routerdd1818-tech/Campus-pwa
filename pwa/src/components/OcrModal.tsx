@@ -43,13 +43,13 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
     setErrorMsg(null);
 
     try {
-      const responseText = await callGeminiOcrGateway(base64Data);
-      if (!responseText) {
-        throw new Error('辨識服務無回應，請確認 Supabase Edge Function 與 Gemini API Key 已設定');
+      const result = await callGeminiOcrGateway(base64Data);
+      if (!result.ok || !result.text) {
+        throw new Error(result.error || '辨識服務無回應，請確認圖片清晰度');
       }
 
       // Clean JSON markdown blocks if any
-      const cleaned = responseText
+      const cleaned = result.text
         .replace(/```json/gi, '')
         .replace(/```/g, '')
         .trim();

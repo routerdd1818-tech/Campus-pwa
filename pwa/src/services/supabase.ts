@@ -590,21 +590,43 @@ export async function sendTestLineMessage(userId: string, text: string): Promise
 // -------------------------------------------------------------
 // 🧠 Gemini AI OCR Gateway
 // -------------------------------------------------------------
-export async function callGeminiOcrGateway(base64Image: string): Promise<string | null> {
+export async function callGeminiOcrGateway(
+  base64Image: string
+): Promise<{ ok: boolean; text?: string; error?: string }> {
   try {
     const supabase = getSupabaseClient();
     const { data, error } = await supabase.functions.invoke('campus-api-gateway', {
       body: {
         action: 'gemini_ocr',
+        models: ['gemini-3.8-flash', 'gemini-2.5-flash'],
         base64Image,
         prompt:
           '請辨識這張大學課表圖片，並以 JSON 陣列格式輸出所有課程。每個項目包含：name（課程名稱）、classroom（教室）、instructor（講師）、dayOfWeek（星期幾，數字 1 代表週一、7 代表週日）、startTime（格式如 09:00）、endTime（格式如 12:00）。只回傳 JSON 陣列，不需其他文字。',
       },
     });
-    if (error) throw error;
-    return data?.text || null;
-  } catch (err) {
+
+    if (error) {
+      let detailedMsg = error.message;
+      try {
+        if (error.context && typeof error.context.json === 'function') {
+          const errBody = await error.context.json();
+          if (errBody?.message) detailedMsg = errBody.message;
+        }
+      } catch {}
+      return { ok: false, error: detailedMsg || '辨識服務連線異常，請確認 Supabase 設定' };
+    }
+
+    if (data?.status === 'error') {
+      return { ok: false, error: data?.message || '辨識服務回傳錯誤' };
+    }
+
+    if (!data?.text) {
+      return { ok: false, error: '未能自圖片解析出文字內容，請確認圖片清晰度' };
+    }
+
+    return { ok: true, text: data.text };
+  } catch (err: any) {
     console.warn('callGeminiOcrGateway error:', err);
-    return null;
+    return { ok: false, error: err.message || '辨識服務無回應，請確認網路與服務狀態' };
   }
 }

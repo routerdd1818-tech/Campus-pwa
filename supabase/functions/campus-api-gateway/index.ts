@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
 
       const base64Image: string = body?.base64Image ?? "";
       const prompt: string = body?.prompt ?? "";
-      const models: string[] = body?.models ?? ["gemini-2.5-flash", "gemini-2.0-flash"];
+      const models: string[] = body?.models ?? ["gemini-3.8-flash", "gemini-2.5-flash"];
 
       let lastErr = "未知錯誤";
       for (const model of models) {
