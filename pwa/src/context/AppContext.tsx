@@ -367,55 +367,43 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isGpaModalOpen, setIsGpaModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
-  // Load from LocalStorage (Scoped per account)
+  // Load from LocalStorage (Scoped strictly per user account)
   const [courses, setCourses] = useState<Course[]>(() => {
     const uid = initialUser?.id;
+    if (!uid) return [];
     const saved = localStorage.getItem(getScopedKey(uid, 'courses'));
     if (saved) {
       try { return JSON.parse(saved); } catch {}
-    }
-    if (!uid) {
-      const legacy = localStorage.getItem('campus_courses');
-      return legacy ? JSON.parse(legacy) : INITIAL_COURSES;
     }
     return [];
   });
 
   const [todos, setTodos] = useState<Todo[]>(() => {
     const uid = initialUser?.id;
+    if (!uid) return [];
     const saved = localStorage.getItem(getScopedKey(uid, 'todos'));
     if (saved) {
       try { return JSON.parse(saved); } catch {}
-    }
-    if (!uid) {
-      const legacy = localStorage.getItem('campus_todos');
-      return legacy ? JSON.parse(legacy) : INITIAL_TODOS;
     }
     return [];
   });
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const uid = initialUser?.id;
+    if (!uid) return [];
     const saved = localStorage.getItem(getScopedKey(uid, 'transactions'));
     if (saved) {
       try { return JSON.parse(saved); } catch {}
-    }
-    if (!uid) {
-      const legacy = localStorage.getItem('campus_transactions');
-      return legacy ? JSON.parse(legacy) : INITIAL_TRANSACTIONS;
     }
     return [];
   });
 
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => {
     const uid = initialUser?.id;
+    if (!uid) return [];
     const saved = localStorage.getItem(getScopedKey(uid, 'calendar_events'));
     if (saved) {
       try { return JSON.parse(saved); } catch {}
-    }
-    if (!uid) {
-      const legacy = localStorage.getItem('campus_calendar_events');
-      return legacy ? JSON.parse(legacy) : INITIAL_CALENDAR_EVENTS;
     }
     return [];
   });
@@ -626,16 +614,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     // 3. Load next user's data from their scoped storage
     const rawCourses = localStorage.getItem(getScopedKey(newUid, 'courses'));
-    setCourses(rawCourses ? JSON.parse(rawCourses) : (!newUid ? INITIAL_COURSES : []));
+    if (rawCourses) {
+      setCourses(JSON.parse(rawCourses));
+    } else if (newUid) {
+      const starter = INITIAL_COURSES.map((c) => ({ ...c, id: `c_${newUid}_${c.id}`, userId: newUid }));
+      setCourses(starter);
+      localStorage.setItem(getScopedKey(newUid, 'courses'), JSON.stringify(starter));
+    } else {
+      setCourses([]);
+    }
 
     const rawTodos = localStorage.getItem(getScopedKey(newUid, 'todos'));
-    setTodos(rawTodos ? JSON.parse(rawTodos) : (!newUid ? INITIAL_TODOS : []));
+    if (rawTodos) {
+      setTodos(JSON.parse(rawTodos));
+    } else if (newUid) {
+      const starter = INITIAL_TODOS.map((t) => ({ ...t, id: `t_${newUid}_${t.id}`, userId: newUid }));
+      setTodos(starter);
+      localStorage.setItem(getScopedKey(newUid, 'todos'), JSON.stringify(starter));
+    } else {
+      setTodos([]);
+    }
 
     const rawTx = localStorage.getItem(getScopedKey(newUid, 'transactions'));
-    setTransactions(rawTx ? JSON.parse(rawTx) : (!newUid ? INITIAL_TRANSACTIONS : []));
+    if (rawTx) {
+      setTransactions(JSON.parse(rawTx));
+    } else if (newUid) {
+      const starter = INITIAL_TRANSACTIONS.map((tx) => ({ ...tx, id: `tx_${newUid}_${tx.id}`, userId: newUid }));
+      setTransactions(starter);
+      localStorage.setItem(getScopedKey(newUid, 'transactions'), JSON.stringify(starter));
+    } else {
+      setTransactions([]);
+    }
 
     const rawEvents = localStorage.getItem(getScopedKey(newUid, 'calendar_events'));
-    setCalendarEvents(rawEvents ? JSON.parse(rawEvents) : (!newUid ? INITIAL_CALENDAR_EVENTS : []));
+    if (rawEvents) {
+      setCalendarEvents(JSON.parse(rawEvents));
+    } else if (newUid) {
+      const starter = INITIAL_CALENDAR_EVENTS.map((e) => ({ ...e, id: `e_${newUid}_${e.id}`, userId: newUid }));
+      setCalendarEvents(starter);
+      localStorage.setItem(getScopedKey(newUid, 'calendar_events'), JSON.stringify(starter));
+    } else {
+      setCalendarEvents([]);
+    }
 
     const rawPeriods = localStorage.getItem(getScopedKey(newUid, 'class_periods'));
     setClassPeriods(rawPeriods ? JSON.parse(rawPeriods) : DEFAULT_CLASS_PERIODS);
@@ -798,7 +818,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const logoutUser = () => {
-    setCurrentUser(null);
+    const oldUid = activeUserIdRef.current;
+    if (oldUid) {
+      localStorage.setItem(getScopedKey(oldUid, 'courses'), JSON.stringify(courses));
+      localStorage.setItem(getScopedKey(oldUid, 'todos'), JSON.stringify(todos));
+      localStorage.setItem(getScopedKey(oldUid, 'transactions'), JSON.stringify(transactions));
+      localStorage.setItem(getScopedKey(oldUid, 'calendar_events'), JSON.stringify(calendarEvents));
+    }
+    localStorage.removeItem('campus_auth_session');
+    localStorage.removeItem('campus_auth_cred');
+    activeUserIdRef.current = null;
+    setCurrentUserState(null);
+    setCourses([]);
+    setTodos([]);
+    setTransactions([]);
+    setCalendarEvents([]);
   };
 
   // Auto-login on startup

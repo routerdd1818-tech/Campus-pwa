@@ -20,6 +20,7 @@ import { GpaCalculatorModal } from './components/GpaCalculatorModal';
 
 const MainContent: React.FC = () => {
   const {
+    currentUser,
     activeTab,
     isAuthModalOpen,
     setIsAuthModalOpen,
@@ -38,6 +39,18 @@ const MainContent: React.FC = () => {
     isGpaModalOpen,
     setIsGpaModalOpen,
   } = useApp();
+
+  // 🔒 強制第一次使用或未登入的使用者登入 / 註冊，防護資料隔離與隱私
+  if (!currentUser) {
+    return (
+      <div className="min-h-screen flex flex-col justify-center items-center bg-calico-cream dark:bg-calico-darkBg text-calico-cocoa dark:text-zinc-100 p-4 transition-colors">
+        <AuthModal
+          isOpen={true}
+          onClose={() => {}}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-calico-cream dark:bg-calico-darkBg text-calico-cocoa dark:text-zinc-100 transition-colors">
