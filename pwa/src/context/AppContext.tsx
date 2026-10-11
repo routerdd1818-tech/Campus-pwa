@@ -281,8 +281,6 @@ interface AppContextType {
   setIsFoodRouletteOpen: (open: boolean) => void;
   isPomodoroOpen: boolean;
   setIsPomodoroOpen: (open: boolean) => void;
-  isGpaModalOpen: boolean;
-  setIsGpaModalOpen: (open: boolean) => void;
   restoreBackupData: (data: any) => boolean;
   resetAllData: () => void;
   eventToEdit: CalendarEvent | null;
@@ -364,7 +362,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isFortuneModalOpen, setIsFortuneModalOpen] = useState(false);
   const [isFoodRouletteOpen, setIsFoodRouletteOpen] = useState(false);
   const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
-  const [isGpaModalOpen, setIsGpaModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
   // Load from LocalStorage (Scoped strictly per user account)
@@ -1136,8 +1133,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsFoodRouletteOpen,
         isPomodoroOpen,
         setIsPomodoroOpen,
-        isGpaModalOpen,
-        setIsGpaModalOpen,
         restoreBackupData,
         resetAllData,
         eventToEdit,

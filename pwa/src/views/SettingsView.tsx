@@ -84,7 +84,6 @@ export const SettingsView: React.FC = () => {
     setIsFortuneModalOpen,
     setIsFoodRouletteOpen,
     setIsPomodoroOpen,
-    setIsGpaModalOpen,
   } = useApp();
 
   // 1. Account & Profile
@@ -1278,7 +1277,7 @@ export const SettingsView: React.FC = () => {
           <span className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5">
             校園百寶箱小工具快速開啟
           </span>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => setIsFortuneModalOpen(true)}
@@ -1302,14 +1301,6 @@ export const SettingsView: React.FC = () => {
             >
               <span>⏱️</span>
               <span className="mt-0.5">伴讀番茄</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsGpaModalOpen(true)}
-              className="p-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 text-[11px] font-bold text-calico-cocoa dark:text-zinc-200 hover:border-emerald-400 transition-all flex flex-col items-center"
-            >
-              <span>🎓</span>
-              <span className="mt-0.5">GPA試算</span>
             </button>
           </div>
         </div>

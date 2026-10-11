@@ -16,7 +16,6 @@ import { PeriodSettingsModal } from './components/PeriodSettingsModal';
 import { CampusFortuneModal } from './components/CampusFortuneModal';
 import { FoodRouletteModal } from './components/FoodRouletteModal';
 import { FocusPomodoroModal } from './components/FocusPomodoroModal';
-import { GpaCalculatorModal } from './components/GpaCalculatorModal';
 
 const MainContent: React.FC = () => {
   const {
@@ -36,8 +35,6 @@ const MainContent: React.FC = () => {
     setIsFoodRouletteOpen,
     isPomodoroOpen,
     setIsPomodoroOpen,
-    isGpaModalOpen,
-    setIsGpaModalOpen,
   } = useApp();
 
   // 🔒 強制第一次使用或未登入的使用者登入 / 註冊，防護資料隔離與隱私
@@ -113,12 +110,6 @@ const MainContent: React.FC = () => {
       <FocusPomodoroModal
         isOpen={isPomodoroOpen}
         onClose={() => setIsPomodoroOpen(false)}
-      />
-
-      {/* 🎓 學期 GPA 與學分歐趴試算 Modal */}
-      <GpaCalculatorModal
-        isOpen={isGpaModalOpen}
-        onClose={() => setIsGpaModalOpen(false)}
       />
     </div>
   );
