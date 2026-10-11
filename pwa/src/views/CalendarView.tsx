@@ -1047,13 +1047,3 @@ export const CalendarView: React.FC = () => {
     </div>
   );
 };
-
-// Helper for overflow counter
-function daySpanSpanOverflow(count: number) {
-  if (count <= 2) return null;
-  return (
-    <span className="text-[8px] text-calico-cocoa/50 font-bold block leading-none">
-      +{count - 2} 更多
-    </span>
-  );
-}

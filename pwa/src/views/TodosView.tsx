@@ -101,7 +101,7 @@ export const TodosView: React.FC = () => {
             待辦與任務清單
           </h2>
           <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400">
-            {pendingCount} 項進行中，{periodCount} 項跨日週期安排
+            可樂管家提醒：{pendingCount} 項進行中，{periodCount} 項週期安排
           </p>
         </div>
 

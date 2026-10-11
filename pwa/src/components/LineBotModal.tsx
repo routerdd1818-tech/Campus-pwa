@@ -75,7 +75,7 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
     try {
       const ok = await sendTestLineMessage(
         lineUserId,
-        `🐾 哈囉 ${userName}！這是來自 Campus 專屬您的獨立推播測試！\n您的課表代碼為【${shareCode}】\n每日晨報將在每天早上 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時為您發送！`
+        `🐾 哈囉 ${userName}！這是來自可樂管家專屬您的獨立推播測試！\n您的課表代碼為【${shareCode}】\n每日晨報將在每天早上 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時為您發送！`
       );
       if (ok) {
         setIsSuccess(true);

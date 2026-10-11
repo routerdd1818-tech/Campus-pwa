@@ -87,7 +87,7 @@ export const TodayView: React.FC = () => {
     const nowMin = now.getHours() * 60 + now.getMinutes();
 
     if (todayCourses.length === 0) {
-      return { type: 'free', message: '今日無排定課程，自習或充電時光！' };
+      return { type: 'free', message: '可樂管家提醒：今日無排定課程，放鬆享受充電時光！' };
     }
 
     const currentClass = todayCourses.find((c) => {
@@ -117,7 +117,7 @@ export const TodayView: React.FC = () => {
       };
     }
 
-    return { type: 'ended', message: '今日課程已全部結束，放學愉快！☕️' };
+    return { type: 'ended', message: '可樂管家提醒：今日課程已全部結束，下課愉快！☕️' };
   }, [todayCourses, now]);
 
   // 3. 今日待辦事項 (Today's Todos)
@@ -155,7 +155,7 @@ export const TodayView: React.FC = () => {
           <div>
             <div className="flex items-center space-x-1.5 text-calico-orange text-xs font-black uppercase tracking-wider mb-0.5">
               <Sun className="w-4 h-4" />
-              <span>今日行動總覽</span>
+              <span>今日重點 · 可樂管家隨行</span>
             </div>
             <h2 className="text-xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
               {formattedDate}

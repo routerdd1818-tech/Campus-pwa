@@ -133,6 +133,27 @@ export async function loginUserAccount(
   }
 }
 
+export async function updateUserAccountDisplayName(
+  userId: string,
+  newDisplayName: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanName = newDisplayName.trim() || '同學';
+    const { error } = await supabase
+      .from('user_accounts')
+      .update({ display_name: cleanName, updated_at: new Date().toISOString() })
+      .eq('id', userId);
+
+    if (error) {
+      return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (err: any) {
+    return { ok: false, error: err.message || '更新暱稱失敗' };
+  }
+}
+
 // -------------------------------------------------------------
 // 📚 Courses (Filtered by User / Device)
 // -------------------------------------------------------------

@@ -41,6 +41,7 @@ export const SettingsView: React.FC = () => {
     syncWithSupabase,
     currentUser,
     logoutUser,
+    updateCurrentUserDisplayName,
     setIsAuthModalOpen,
     setIsLineBotModalOpen,
     setIsPeriodModalOpen,
@@ -57,17 +58,17 @@ export const SettingsView: React.FC = () => {
   const [supabaseUrl, setSupabaseUrl] = useState(settings.supabaseUrl || DEFAULT_SUPABASE_URL);
   const [supabaseAnonKey, setSupabaseAnonKey] = useState(settings.supabaseAnonKey || '');
   const [shareCode, setShareCode] = useState(currentUser?.shareCode || settings.shareCode || 'CAMP88');
-  const [ownerName, setOwnerName] = useState(currentUser?.displayName || settings.ownerName || '我的課表');
+  const [ownerName, setOwnerName] = useState(currentUser?.displayName || settings.ownerName || '同學');
   const [lineUserId, setLineUserId] = useState(currentUser?.lineUserId || settings.lineUserId || '');
   const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
   const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
   const [dailyLimit, setDailyLimit] = useState(settings.customDailyLimit ?? 300);
   const [resetDay, setResetDay] = useState(settings.accountingResetDay ?? 1);
 
-  // Scheduled Cloud Upload & Sync states
+  // Scheduled Cloud Upload & Sync states (預設 4 小時 = 240 分鐘)
   const [autoSyncEnabled, setAutoSyncEnabled] = useState(settings.autoSyncEnabled ?? true);
   const [autoSyncTime, setAutoSyncTime] = useState(settings.autoSyncTime || '23:00');
-  const [autoSyncIntervalMinutes, setAutoSyncIntervalMinutes] = useState(settings.autoSyncIntervalMinutes ?? 30);
+  const [autoSyncIntervalMinutes, setAutoSyncIntervalMinutes] = useState(settings.autoSyncIntervalMinutes ?? 240);
 
   // Category Manager Tab
   const [activeCategoryTab, setActiveCategoryTab] = useState<'expense' | 'income' | 'todo'>('expense');
@@ -87,7 +88,8 @@ export const SettingsView: React.FC = () => {
   const [isClaimingLineId, setIsClaimingLineId] = useState(false);
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
+    await updateCurrentUserDisplayName(ownerName);
     updateSettings({
       supabaseUrl,
       supabaseAnonKey,
@@ -103,7 +105,7 @@ export const SettingsView: React.FC = () => {
       autoSyncIntervalMinutes,
     });
     resetSupabaseClient(supabaseUrl, supabaseAnonKey);
-    setAlertMsg('設定已儲存成功！');
+    setAlertMsg('設定與自訂暱稱已成功儲存！');
     setTimeout(() => setAlertMsg(null), 3000);
   };
 
@@ -182,10 +184,10 @@ export const SettingsView: React.FC = () => {
     <div className="space-y-4 pb-28">
       <div>
         <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
-          雲端與系統設定
+          可樂管家個人化與雲端設定
         </h2>
         <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400">
-          固定上傳時間、自訂分類種類、LINE 推播與帳號管理
+          自動上傳週期、自訂暱稱與種類、LINE 獨立推播與帳號管理
         </p>
       </div>
 
@@ -205,10 +207,10 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                使用者帳戶中心
+                使用者帳戶與暱稱管理
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                {currentUser ? `登入身分：@${currentUser.username}` : '訪客模式（未登入）'}
+                {currentUser ? `已登入：@${currentUser.username}` : '訪客模式（未登入）'}
               </p>
             </div>
           </div>
@@ -231,30 +233,34 @@ export const SettingsView: React.FC = () => {
           </button>
         </div>
 
-        {currentUser ? (
-          <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2 text-xs">
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">顯示姓名</span>
-              <span className="font-black text-calico-cocoa dark:text-zinc-200">{currentUser.displayName}</span>
-            </div>
-            <div className="flex items-center justify-between">
+        {/* 自訂暱稱與帳號資訊 */}
+        <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2.5 text-xs">
+          <div>
+            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+              自訂暱稱 (顯示名稱)
+            </label>
+            <input
+              type="text"
+              value={ownerName}
+              onChange={(e) => setOwnerName(e.target.value)}
+              placeholder="例如：小明、同學..."
+              className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-bold"
+            />
+          </div>
+
+          {currentUser ? (
+            <div className="flex items-center justify-between pt-1 border-t border-black/5 dark:border-white/5">
               <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">專屬課表分享碼</span>
               <span className="font-mono font-black text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15">
                 {currentUser.shareCode}
               </span>
             </div>
-          </div>
-        ) : (
-          <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/30 text-amber-800 dark:text-amber-300 text-xs flex items-center justify-between">
-            <span>註冊或登入後，課表、行事曆與待辦會自動依帳號雲端保存！</span>
-            <button
-              onClick={() => setIsAuthModalOpen(true)}
-              className="px-2.5 py-1 rounded-lg bg-amber-500 text-white font-bold text-[11px] shrink-0 ml-2 shadow-xs"
-            >
-              馬上註冊
-            </button>
-          </div>
-        )}
+          ) : (
+            <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 pt-1 border-t border-black/5 dark:border-white/5">
+              💡 訪客模式：可自由設定稱呼，登入後可跨裝置同步課表。
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 1. ⏰ Scheduled Cloud Upload & Sync Section (固定上傳時間) */}
@@ -310,10 +316,13 @@ export const SettingsView: React.FC = () => {
                   onChange={(e) => setAutoSyncIntervalMinutes(Number(e.target.value))}
                   className="w-full px-3 py-2 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
                 >
+                  <option value={240}>每 4 小時自動同步 (推薦)</option>
+                  <option value={480}>每 8 小時自動同步</option>
+                  <option value={720}>每 12 小時自動同步</option>
+                  <option value={1440}>每 24 小時 (每日) 自動同步</option>
                   <option value={0}>僅在固定時間上傳</option>
-                  <option value={15}>每 15 分鐘自動同步</option>
-                  <option value={30}>每 30 分鐘自動同步</option>
                   <option value={60}>每 1 小時自動同步</option>
+                  <option value={120}>每 2 小時自動同步</option>
                 </select>
               </div>
             </div>

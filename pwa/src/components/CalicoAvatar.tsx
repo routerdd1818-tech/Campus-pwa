@@ -18,7 +18,7 @@ export const CalicoAvatar: React.FC<CalicoAvatarProps> = ({
       onClick={onClick}
       style={{ width: size, height: size }}
       className={`relative rounded-full cursor-pointer transition-transform duration-200 active:scale-95 select-none ${className}`}
-      title="可樂助教"
+      title="可樂管家"
     >
       <svg
         viewBox="0 0 100 100"

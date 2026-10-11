@@ -48,13 +48,15 @@ export const Header: React.FC = () => {
       <div className="max-w-md mx-auto flex items-center justify-between">
         {/* Left: Avatar & Greeting */}
         <div className="flex items-center space-x-3">
-          <CalicoAvatar size={42} mood={catMood} onClick={cycleMood} />
+          <div title="可樂管家（點擊切換心情）">
+            <CalicoAvatar size={42} mood={catMood} onClick={cycleMood} />
+          </div>
           <div className="flex flex-col justify-center">
             <h1 className="text-sm sm:text-base font-black text-calico-cocoa dark:text-zinc-100 tracking-tight leading-tight">
               {getGreeting()}，{displayName}
             </h1>
             <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 font-bold leading-tight mt-0.5">
-              {getFormattedDate()}
+              {getFormattedDate()} · 可樂管家
             </p>
           </div>
         </div>

@@ -31,6 +31,7 @@ import {
   publishSharedSchedule,
   fetchSharedScheduleByCode,
   loginUserAccount,
+  updateUserAccountDisplayName,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
@@ -241,7 +242,7 @@ const DEFAULT_SETTINGS: UserSettings = {
   theme: 'light',
   autoSyncEnabled: true,
   autoSyncTime: '23:00',
-  autoSyncIntervalMinutes: 30,
+  autoSyncIntervalMinutes: 240, // 4小時為預設值，兼顧省電與雲端備份
 };
 
 interface BudgetInfo {
@@ -257,6 +258,7 @@ interface AppContextType {
   setActiveTab: (tab: 'today' | 'schedule' | 'calendar' | 'todos' | 'accounting' | 'settings') => void;
   currentUser: UserAccount | null;
   setCurrentUser: (user: UserAccount | null, rememberPassword?: string | null) => void;
+  updateCurrentUserDisplayName: (newDisplayName: string) => Promise<boolean>;
   logoutUser: () => void;
   isAuthModalOpen: boolean;
   setIsAuthModalOpen: (open: boolean) => void;
@@ -669,10 +671,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Scheduled cloud upload & auto-sync timer
   const nextSyncDisplay = useMemo(() => {
     if (!settings.autoSyncEnabled) return '已停用定時上傳';
-    if (settings.autoSyncTime) {
-      return `每日 ${settings.autoSyncTime} 上傳`;
+    const intervalMins = settings.autoSyncIntervalMinutes ?? 240;
+    if (intervalMins === 0) {
+      return settings.autoSyncTime ? `每日 ${settings.autoSyncTime} 上傳` : '僅手動同步';
     }
-    return `每 ${settings.autoSyncIntervalMinutes || 30} 分鐘自動同步`;
+    if (intervalMins >= 60) {
+      const hours = Math.round(intervalMins / 60);
+      return `每 ${hours} 小時自動同步`;
+    }
+    return `每 ${intervalMins} 分鐘自動同步`;
   }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes]);
 
   useEffect(() => {
@@ -684,25 +691,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const now = new Date();
       const currentHHMM = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-      // Check fixed upload time (e.g., 23:00)
-      if (settings.autoSyncTime && currentHHMM === settings.autoSyncTime && lastTriggeredMinute !== currentHHMM) {
+      // Check periodic interval (e.g. 240 mins = 4 hours, 480 mins = 8 hours)
+      if (settings.autoSyncIntervalMinutes && settings.autoSyncIntervalMinutes > 0) {
+        if (lastSyncedAt) {
+          const lastTime = new Date(lastSyncedAt).getTime();
+          const diffMins = (now.getTime() - lastTime) / (1000 * 60);
+          if (diffMins >= settings.autoSyncIntervalMinutes) {
+            syncWithSupabase();
+            return;
+          }
+        }
+      } else if (settings.autoSyncTime && currentHHMM === settings.autoSyncTime && lastTriggeredMinute !== currentHHMM) {
+        // If interval is 0, only sync at fixed time (e.g. 23:00)
         lastTriggeredMinute = currentHHMM;
         syncWithSupabase();
         return;
       }
-
-      // Check periodic interval (e.g., every 30 mins)
-      if (settings.autoSyncIntervalMinutes && settings.autoSyncIntervalMinutes > 0 && lastSyncedAt) {
-        const lastTime = new Date(lastSyncedAt).getTime();
-        const diffMins = (now.getTime() - lastTime) / (1000 * 60);
-        if (diffMins >= settings.autoSyncIntervalMinutes) {
-          syncWithSupabase();
-        }
-      }
-    }, 25000);
+    }, 30000);
 
     return () => clearInterval(intervalTimer);
   }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes, lastSyncedAt]);
+
+  const updateCurrentUserDisplayName = async (newDisplayName: string): Promise<boolean> => {
+    const cleanName = newDisplayName.trim() || '同學';
+    if (currentUser) {
+      const updatedUser: UserAccount = { ...currentUser, displayName: cleanName };
+      setCurrentUserState(updatedUser);
+      localStorage.setItem('campus_auth_session', JSON.stringify(updatedUser));
+      await updateUserAccountDisplayName(currentUser.id, cleanName);
+    }
+    setSettings((prev) => ({ ...prev, ownerName: cleanName }));
+    const key = getScopedKey(currentUser?.id, 'settings');
+    const updatedSettings = { ...settings, ownerName: cleanName };
+    localStorage.setItem(key, JSON.stringify(updatedSettings));
+    return true;
+  };
 
   const setCurrentUser = (user: UserAccount | null, rememberPassword?: string | null) => {
     switchUserData(user);
@@ -943,6 +966,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setActiveTab,
         currentUser,
         setCurrentUser,
+        updateCurrentUserDisplayName,
         logoutUser,
         isAuthModalOpen,
         setIsAuthModalOpen,
