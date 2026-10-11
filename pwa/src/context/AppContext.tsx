@@ -305,6 +305,8 @@ interface AppContextType {
   customIncomeCategories: CustomCategory[];
   customTodoCategories: CustomCategory[];
   addCustomCategory: (type: 'expense' | 'income' | 'todo', cat: { name: string; colorHex: string; icon?: string }) => void;
+  updateCustomCategory: (type: 'expense' | 'income' | 'todo', id: string, updates: { name?: string; colorHex?: string; icon?: string }) => void;
+  reorderCustomCategories: (type: 'expense' | 'income' | 'todo', reordered: CustomCategory[]) => void;
   deleteCustomCategory: (type: 'expense' | 'income' | 'todo', idOrName: string) => void;
   // Scheduled cloud upload & auto-sync
   lastSyncedAt: string | null;
@@ -938,6 +940,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const updateCustomCategory = (
+    type: 'expense' | 'income' | 'todo',
+    id: string,
+    updates: { name?: string; colorHex?: string; icon?: string }
+  ) => {
+    const updater = (prev: CustomCategory[]) =>
+      prev.map((c) => (c.id === id ? { ...c, ...updates } : c));
+    if (type === 'expense') setCustomExpenseCategories(updater);
+    else if (type === 'income') setCustomIncomeCategories(updater);
+    else setCustomTodoCategories(updater);
+  };
+
+  const reorderCustomCategories = (
+    type: 'expense' | 'income' | 'todo',
+    reordered: CustomCategory[]
+  ) => {
+    if (type === 'expense') setCustomExpenseCategories(reordered);
+    else if (type === 'income') setCustomIncomeCategories(reordered);
+    else setCustomTodoCategories(reordered);
+  };
+
   // Actions
   const addCourse = async (course: Course) => {
     const enriched = { ...course, userId: currentUser?.id || course.userId };
@@ -1156,6 +1179,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         customIncomeCategories,
         customTodoCategories,
         addCustomCategory,
+        updateCustomCategory,
+        reorderCustomCategories,
         deleteCustomCategory,
         lastSyncedAt,
         nextSyncDisplay,
