@@ -4,6 +4,7 @@ import { CalendarEvent, DayOfWeek, Todo, Course, Transaction } from '../types';
 import { EventModal } from '../components/EventModal';
 import { ShareModal } from '../components/ShareModal';
 import { TodoModal } from '../components/TodoModal';
+import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Calendar as CalendarIcon,
   ChevronLeft,
@@ -22,6 +23,9 @@ import {
   CalendarDays,
   Coffee,
   Tag,
+  Users,
+  RefreshCw,
+  UserPlus,
 } from 'lucide-react';
 
 const WEEKDAYS_HEADER = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -57,10 +61,78 @@ export const CalendarView: React.FC = () => {
     setIsEventModalOpen,
     eventToEdit,
     setEventToEdit,
+    savedFriends,
+    saveFriendRecord,
   } = useApp();
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
+
+  // Calendar Scope: 'mine' (我的行事曆) vs 'shared' (共享行事曆)
+  const [calendarScope, setCalendarScope] = useState<'mine' | 'shared'>('mine');
+  const [selectedFriendIndex, setSelectedFriendIndex] = useState<number>(0);
+  const [isRefreshingShared, setIsRefreshingShared] = useState<boolean>(false);
+
+  // Active friend calculations for shared calendar
+  const activeFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
+  const friendSchedule = activeFriend?.cachedSchedule;
+
+  const handleRefreshSharedCalendar = async () => {
+    if (!activeFriend) return;
+    setIsRefreshingShared(true);
+    try {
+      const latest = await fetchSharedScheduleByCode(activeFriend.shareCode);
+      if (latest) {
+        saveFriendRecord({
+          ...activeFriend,
+          lastViewedAt: new Date().toISOString(),
+          cachedSchedule: latest,
+        });
+      }
+    } finally {
+      setIsRefreshingShared(false);
+    }
+  };
+
+  // Compute displayed events based on calendarScope
+  const displayedCalendarEvents = useMemo(() => {
+    if (calendarScope === 'mine') {
+      return calendarEvents;
+    }
+    const friendEvents: CalendarEvent[] = (friendSchedule?.calendarEventsData || []).map((e) => ({
+      ...e,
+      notes: e.notes ? `${e.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+    }));
+    return [...calendarEvents, ...friendEvents];
+  }, [calendarScope, calendarEvents, friendSchedule, activeFriend]);
+
+  // Compute displayed todos based on calendarScope
+  const displayedTodos = useMemo(() => {
+    if (calendarScope === 'mine') {
+      return todos;
+    }
+    // 'shared': user's todos that have isSharedToCalendar === true + friend's todos that have isSharedToCalendar === true (or all friend's shared todos)
+    const mySharedTodos = todos.filter((t) => t.isSharedToCalendar);
+    const friendTodos: Todo[] = (friendSchedule?.todosData || [])
+      .filter((t) => t.isSharedToCalendar || (t as any).isSharedWithFriends !== false)
+      .map((t) => ({
+        ...t,
+        notes: t.notes ? `${t.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+      }));
+    return [...mySharedTodos, ...friendTodos];
+  }, [calendarScope, todos, friendSchedule, activeFriend]);
+
+  // Compute displayed courses based on calendarScope
+  const displayedCourses = useMemo(() => {
+    if (calendarScope === 'mine') {
+      return courses;
+    }
+    const friendCourses = (friendSchedule?.coursesData || []).map((c) => ({
+      ...c,
+      name: `${c.name} (${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+    }));
+    return [...courses, ...friendCourses];
+  }, [calendarScope, courses, friendSchedule, activeFriend]);
 
   // Calendar View Mode: Month vs Week
   const [calendarMode, setCalendarMode] = useState<'month' | 'week'>('month');
@@ -176,7 +248,7 @@ export const CalendarView: React.FC = () => {
   // -------------------------------------------------------------
   const getAllSpanItemsForDate = (dateStr: string): UnifiedSpanItem[] => {
     // 1. Calendar Events covering this date
-    const eventItems: UnifiedSpanItem[] = calendarEvents
+    const eventItems: UnifiedSpanItem[] = displayedCalendarEvents
       .filter((e) => dateStr >= e.startDate && dateStr <= e.endDate)
       .map((e) => ({
         id: e.id,
@@ -191,7 +263,7 @@ export const CalendarView: React.FC = () => {
       }));
 
     // 2. Todos with Period (e.g. 12/7~12/14 出國) covering this date
-    const periodTodoItems: UnifiedSpanItem[] = todos
+    const periodTodoItems: UnifiedSpanItem[] = displayedTodos
       .filter((t) => t.startDate && t.endDate && dateStr >= t.startDate && dateStr <= t.endDate)
       .map((t) => ({
         id: t.id,
@@ -211,7 +283,7 @@ export const CalendarView: React.FC = () => {
 
   // Memoized all span items across calendar & period todos
   const allSpanItems = useMemo<UnifiedSpanItem[]>(() => {
-    const eventItems: UnifiedSpanItem[] = calendarEvents.map((e) => ({
+    const eventItems: UnifiedSpanItem[] = displayedCalendarEvents.map((e) => ({
       id: e.id,
       title: e.title,
       startDate: e.startDate,
@@ -223,7 +295,7 @@ export const CalendarView: React.FC = () => {
       type: 'event',
     }));
 
-    const periodTodoItems: UnifiedSpanItem[] = todos
+    const periodTodoItems: UnifiedSpanItem[] = displayedTodos
       .filter((t) => t.startDate && t.endDate)
       .map((t) => ({
         id: t.id,
@@ -238,7 +310,7 @@ export const CalendarView: React.FC = () => {
         isCompleted: t.isCompleted,
       }));
 
-    const singleDueTodos: UnifiedSpanItem[] = todos
+    const singleDueTodos: UnifiedSpanItem[] = displayedTodos
       .filter((t) => !t.startDate && t.dueDate && !t.isCompleted)
       .map((t) => {
         const d = t.dueDate!.slice(0, 10);
@@ -257,7 +329,7 @@ export const CalendarView: React.FC = () => {
       });
 
     return [...eventItems, ...periodTodoItems, ...singleDueTodos];
-  }, [calendarEvents, todos]);
+  }, [displayedCalendarEvents, displayedTodos]);
 
   // Group month grid days into weeks of 7 for continuous ribbons
   const monthWeeks = useMemo(() => {
@@ -365,44 +437,44 @@ export const CalendarView: React.FC = () => {
   const todayDayOfWeek = (now.getDay() === 0 ? 7 : now.getDay()) as DayOfWeek;
 
   const todayCourses = useMemo(() => {
-    return courses
+    return displayedCourses
       .filter((c) => c.dayOfWeek === todayDayOfWeek)
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [courses, todayDayOfWeek]);
+  }, [displayedCourses, todayDayOfWeek]);
 
   const todayTodos = useMemo(() => {
-    return todos.filter((t) => {
+    return displayedTodos.filter((t) => {
       // Due today or period active today
       if (t.dueDate && t.dueDate.slice(0, 10) === todayStr) return true;
       if (t.startDate && t.endDate && todayStr >= t.startDate && todayStr <= t.endDate) return true;
       return false;
     });
-  }, [todos, todayStr]);
+  }, [displayedTodos, todayStr]);
 
   const todaySpanItems = useMemo(() => {
     return getAllSpanItemsForDate(todayStr);
-  }, [calendarEvents, todos, todayStr]);
+  }, [displayedCalendarEvents, displayedTodos, todayStr]);
 
   // Selected date events & items
   const selectedDateSpanItems = useMemo(() => {
     return getAllSpanItemsForDate(selectedDateStr);
-  }, [selectedDateStr, calendarEvents, todos]);
+  }, [selectedDateStr, displayedCalendarEvents, displayedTodos]);
 
   const selectedDateCourses = useMemo(() => {
     const sel = new Date(selectedDateStr);
     const dayOfWeek = (sel.getDay() === 0 ? 7 : sel.getDay()) as DayOfWeek;
-    return courses
+    return displayedCourses
       .filter((c) => c.dayOfWeek === dayOfWeek)
       .sort((a, b) => a.startTime.localeCompare(b.startTime));
-  }, [selectedDateStr, courses]);
+  }, [selectedDateStr, displayedCourses]);
 
   const selectedDateTodos = useMemo(() => {
-    return todos.filter((t) => {
+    return displayedTodos.filter((t) => {
       if (t.dueDate && t.dueDate.slice(0, 10) === selectedDateStr) return true;
       if (t.startDate && t.endDate && selectedDateStr >= t.startDate && selectedDateStr <= t.endDate) return true;
       return false;
     });
-  }, [selectedDateStr, todos]);
+  }, [selectedDateStr, displayedTodos]);
 
   const selectedDateTransactions = useMemo(() => {
     return transactions.filter((t) => t.date.slice(0, 10) === selectedDateStr);
@@ -410,6 +482,99 @@ export const CalendarView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-28">
+      {/* 🌟 Calendar Scope Switcher (我的行事曆 vs 共享行事曆) */}
+      <div className="flex items-center justify-between pb-1">
+        <div>
+          <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+            <span>{calendarScope === 'mine' ? '📅 我的手帳行事曆' : '🤝 好友共享行事曆'}</span>
+          </h2>
+          <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
+            {calendarScope === 'mine'
+              ? '個人日程、課堂與專屬待辦事項'
+              : '同步瀏覽好友行程與共同待辦，到期雙向推播！'}
+          </p>
+        </div>
+
+        <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
+          <button
+            onClick={() => setCalendarScope('mine')}
+            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
+              calendarScope === 'mine'
+                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+            }`}
+          >
+            <span>🐱 我的</span>
+          </button>
+
+          <button
+            onClick={() => setCalendarScope('shared')}
+            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
+              calendarScope === 'shared'
+                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>共享</span>
+            {savedFriends.length > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-calico-orange"></span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* 共享行事曆好友選擇列 (僅在 shared 模式下顯示) */}
+      {calendarScope === 'shared' && (
+        <div className="animate-fade-in space-y-2">
+          {savedFriends.length === 0 ? (
+            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center justify-between">
+              <span>尚無已儲存的好友，點擊右方按鈕輸入好友分享代碼開始共享！</span>
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-[11px] font-black shrink-0 ml-2 shadow-xs active:scale-95 transition-all"
+              >
+                加入好友
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+              {savedFriends.map((f, idx) => (
+                <button
+                  key={f.shareCode}
+                  onClick={() => setSelectedFriendIndex(idx)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-all ${
+                    selectedFriendIndex === idx
+                      ? 'bg-calico-orange text-white shadow-ios-sm'
+                      : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-300 border border-black/5 dark:border-white/10'
+                  }`}
+                >
+                  <span>👥 {f.nickname || f.ownerName}</span>
+                  <span className="text-[10px] opacity-75">({f.shareCode})</span>
+                </button>
+              ))}
+
+              <button
+                onClick={handleRefreshSharedCalendar}
+                disabled={isRefreshingShared}
+                className="p-1.5 rounded-xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                title="重新整理好友共享行事曆"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingShared ? 'animate-spin text-calico-orange' : ''}`} />
+              </button>
+
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="p-1.5 rounded-xl bg-white dark:bg-calico-darkCard border border-dashed border-black/15 dark:border-white/15 text-calico-cocoa/50 dark:text-zinc-400 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                title="新增好友"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* 月曆 vs 週曆 切換 */}
@@ -755,8 +920,8 @@ export const CalendarView: React.FC = () => {
                       const isToday = cell.dateStr === todayStr;
                       const cellDate = new Date(cell.dateStr);
                       const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
-                      const dayCourses = courses.filter((c) => c.dayOfWeek === cellDayOfWeek);
-                      const dayTodos = todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted);
+                      const dayCourses = displayedCourses.filter((c) => c.dayOfWeek === cellDayOfWeek);
+                      const dayTodos = displayedTodos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted);
                       const dayTxs = transactions.filter((t) => t.date.slice(0, 10) === cell.dateStr);
 
                       return (
@@ -918,8 +1083,8 @@ export const CalendarView: React.FC = () => {
               const isToday = w.dateStr === todayStr;
 
               const daySpanItems = getAllSpanItemsForDate(w.dateStr);
-              const dayCourses = courses.filter((c) => c.dayOfWeek === w.dayOfWeekNum);
-              const dayTodos = todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === w.dateStr);
+              const dayCourses = displayedCourses.filter((c) => c.dayOfWeek === w.dayOfWeekNum);
+              const dayTodos = displayedTodos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === w.dateStr);
 
               return (
                 <div

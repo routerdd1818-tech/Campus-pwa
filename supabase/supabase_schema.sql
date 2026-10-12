@@ -1180,18 +1180,9 @@ BEGIN
         END IF;
 
         -- ====================================================================
-        -- 階段 2：晚間六點推播 (Evening 18:00 Briefing：花費 + 剩餘待辦)
-        -- 規則 1：假日 (週六、週日) 晚上自動不推播！
-        -- 規則 2：若今日待辦事項全數完成，無論平日或假日晚上皆不推播！
+        -- 階段 2：晚間推播 (已依照使用者需求停用，轉由 PWA 系統推播負責以節省 LINE 額度)
         -- ====================================================================
-        is_evening_due := COALESCE(cfg.evening_push_enabled, true)
-            AND (cfg.last_evening_sent_date IS NULL OR cfg.last_evening_sent_date <> today_date_str)
-            AND (current_hour > COALESCE(cfg.evening_push_hour, 18) OR (current_hour = COALESCE(cfg.evening_push_hour, 18) AND current_minute >= COALESCE(cfg.evening_push_minute, 0)));
-
-        -- 假日 (週六、週日) 晚上不推播
-        IF today_weekday IN (6, 7) THEN
-            is_evening_due := false;
-        END IF;
+        is_evening_due := false;
 
         IF is_evening_due THEN
             -- 計算今天尚未完成的待辦任務總數
@@ -1347,10 +1338,9 @@ BEGIN
         END IF;
 
         -- ====================================================================
-        -- 階段 3：待辦事項到期前 LINE 提醒 (Todo Deadline Reminders)
-        -- 嚴格限制：每次提醒彙整為「單一則卡片訊息」，禁止多筆拆分發送以保護每月發送額度！
+        -- 階段 3：待辦事項到期前 LINE 提醒 (已依照使用者需求停用，轉由 PWA 系統推播同步通知雙方以節省 LINE 額度)
         -- ====================================================================
-        IF COALESCE(cfg.todo_reminder_enabled, true) AND jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+        IF false AND COALESCE(cfg.todo_reminder_enabled, true) AND jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
             due_todo_bubbles := '[]'::jsonb;
             reminded_ids_to_add := '[]'::jsonb;
             due_todo_item_count := 0;

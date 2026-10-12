@@ -42,7 +42,7 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
   const [isTodoReminderEnabled, setIsTodoReminderEnabled] = useState(settings.lineTodoReminderEnabled ?? true);
 
   const [isLoading, setIsLoading] = useState(false);
-  const [testingType, setTestingType] = useState<'morning' | 'evening' | 'reminder' | null>(null);
+  const [isTestingBriefing, setIsTestingBriefing] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -70,17 +70,17 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const handleTestBriefing = async (type: 'morning' | 'evening' | 'reminder') => {
+  const handleTestBriefing = async () => {
     if (!lineUserId) {
       setIsSuccess(false);
       setStatusMessage('請先綁定 LINE User ID！');
       return;
     }
 
-    setTestingType(type);
+    setIsTestingBriefing(true);
     setStatusMessage(null);
     try {
-      const res = await sendPersonalizedBriefingTest(lineUserId, type, {
+      const res = await sendPersonalizedBriefingTest(lineUserId, 'morning', {
         userName,
         courses,
         todos,
@@ -88,14 +88,13 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
       });
       if (res.ok) {
         setIsSuccess(true);
-        const nameMap = { morning: '晨間課表簡報卡片', evening: '晚間收支叮嚀卡片', reminder: '待辦到期提醒卡片' };
-        setStatusMessage(`🎉 ${nameMap[type]} 已成功發送至您的 LINE，請查看聊天室！`);
+        setStatusMessage(`🎉 早晨課表簡報卡片已成功發送至您的 LINE，請查看聊天室！`);
       } else {
         setIsSuccess(false);
         setStatusMessage(res.error ? `推播失敗：${res.error}` : '推播失敗，請確認 Supabase 雲端 Token 是否正常');
       }
     } finally {
-      setTestingType(null);
+      setIsTestingBriefing(false);
     }
   };
 
@@ -277,40 +276,18 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
         {/* Actions & Card Tests */}
         <div className="mt-5 space-y-2.5">
           <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
-            <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 block">
-              即時預覽與測試個人化卡片：
-            </span>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleTestBriefing('morning')}
-                disabled={testingType !== null || !lineUserId}
-                className="py-2.5 px-2 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-calico-orange/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <Sun className={`w-3.5 h-3.5 ${testingType === 'morning' ? 'animate-spin' : ''}`} />
-                <span>{testingType === 'morning' ? '發送中...' : '測試晨報'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleTestBriefing('evening')}
-                disabled={testingType !== null || !lineUserId}
-                className="py-2.5 px-2 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400 font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-orange-500/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <Moon className={`w-3.5 h-3.5 ${testingType === 'evening' ? 'animate-spin' : ''}`} />
-                <span>{testingType === 'evening' ? '發送中...' : '測試晚報'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleTestBriefing('reminder')}
-                disabled={testingType !== null || !lineUserId}
-                className="py-2.5 px-2 rounded-xl bg-red-500/15 text-red-600 dark:text-red-400 font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-red-500/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <BellRing className={`w-3.5 h-3.5 ${testingType === 'reminder' ? 'animate-spin' : ''}`} />
-                <span>{testingType === 'reminder' ? '發送中...' : '到期提醒'}</span>
-              </button>
+            <div className="text-[11px] font-bold text-calico-cocoa/80 dark:text-zinc-300 leading-relaxed">
+              💡 為了節省 LINE 每月發送額度上限（200 則/月），LINE Bot 已專注於<b>【每日早晨精選課表晨報（每日僅一則）】</b>。其餘待辦與記帳提醒已全面改由免費且即時的 PWA 系統推播通知發送！
             </div>
+            <button
+              type="button"
+              onClick={handleTestBriefing}
+              disabled={isTestingBriefing || !lineUserId}
+              className="w-full py-2.5 px-3 rounded-xl bg-[#06C755] text-white font-black text-xs flex items-center justify-center space-x-1.5 hover:brightness-105 active:scale-95 transition-all disabled:opacity-40 shadow-xs"
+            >
+              <Sun className={`w-3.5 h-3.5 ${isTestingBriefing ? 'animate-spin' : ''}`} />
+              <span>{isTestingBriefing ? '晨報發送中...' : '☀️ 立即測試每日早晨課表卡片'}</span>
+            </button>
           </div>
 
           <button

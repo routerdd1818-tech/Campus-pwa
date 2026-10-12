@@ -43,6 +43,10 @@ import {
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
+import {
+  startPwaNotificationScheduler,
+  notifySharedCalendarChange,
+} from '../services/notificationService';
 
 // 預設示範課程資料
 const INITIAL_COURSES: Course[] = [
@@ -259,6 +263,12 @@ const DEFAULT_SETTINGS: UserSettings = {
   isShareAccounting: true,
   isShareCalendar: true,
   enableFortuneWidget: true,
+  pwaNotificationEnabled: true,
+  pwaTodoReminderEnabled: true,
+  pwaCalendarReminderEnabled: true,
+  pwaAccountingReminderEnabled: true,
+  pwaPeerRatingReminderEnabled: true,
+  pwaSharedCalendarNotifyEnabled: true,
 };
 
 interface BudgetInfo {
@@ -427,6 +437,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const todosRef = useRef(todos);
   todosRef.current = todos;
   const transactionsRef = useRef(transactions);
+  transactionsRef.current = transactions;
   const calendarEventsRef = useRef(calendarEvents);
   calendarEventsRef.current = calendarEvents;
   const isSyncingRef = useRef(false);
@@ -458,6 +469,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  const savedFriendsRef = useRef(savedFriends);
+  savedFriendsRef.current = savedFriends;
 
   const [installments, setInstallments] = useState<Installment[]>(() => {
     const saved = localStorage.getItem('campus_installments');
@@ -877,6 +891,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return () => clearInterval(intervalTimer);
   }, [settings.autoSyncEnabled, settings.autoSyncTime, settings.autoSyncIntervalMinutes, lastSyncedAt]);
 
+  // 🔔 啟動 PWA 系統推播通知背景輪詢排程 (行事曆、待辦即期、記帳打卡、好友評分)
+  useEffect(() => {
+    const stopScheduler = startPwaNotificationScheduler(() => ({
+      todos: todosRef.current,
+      calendarEvents: calendarEventsRef.current,
+      transactions: transactionsRef.current,
+      savedFriends: savedFriendsRef.current,
+      isTodoReminderEnabled: settingsRef.current.pwaTodoReminderEnabled ?? true,
+      isCalendarReminderEnabled: settingsRef.current.pwaCalendarReminderEnabled ?? true,
+      isAccountingReminderEnabled: settingsRef.current.pwaAccountingReminderEnabled ?? true,
+      isFriendRatingReminderEnabled: settingsRef.current.pwaPeerRatingReminderEnabled ?? true,
+    }));
+
+    return () => {
+      stopScheduler();
+    };
+  }, []);
+
+  // 🤝 週期性自動同步好友共享行事曆 (每 3 分鐘檢查是否有新增或刪除行程/待辦)
+  useEffect(() => {
+    if (!isOnline || savedFriends.length === 0) return;
+    const interval = setInterval(async () => {
+      for (const friend of savedFriendsRef.current) {
+        try {
+          const latest = await fetchSharedScheduleByCode(friend.shareCode);
+          if (latest) {
+            saveFriendRecord({
+              ...friend,
+              cachedSchedule: latest,
+              lastViewedAt: new Date().toISOString(),
+            });
+          }
+        } catch {
+          // ignore background sync errors
+        }
+      }
+    }, 3 * 60 * 1000);
+
+    return () => clearInterval(interval);
+  }, [isOnline, savedFriends.length]);
+
   const updateCurrentUserDisplayName = async (newDisplayName: string): Promise<boolean> => {
     const cleanName = newDisplayName.trim() || '同學';
     if (currentUser) {
@@ -1115,35 +1170,74 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteCourseFromSupabase(id);
   };
 
+  // Real-time synchronization helper to publish shared schedule
+  const syncScheduleToCloud = (
+    cList = coursesRef.current,
+    tList = todosRef.current,
+    txList = transactionsRef.current,
+    evList = calendarEventsRef.current
+  ) => {
+    const sCode = currentUser?.shareCode || settingsRef.current.shareCode;
+    if (!sCode) return;
+    publishSharedSchedule({
+      shareCode: sCode,
+      ownerName: currentUser?.displayName || settingsRef.current.ownerName || '同學',
+      isSharingEnabled: true,
+      coursesData: cList,
+      todosData: tList,
+      accountingData: txList,
+      calendarEventsData: evList,
+      isExpenseSharingEnabled: true,
+    }).catch(() => {});
+  };
+
   const addTodo = async (todo: Todo) => {
     const enriched = { ...todo, userId: currentUser?.id || todo.userId };
-    setTodos((prev) => [enriched, ...prev]);
+    setTodos((prev) => {
+      const next = [enriched, ...prev];
+      todosRef.current = next;
+      syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await upsertTodoToSupabase(enriched, currentUser?.id);
     setCatMood('thinking');
   };
 
   const updateTodo = async (todo: Todo) => {
     const enriched = { ...todo, userId: currentUser?.id || todo.userId };
-    setTodos((prev) => prev.map((t) => (t.id === enriched.id ? enriched : t)));
+    setTodos((prev) => {
+      const next = prev.map((t) => (t.id === enriched.id ? enriched : t));
+      todosRef.current = next;
+      syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await upsertTodoToSupabase(enriched, currentUser?.id);
   };
 
   const toggleTodo = async (id: string) => {
-    setTodos((prev) =>
-      prev.map((t) => {
+    setTodos((prev) => {
+      const next = prev.map((t) => {
         if (t.id === id) {
-          const next = { ...t, isCompleted: !t.isCompleted, userId: currentUser?.id || t.userId };
-          upsertTodoToSupabase(next, currentUser?.id);
-          if (next.isCompleted) setCatMood('proud');
-          return next;
+          const updated = { ...t, isCompleted: !t.isCompleted, userId: currentUser?.id || t.userId };
+          upsertTodoToSupabase(updated, currentUser?.id);
+          if (updated.isCompleted) setCatMood('proud');
+          return updated;
         }
         return t;
-      })
-    );
+      });
+      todosRef.current = next;
+      syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
   };
 
   const deleteTodo = async (id: string) => {
-    setTodos((prev) => prev.filter((t) => t.id !== id));
+    setTodos((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      todosRef.current = next;
+      syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await deleteTodoFromSupabase(id);
   };
 
@@ -1153,19 +1247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const next = [enriched, ...prev];
       transactionsRef.current = next;
       // Real-time publish to shared_schedules for friends
-      const sCode = currentUser?.shareCode || settingsRef.current.shareCode;
-      if (sCode) {
-        publishSharedSchedule({
-          shareCode: sCode,
-          ownerName: currentUser?.displayName || settingsRef.current.ownerName || '同學',
-          isSharingEnabled: true,
-          coursesData: coursesRef.current,
-          todosData: todosRef.current,
-          accountingData: next,
-          calendarEventsData: calendarEventsRef.current,
-          isExpenseSharingEnabled: true,
-        }).catch(() => {});
-      }
+      syncScheduleToCloud(coursesRef.current, todosRef.current, next, calendarEventsRef.current);
       return next;
     });
     await upsertTransactionToSupabase(enriched, currentUser?.id);
@@ -1176,19 +1258,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setTransactions((prev) => {
       const next = prev.filter((t) => t.id !== id);
       transactionsRef.current = next;
-      const sCode = currentUser?.shareCode || settingsRef.current.shareCode;
-      if (sCode) {
-        publishSharedSchedule({
-          shareCode: sCode,
-          ownerName: currentUser?.displayName || settingsRef.current.ownerName || '同學',
-          isSharingEnabled: true,
-          coursesData: coursesRef.current,
-          todosData: todosRef.current,
-          accountingData: next,
-          calendarEventsData: calendarEventsRef.current,
-          isExpenseSharingEnabled: true,
-        }).catch(() => {});
-      }
+      syncScheduleToCloud(coursesRef.current, todosRef.current, next, calendarEventsRef.current);
       return next;
     });
     await deleteTransactionFromSupabase(id);
@@ -1240,26 +1310,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addCalendarEvent = async (e: CalendarEvent) => {
     const enriched = { ...e, userId: currentUser?.id || e.userId };
-    setCalendarEvents((prev) => [...prev, enriched]);
+    setCalendarEvents((prev) => {
+      const next = [...prev, enriched];
+      calendarEventsRef.current = next;
+      syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
+      return next;
+    });
     await upsertCalendarEventToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
   const updateCalendarEvent = async (e: CalendarEvent) => {
     const enriched = { ...e, userId: currentUser?.id || e.userId };
-    setCalendarEvents((prev) => prev.map((item) => (item.id === enriched.id ? enriched : item)));
+    setCalendarEvents((prev) => {
+      const next = prev.map((item) => (item.id === enriched.id ? enriched : item));
+      calendarEventsRef.current = next;
+      syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
+      return next;
+    });
     await upsertCalendarEventToSupabase(enriched, currentUser?.id);
   };
 
   const deleteCalendarEvent = async (id: string) => {
-    setCalendarEvents((prev) => prev.filter((item) => item.id !== id));
+    setCalendarEvents((prev) => {
+      const next = prev.filter((item) => item.id !== id);
+      calendarEventsRef.current = next;
+      syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
+      return next;
+    });
     await deleteCalendarEventFromSupabase(id);
   };
 
   const saveFriendRecord = (record: SavedFriendRecord) => {
+    // 檢查是否有共享行事曆異動 (新增或刪除行程/待辦)
+    const existing = savedFriendsRef.current.find(
+      (f) => f.shareCode.toUpperCase() === record.shareCode.toUpperCase()
+    );
+
+    if (
+      existing &&
+      existing.cachedSchedule &&
+      record.cachedSchedule &&
+      settingsRef.current.pwaSharedCalendarNotifyEnabled !== false
+    ) {
+      const friendName = record.nickname || record.ownerName || '好友';
+      const oldEvents = existing.cachedSchedule.calendarEventsData || [];
+      const newEvents = record.cachedSchedule.calendarEventsData || [];
+
+      // 檢查新增行程
+      const addedEvent = newEvents.find((ne) => !oldEvents.some((oe) => oe.id === ne.id));
+      if (addedEvent) {
+        notifySharedCalendarChange('added', '行程', addedEvent.title, friendName);
+      }
+      // 檢查刪除行程
+      const deletedEvent = oldEvents.find((oe) => !newEvents.some((ne) => ne.id === oe.id));
+      if (deletedEvent) {
+        notifySharedCalendarChange('deleted', '行程', deletedEvent.title, friendName);
+      }
+
+      // 檢查新增/刪除共享待辦
+      const oldSharedTodos = (existing.cachedSchedule.todosData || []).filter((t) => t.isSharedToCalendar);
+      const newSharedTodos = (record.cachedSchedule.todosData || []).filter((t) => t.isSharedToCalendar);
+
+      const addedTodo = newSharedTodos.find((nt) => !oldSharedTodos.some((ot) => ot.id === nt.id));
+      if (addedTodo) {
+        notifySharedCalendarChange('added', '待辦', addedTodo.title, friendName);
+      }
+      const deletedTodo = oldSharedTodos.find((ot) => !newSharedTodos.some((nt) => nt.id === ot.id));
+      if (deletedTodo) {
+        notifySharedCalendarChange('deleted', '待辦', deletedTodo.title, friendName);
+      }
+    }
+
     setSavedFriends((prev) => {
       const filtered = prev.filter((f) => f.shareCode !== record.shareCode);
-      return [record, ...filtered];
+      const updated = [record, ...filtered];
+      savedFriendsRef.current = updated;
+      return updated;
     });
   };
 

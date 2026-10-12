@@ -16,6 +16,11 @@ import {
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
+import {
+  getNotificationPermission,
+  requestNotificationPermission,
+  sendPwaNotification,
+} from '../services/notificationService';
 import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import {
   CategoryIcon,
@@ -27,6 +32,8 @@ import {
   User,
   Clock,
   MessageCircle,
+  Bell,
+  Smartphone,
   Tag,
   DollarSign,
   Share2,
@@ -124,6 +131,41 @@ export const SettingsView: React.FC = () => {
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
   const [testingBriefingType, setTestingBriefingType] = useState<'morning' | 'evening' | 'reminder' | null>(null);
 
+  // PWA Web Push Notification States
+  const [pwaPermission, setPwaPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
+  const [pwaNotificationEnabled, setPwaNotificationEnabled] = useState(settings.pwaNotificationEnabled ?? true);
+  const [pwaCalendarReminderEnabled, setPwaCalendarReminderEnabled] = useState(settings.pwaCalendarReminderEnabled ?? true);
+  const [pwaTodoReminderEnabled, setPwaTodoReminderEnabled] = useState(settings.pwaTodoReminderEnabled ?? true);
+  const [pwaAccountingReminderEnabled, setPwaAccountingReminderEnabled] = useState(settings.pwaAccountingReminderEnabled ?? true);
+  const [pwaPeerRatingReminderEnabled, setPwaPeerRatingReminderEnabled] = useState(settings.pwaPeerRatingReminderEnabled ?? true);
+  const [pwaSharedCalendarNotifyEnabled, setPwaSharedCalendarNotifyEnabled] = useState(settings.pwaSharedCalendarNotifyEnabled ?? true);
+
+  useEffect(() => {
+    setPwaPermission(getNotificationPermission());
+  }, []);
+
+  const handleRequestPwaPermission = async () => {
+    const perm = await requestNotificationPermission();
+    setPwaPermission(perm);
+    if (perm === 'granted') {
+      sendPwaNotification('🎉 PWA 系統推播通知已啟用！', {
+        body: '可樂助教已成功取得系統通知權限，將為您提供即時行事曆、待辦與記帳提醒！',
+        tag: 'test_welcome',
+      });
+      showNotification('✅ 系統推播通知權限已成功授權！');
+    } else if (perm === 'denied') {
+      showNotification('⚠️ 瀏覽器通知已被拒絕，請至瀏覽器設定中開啟通知權限');
+    }
+  };
+
+  const handleTestPwaNotification = () => {
+    sendPwaNotification('🐾 可樂助教 PWA 推播測試', {
+      body: '這是一則測試通知！行事曆日程、待辦即期提醒與好友評分皆能像原生 App 一樣即時送達！',
+      tag: `test_manual_${Date.now()}`,
+    });
+    showNotification('🔔 已發送 PWA 系統測試推播！');
+  };
+
   // 4. Class Periods
   const [periods, setPeriods] = useState<ClassPeriod[]>(classPeriods && classPeriods.length > 0 ? classPeriods : DEFAULT_CLASS_PERIODS);
   const [showPeriodsList, setShowPeriodsList] = useState(true);
@@ -219,6 +261,12 @@ export const SettingsView: React.FC = () => {
       isShareAccounting,
       isShareCalendar,
       theme,
+      pwaNotificationEnabled,
+      pwaCalendarReminderEnabled,
+      pwaTodoReminderEnabled,
+      pwaAccountingReminderEnabled,
+      pwaPeerRatingReminderEnabled,
+      pwaSharedCalendarNotifyEnabled,
     });
     resetSupabaseClient(supabaseUrl, supabaseAnonKey);
 
@@ -926,7 +974,226 @@ export const SettingsView: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* 3. 🤖 LINE 官方帳號推播中心 (LINE Push Notification Center) */}
+      {/* 3. 🔔 PWA 系統推播通知 (Web Notifications API & Service Worker) */}
+      {/* ======================================================== */}
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center space-x-2">
+                <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                  PWA 系統推播通知
+                </h3>
+                <span className="text-[10px] px-2 py-0.5 rounded-full bg-calico-orange/15 text-calico-orange font-bold">
+                  免費 · 不限則數
+                </span>
+              </div>
+              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+                基於 Web Notifications API 與 Service Worker，免裝 App 也能像原生應用即時跳出提醒
+              </p>
+            </div>
+          </div>
+
+          <label className="relative inline-flex items-center cursor-pointer">
+            <input
+              type="checkbox"
+              checked={pwaNotificationEnabled}
+              onChange={(e) => {
+                const val = e.target.checked;
+                setPwaNotificationEnabled(val);
+                updateSettings({ pwaNotificationEnabled: val });
+              }}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-calico-orange"></div>
+          </label>
+        </div>
+
+        {/* 權限狀態卡片與授權 / 測試按鈕 */}
+        <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/70 border border-black/5 dark:border-white/5 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <Smartphone className="w-4 h-4 text-calico-orange" />
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200">
+                瀏覽器系統通知權限
+              </span>
+            </div>
+            <span
+              className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                pwaPermission === 'granted'
+                  ? 'bg-calico-sage/20 text-calico-sage'
+                  : pwaPermission === 'denied'
+                  ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                  : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+              }`}
+            >
+              {pwaPermission === 'granted'
+                ? '● 已授權（推播正常運作中）'
+                : pwaPermission === 'denied'
+                ? '✕ 已封鎖通知'
+                : pwaPermission === 'unsupported'
+                ? '○ 此裝置不支援 Web Push'
+                : '○ 尚未授權'}
+            </span>
+          </div>
+
+          <div className="flex flex-wrap gap-2 pt-0.5">
+            {pwaPermission !== 'granted' ? (
+              <button
+                type="button"
+                onClick={handleRequestPwaPermission}
+                className="flex-1 py-2 px-3 rounded-xl bg-calico-orange text-white text-xs font-bold shadow-xs hover:brightness-105 active:scale-95 transition-all flex items-center justify-center space-x-1.5"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span>一鍵啟用系統推播通知權限</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleTestPwaNotification}
+                className="py-1.5 px-3 rounded-xl bg-calico-orange/15 text-calico-orange hover:bg-calico-orange/25 text-xs font-bold active:scale-95 transition-all flex items-center space-x-1"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>發送測試推播通知</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 細部功能開關 */}
+        <div className="space-y-2 pt-1 border-t border-black/5 dark:border-white/5">
+          {/* 行事曆提醒 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                📅 行事曆行程開始提醒
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                個人與共享行程開始前 15 分鐘，即時發送系統通知
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+              <input
+                type="checkbox"
+                checked={pwaCalendarReminderEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setPwaCalendarReminderEnabled(val);
+                  updateSettings({ pwaCalendarReminderEnabled: val });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+
+          {/* 待辦事項即期提醒 (含共同行事曆同步提醒雙方) */}
+          <div className="p-3 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                📌 待辦任務即期提醒（共同任務同步提醒雙方）
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                依任務設定之提前時間發送；勾選分享至共同行事曆之待辦會同步通知雙方
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+              <input
+                type="checkbox"
+                checked={pwaTodoReminderEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setPwaTodoReminderEnabled(val);
+                  updateSettings({ pwaTodoReminderEnabled: val });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+
+          {/* 記帳提醒 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                💰 每日晚間記帳打卡叮嚀
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                晚間 21:00 後若當日尚未有記帳紀錄，提醒養成存錢好習慣（已記帳則自動靜音）
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+              <input
+                type="checkbox"
+                checked={pwaAccountingReminderEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setPwaAccountingReminderEnabled(val);
+                  updateSettings({ pwaAccountingReminderEnabled: val });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+
+          {/* 好友消費評分提醒 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                ⭐️ 好友消費待評分提醒
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                好友新增記帳時，及時推播提醒你前往好友帳本打個星級評分
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+              <input
+                type="checkbox"
+                checked={pwaPeerRatingReminderEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setPwaPeerRatingReminderEnabled(val);
+                  updateSettings({ pwaPeerRatingReminderEnabled: val });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+
+          {/* 共享行事曆異動通知 */}
+          <div className="p-3 rounded-2xl bg-calico-cream/40 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div>
+              <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
+                🤝 共享行事曆內容異動提醒
+              </span>
+              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                好友新增或刪除共同行程、待辦時，立即發送系統推播通知
+              </span>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
+              <input
+                type="checkbox"
+                checked={pwaSharedCalendarNotifyEnabled}
+                onChange={(e) => {
+                  const val = e.target.checked;
+                  setPwaSharedCalendarNotifyEnabled(val);
+                  updateSettings({ pwaSharedCalendarNotifyEnabled: val });
+                }}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* 4. 🤖 LINE 官方帳號推播中心 (☀️ 每日早晨課表專用) */}
       {/* ======================================================== */}
       <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
         <div className="flex items-center justify-between">
@@ -936,10 +1203,10 @@ export const SettingsView: React.FC = () => {
             </div>
             <div>
               <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                LINE 官方推播中心 (每日晨報)
+                LINE 官方推播中心 (☀️ 每日早晨課表專用)
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                官方帳號：可樂小幫手 (@112mlifa)
+                官方帳號：可樂小幫手 (@112mlifa) · 每日一則，完全不浪費每月額度
               </p>
             </div>
           </div>
@@ -953,6 +1220,17 @@ export const SettingsView: React.FC = () => {
             />
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#06C755]"></div>
           </label>
+        </div>
+
+        {/* 額度精簡政策說明 Banner */}
+        <div className="p-3 rounded-2xl bg-calico-cream/70 dark:bg-zinc-800/70 border border-black/5 dark:border-white/5 space-y-1 text-xs">
+          <div className="flex items-center space-x-1.5 font-bold text-calico-cocoa dark:text-zinc-200">
+            <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
+            <span>LINE 訊息額度精算最佳化</span>
+          </div>
+          <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-400 leading-relaxed">
+            為因應 LINE 每月 200 則發送上限，LINE Bot 專注於<b>【每日早晨精準課表晨報（每日一則）】</b>，下午推播與到期提醒已停用。其餘日程與記帳提醒已全面改由上方<b>【PWA 系統推播】</b>即時發送！
+          </p>
         </div>
 
         {/* Bot Info & Quick Action Banner */}
@@ -971,7 +1249,7 @@ export const SettingsView: React.FC = () => {
                 </span>
               </div>
               <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 truncate">
-                每日晨報、課表代碼自動回覆與花費提醒
+                每日早晨精選課表推播與課表代碼自動回覆
               </p>
             </div>
           </div>
@@ -1023,52 +1301,6 @@ export const SettingsView: React.FC = () => {
                 <option value={30}>30 分</option>
                 <option value={45}>45 分</option>
               </select>
-            </div>
-          </div>
-
-          {/* 🌆 晚間 18:00 叮嚀與收支推播 */}
-          <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
-                  🌆 晚間 18:00 收支與待辦叮嚀
-                </span>
-                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                  平日推播今日花費與未完成待辦（若今日待辦皆完成則自動靜音不打擾）
-                </span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                <input
-                  type="checkbox"
-                  checked={isEveningPushEnabled}
-                  onChange={(e) => setIsEveningPushEnabled(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#06C755]"></div>
-              </label>
-            </div>
-          </div>
-
-          {/* 🔔 待辦事項到期通知開關 */}
-          <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-1.5">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block">
-                  🔔 待辦事項到期前 LINE 提醒
-                </span>
-                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                  依各項待辦設定之提醒時間（例如 1 天前、3 小時前）發送專屬卡片
-                </span>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-2">
-                <input
-                  type="checkbox"
-                  checked={isTodoReminderEnabled}
-                  onChange={(e) => setIsTodoReminderEnabled(e.target.checked)}
-                  className="sr-only peer"
-                />
-                <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#06C755]"></div>
-              </label>
             </div>
           </div>
 
@@ -1151,37 +1383,20 @@ export const SettingsView: React.FC = () => {
             </button>
           </div>
 
-          {/* 3 Real Flex Card Test Buttons */}
+          {/* Morning Flex Card Test Button */}
           <div className="space-y-1.5 pt-1">
             <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
               發送真實個人化卡片測試（點擊後直接於 LINE 聊天室呈現）：
             </label>
-            <div className="grid grid-cols-3 gap-2">
-              <button
-                type="button"
-                onClick={() => handleSendTestBriefing('morning')}
-                disabled={testingBriefingType !== null || !lineUserId}
-                className="py-2 px-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-amber-500/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <span>{testingBriefingType === 'morning' ? '發送中...' : '☀️ 測試晨報'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendTestBriefing('evening')}
-                disabled={testingBriefingType !== null || !lineUserId}
-                className="py-2 px-2 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-purple-500/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <span>{testingBriefingType === 'evening' ? '發送中...' : '🌆 測試晚報'}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => handleSendTestBriefing('reminder')}
-                disabled={testingBriefingType !== null || !lineUserId}
-                className="py-2 px-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-rose-500/25 active:scale-95 transition-all disabled:opacity-40"
-              >
-                <span>{testingBriefingType === 'reminder' ? '發送中...' : '⏰ 到期提醒'}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => handleSendTestBriefing('morning')}
+              disabled={testingBriefingType !== null || !lineUserId}
+              className="w-full py-2.5 px-3 rounded-xl bg-[#06C755] text-white text-xs font-black flex items-center justify-center space-x-1.5 hover:brightness-105 active:scale-95 transition-all disabled:opacity-40 shadow-xs"
+            >
+              <Sun className="w-3.5 h-3.5" />
+              <span>{testingBriefingType === 'morning' ? '晨報發送中...' : '☀️ 立即測試每日早晨課表晨報'}</span>
+            </button>
           </div>
 
           {/* Webhook & Setup Guide Accordion */}

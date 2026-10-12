@@ -51,6 +51,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
   const [dueDate, setDueDate] = useState('');
   const [paperUrl, setPaperUrl] = useState('');
   const [reminderAdvance, setReminderAdvance] = useState<'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d'>('1d');
+  const [isSharedToCalendar, setIsSharedToCalendar] = useState<boolean>(false);
 
   // Inline custom category creation
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -71,6 +72,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setEndDate(todo.endDate || '');
         setRecurrence(todo.recurrence || 'none');
         setReminderAdvance(todo.reminderAdvance || '1d');
+        setIsSharedToCalendar(todo.isSharedToCalendar ?? false);
       } else {
         setTitle('');
         setNotes('');
@@ -83,6 +85,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setEndDate('');
         setRecurrence('none');
         setReminderAdvance('1d');
+        setIsSharedToCalendar(false); // 預設先關閉
       }
       setIsCreatingCategory(false);
       setNewCatName('');
@@ -122,6 +125,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
       paperUrl: category === '論文閱讀' ? paperUrl.trim() : undefined,
       readingStatus: todo?.readingStatus || (category === '論文閱讀' ? '未讀' : undefined),
       reminderAdvance,
+      isSharedToCalendar,
     });
     onClose();
   };
@@ -499,6 +503,32 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
               />
             </div>
           )}
+
+          {/* 📅 同步分享至共同行事曆 */}
+          <div className="p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 min-w-0 flex-1 pr-2">
+              <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange shrink-0">
+                <Calendar className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 block truncate">
+                  同步分享至共同行事曆
+                </span>
+                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block leading-tight mt-0.5">
+                  預設關閉。勾選後雙方共同行事曆皆可見，快到期時雙方設備同步收到提醒！
+                </span>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={isSharedToCalendar}
+                onChange={(e) => setIsSharedToCalendar(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
 
           {/* Notes */}
           <div>

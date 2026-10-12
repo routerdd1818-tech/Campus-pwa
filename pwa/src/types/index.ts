@@ -53,6 +53,7 @@ export interface Todo {
   readingStatus?: '未讀' | '閱讀中' | '已讀畢';
   reminderAdvance?: 'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d';
   reminderCustomDays?: number;
+  isSharedToCalendar?: boolean; // 同步分享至共同行事曆 (預設 false)
 }
 
 export interface Transaction {
@@ -148,6 +149,13 @@ export interface UserSettings {
   // Campus fun features
   foodRouletteList?: string[];
   enableFortuneWidget?: boolean;
+  // PWA Native Web Notifications
+  pwaNotificationEnabled?: boolean;
+  pwaTodoReminderEnabled?: boolean;
+  pwaCalendarReminderEnabled?: boolean;
+  pwaAccountingReminderEnabled?: boolean;
+  pwaPeerRatingReminderEnabled?: boolean;
+  pwaSharedCalendarNotifyEnabled?: boolean;
 }
 
 export interface CalendarEvent {
