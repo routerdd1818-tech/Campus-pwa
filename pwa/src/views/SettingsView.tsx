@@ -163,14 +163,16 @@ export const SettingsView: React.FC = () => {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [lineChannelToken, setLineChannelToken] = useState('');
   const [showGeminiKey, setShowGeminiKey] = useState(false);
-  const [showLineToken, setShowLineToken] = useState(false);
   const [isSavingGeminiKey, setIsSavingGeminiKey] = useState(false);
   const [isSavingLineToken, setIsSavingLineToken] = useState(false);
+  const [isLineTokenConfigured, setIsLineTokenConfigured] = useState(false);
 
-  // Load API keys on mount
+  // Load API keys on mount (Security: Never load plain text LINE Token into frontend state)
   useEffect(() => {
     getGeminiApiKey().then((k) => setGeminiApiKey(k));
-    fetchAppApiConfig('line_channel_access_token').then((t) => setLineChannelToken(t));
+    fetchAppApiConfig('line_channel_access_token').then((t) => {
+      setIsLineTokenConfigured(Boolean(t && t.trim().length > 0));
+    });
   }, []);
 
   // Keep in sync with currentUser
@@ -402,11 +404,17 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleSaveLineToken = async () => {
+    if (!lineChannelToken.trim()) {
+      showNotification('請先輸入 LINE Channel Access Token');
+      return;
+    }
     setIsSavingLineToken(true);
     try {
-      const ok = await saveAppApiConfig('line_channel_access_token', lineChannelToken);
+      const ok = await saveAppApiConfig('line_channel_access_token', lineChannelToken.trim());
       if (ok) {
-        showNotification('✅ LINE Channel Access Token 已成功儲存至 Supabase 雲端！');
+        setIsLineTokenConfigured(true);
+        setLineChannelToken('');
+        showNotification('✅ LINE Channel Access Token 已安全託管至 Supabase 雲端！');
       } else {
         showNotification('⚠️ 儲存失敗，請確認 Supabase 連線狀態');
       }
@@ -1064,48 +1072,58 @@ export const SettingsView: React.FC = () => {
             </div>
           </div>
 
-          {/* LINE Channel Access Token Direct Configuration */}
-          <div className="p-3.5 rounded-2xl bg-[#06C755]/10 border border-[#06C755]/20 space-y-2">
+          {/* LINE Channel Access Token Direct Secure Vault (No Plain Text Display) */}
+          <div className="p-3.5 rounded-2xl bg-[#06C755]/10 border border-[#06C755]/20 space-y-2.5">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-1">
-                <Key className="w-3.5 h-3.5 text-[#06C755]" />
-                <span>LINE Channel Access Token (長期權限碼)</span>
+              <label className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-1.5">
+                <ShieldCheck className="w-4 h-4 text-[#06C755]" />
+                <span>LINE Channel Access Token (雲端安全託管)</span>
               </label>
-              <a
-                href="https://developers.line.biz/console/"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-[#06C755] hover:underline font-bold flex items-center space-x-0.5"
-              >
-                <span>LINE Developers 後台 ↗</span>
-              </a>
+              <div className="flex items-center space-x-2">
+                <span
+                  className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                    isLineTokenConfigured
+                      ? 'bg-[#06C755]/20 text-[#06C755] dark:text-[#25D366]'
+                      : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                  }`}
+                >
+                  {isLineTokenConfigured ? '● 雲端已安全就緒' : '○ 尚未配置'}
+                </span>
+                <a
+                  href="https://developers.line.biz/console/"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-[10px] text-[#06C755] hover:underline font-bold"
+                >
+                  LINE 後台 ↗
+                </a>
+              </div>
             </div>
+
             <div className="flex items-center space-x-1.5">
               <input
-                type={showLineToken ? 'text' : 'password'}
+                type="password"
                 value={lineChannelToken}
                 onChange={(e) => setLineChannelToken(e.target.value)}
-                placeholder="貼上 Messaging API 頁籤底部的 Channel access token"
+                placeholder={
+                  isLineTokenConfigured
+                    ? '••••••••••••••••••••（已安全隱藏，輸入新值可覆蓋）'
+                    : '貼上 Messaging API 頁籤底部的 Channel access token'
+                }
+                autoComplete="off"
                 className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
               />
               <button
                 type="button"
-                onClick={() => setShowLineToken(!showLineToken)}
-                className="px-2 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa/70 dark:text-zinc-300 text-[11px] font-bold"
-              >
-                {showLineToken ? '隱藏' : '顯示'}
-              </button>
-              <button
-                type="button"
                 onClick={handleSaveLineToken}
-                disabled={isSavingLineToken}
-                className="px-3 py-1.5 rounded-xl bg-[#06C755] text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-50"
+                disabled={isSavingLineToken || !lineChannelToken.trim()}
+                className="px-3 py-1.5 rounded-xl bg-[#06C755] text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-40"
               >
-                {isSavingLineToken ? '儲存中...' : '儲存 Token'}
+                {isSavingLineToken ? '儲存中...' : '更新金鑰'}
               </button>
             </div>
-            <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400">
-              貼上後點擊儲存，將直接寫入 Supabase 的 app_api_configs，雲端定時排程推播即可透過 LINE 官方伺服器發送訊息！
+            <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 flex items-center space-x-1">
+              <span>🔒 遵循機密防洩原則：Token 永遠不於 APP 介面明文顯示，僅安全託管於 Supabase 雲端提供推播。</span>
             </p>
           </div>
 

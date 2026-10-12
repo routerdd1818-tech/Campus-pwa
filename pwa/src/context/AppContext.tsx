@@ -38,6 +38,8 @@ import {
   fetchSharedScheduleByCode,
   loginUserAccount,
   updateUserAccountDisplayName,
+  rateFriendTransaction,
+  toUUID,
   DEFAULT_SUPABASE_URL,
   DEFAULT_SUPABASE_ANON_KEY,
 } from '../services/supabase';
@@ -337,6 +339,12 @@ interface AppContextType {
   saveFriendRecord: (record: SavedFriendRecord) => void;
   removeFriendRecord: (shareCode: string) => void;
   updateSettings: (s: Partial<UserSettings>) => void;
+  rateFriendAccounting: (
+    friendShareCode: string,
+    transactionId: string,
+    rating: number,
+    feedback: string
+  ) => Promise<boolean>;
   syncWithSupabase: (targetUser?: UserAccount | null) => Promise<void>;
 }
 
@@ -1141,14 +1149,93 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addTransaction = async (t: Transaction) => {
     const enriched = { ...t, userId: currentUser?.id || t.userId };
-    setTransactions((prev) => [enriched, ...prev]);
+    setTransactions((prev) => {
+      const next = [enriched, ...prev];
+      transactionsRef.current = next;
+      // Real-time publish to shared_schedules for friends
+      const sCode = currentUser?.shareCode || settingsRef.current.shareCode;
+      if (sCode) {
+        publishSharedSchedule({
+          shareCode: sCode,
+          ownerName: currentUser?.displayName || settingsRef.current.ownerName || '同學',
+          isSharingEnabled: true,
+          coursesData: coursesRef.current,
+          todosData: todosRef.current,
+          accountingData: next,
+          calendarEventsData: calendarEventsRef.current,
+          isExpenseSharingEnabled: true,
+        }).catch(() => {});
+      }
+      return next;
+    });
     await upsertTransactionToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
   const deleteTransaction = async (id: string) => {
-    setTransactions((prev) => prev.filter((t) => t.id !== id));
+    setTransactions((prev) => {
+      const next = prev.filter((t) => t.id !== id);
+      transactionsRef.current = next;
+      const sCode = currentUser?.shareCode || settingsRef.current.shareCode;
+      if (sCode) {
+        publishSharedSchedule({
+          shareCode: sCode,
+          ownerName: currentUser?.displayName || settingsRef.current.ownerName || '同學',
+          isSharingEnabled: true,
+          coursesData: coursesRef.current,
+          todosData: todosRef.current,
+          accountingData: next,
+          calendarEventsData: calendarEventsRef.current,
+          isExpenseSharingEnabled: true,
+        }).catch(() => {});
+      }
+      return next;
+    });
     await deleteTransactionFromSupabase(id);
+  };
+
+  const rateFriendAccounting = async (
+    friendShareCode: string,
+    transactionId: string,
+    rating: number,
+    feedback: string
+  ): Promise<boolean> => {
+    const raterName = currentUser?.displayName || settings.ownerName || '好友';
+    const ok = await rateFriendTransaction(friendShareCode, transactionId, rating, feedback, raterName);
+    if (ok) {
+      // Update local cached friend record immediately
+      setSavedFriends((prev) =>
+        prev.map((f) => {
+          if (f.shareCode.toUpperCase() === friendShareCode.toUpperCase() && f.cachedSchedule) {
+            const currentList = Array.isArray(f.cachedSchedule.accountingData)
+              ? f.cachedSchedule.accountingData
+              : [];
+            const targetUuid = toUUID(transactionId);
+            const updatedTxList = currentList.map((tx) => {
+              if (tx.id === transactionId || toUUID(tx.id) === targetUuid) {
+                return {
+                  ...tx,
+                  peerRating: rating,
+                  peerFeedback: feedback,
+                  peerRaterName: raterName,
+                  ratedAt: new Date().toISOString(),
+                };
+              }
+              return tx;
+            });
+            return {
+              ...f,
+              cachedSchedule: {
+                ...f.cachedSchedule,
+                accountingData: updatedTxList,
+              },
+            };
+          }
+          return f;
+        })
+      );
+    }
+    return ok;
   };
 
   const addCalendarEvent = async (e: CalendarEvent) => {
@@ -1327,6 +1414,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         saveFriendRecord,
         removeFriendRecord,
         updateSettings,
+        rateFriendAccounting,
         syncWithSupabase,
       }}
     >

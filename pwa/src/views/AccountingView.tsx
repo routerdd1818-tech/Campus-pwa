@@ -1,7 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { Transaction } from '../types';
 import { TransactionModal } from '../components/TransactionModal';
+import { PeerRatingModal } from '../components/PeerRatingModal';
+import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Plus,
   CreditCard,
@@ -14,6 +16,10 @@ import {
   BarChart3,
   Sparkles,
   Calendar,
+  Users,
+  Star,
+  RefreshCw,
+  UserPlus,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -214,7 +220,138 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 // 📱 Main Accounting View
 // ============================================================================
 export const AccountingView: React.FC = () => {
-  const { transactions, budgetInfo, addTransaction, deleteTransaction } = useApp();
+  const {
+    transactions,
+    budgetInfo,
+    addTransaction,
+    deleteTransaction,
+    savedFriends,
+    saveFriendRecord,
+    setIsShareModalOpen,
+  } = useApp();
+
+  // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
+  const [ledgerScope, setLedgerScope] = useState<'mine' | 'friends'>('mine');
+  const [selectedFriendIndex, setSelectedFriendIndex] = useState<number>(0);
+  const [isRefreshingFriend, setIsRefreshingFriend] = useState<boolean>(false);
+  const [ratingModalTx, setRatingModalTx] = useState<Transaction | null>(null);
+  const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
+
+  // Active friend calculations
+  const currentFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
+
+  const handleRefreshFriend = async () => {
+    if (!currentFriend) return;
+    setIsRefreshingFriend(true);
+    try {
+      const latest = await fetchSharedScheduleByCode(currentFriend.shareCode);
+      if (latest) {
+        saveFriendRecord({
+          ...currentFriend,
+          lastViewedAt: new Date().toISOString(),
+          cachedSchedule: latest,
+        });
+      }
+    } finally {
+      setIsRefreshingFriend(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedFriendIndex >= savedFriends.length && savedFriends.length > 0) {
+      setSelectedFriendIndex(0);
+    }
+  }, [savedFriends.length, selectedFriendIndex]);
+
+  const friendSchedule = currentFriend?.cachedSchedule;
+  const isFriendExpenseShared = friendSchedule ? friendSchedule.isExpenseSharingEnabled !== false : true;
+
+  const friendTransactions = useMemo(() => {
+    if (!friendSchedule || !Array.isArray(friendSchedule.accountingData)) return [];
+    return [...friendSchedule.accountingData].sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+    );
+  }, [friendSchedule]);
+
+  const friendStats = useMemo(() => {
+    let totalExpense = 0;
+    let totalIncome = 0;
+    const catMap: Record<string, { amount: number; colorHex: string; count: number }> = {};
+    let ratedCount = 0;
+    let totalRating = 0;
+
+    friendTransactions.forEach((t) => {
+      if (t.type === 'expense' || !t.type) {
+        totalExpense += t.amount;
+        if (!catMap[t.categoryName]) {
+          catMap[t.categoryName] = { amount: 0, colorHex: t.categoryColorHex || '#E67E22', count: 0 };
+        }
+        catMap[t.categoryName].amount += t.amount;
+        catMap[t.categoryName].count += 1;
+      } else {
+        totalIncome += t.amount;
+      }
+
+      if (t.peerRating) {
+        totalRating += t.peerRating;
+        ratedCount += 1;
+      }
+    });
+
+    const categories = Object.entries(catMap)
+      .map(([name, data]) => ({
+        name,
+        amount: data.amount,
+        colorHex: data.colorHex,
+        count: data.count,
+        percent: totalExpense > 0 ? Math.round((data.amount / totalExpense) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
+    return {
+      totalExpense,
+      totalIncome,
+      categories,
+      txCount: friendTransactions.length,
+      avgRating: ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : null,
+      ratedCount,
+    };
+  }, [friendTransactions]);
+
+  const renderPeerRatingBadge = (tx: Transaction) => {
+    if (!tx.peerRating) return null;
+    return (
+      <div className="mt-2 pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-xs">
+        <div className="flex items-center space-x-1.5 min-w-0">
+          <div className="flex items-center text-amber-500 shrink-0">
+            {[...Array(5)].map((_, i) => (
+              <Star
+                key={i}
+                className={`w-3 h-3 ${
+                  i < (tx.peerRating || 0)
+                    ? 'fill-amber-400 text-amber-500'
+                    : 'text-gray-300 dark:text-zinc-600'
+                }`}
+              />
+            ))}
+          </div>
+          <span className="font-extrabold text-amber-700 dark:text-amber-300 shrink-0">
+            {tx.peerRating}星
+          </span>
+          {tx.peerFeedback && (
+            <span className="text-calico-cocoa/80 dark:text-zinc-300 truncate font-semibold">
+              「{tx.peerFeedback}」
+            </span>
+          )}
+        </div>
+        {tx.peerRaterName && (
+          <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-bold shrink-0 ml-2">
+            · 來自 {tx.peerRaterName}
+          </span>
+        )}
+      </div>
+    );
+  };
 
   // Primary view mode: 'ledger' (流水帳) | 'weekly' (每週統計) | 'monthly' (每月統計)
   const [viewMode, setViewMode] = useState<'ledger' | 'weekly' | 'monthly'>('ledger');
@@ -445,7 +582,49 @@ export const AccountingView: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* Top View Mode 3-Segment Switcher */}
+      {/* 🌟 Top Scope Switcher: 我的帳本 vs 好友帳本 */}
+      <div className="flex items-center justify-between pb-1">
+        <div>
+          <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+            <span>{ledgerScope === 'mine' ? '💰 記帳理財' : '🤝 好友帳本與評分'}</span>
+          </h2>
+          <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
+            {ledgerScope === 'mine' ? '掌握每筆開銷，培養儲蓄習慣' : '互相查閱好友開銷，給予暖心理財星評'}
+          </p>
+        </div>
+
+        <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
+          <button
+            onClick={() => setLedgerScope('mine')}
+            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
+              ledgerScope === 'mine'
+                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+            }`}
+          >
+            <span>🐱 我的帳本</span>
+          </button>
+
+          <button
+            onClick={() => setLedgerScope('friends')}
+            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
+              ledgerScope === 'friends'
+                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
+                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+            }`}
+          >
+            <Users className="w-3.5 h-3.5" />
+            <span>好友帳本</span>
+            {savedFriends.length > 0 && (
+              <span className="w-1.5 h-1.5 rounded-full bg-calico-orange"></span>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {ledgerScope === 'mine' && (
+        <>
+          {/* Top View Mode 3-Segment Switcher */}
       <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
         <button
           onClick={() => setViewMode('ledger')}
@@ -593,57 +772,61 @@ export const AccountingView: React.FC = () => {
               weeklyTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between"
+                  className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-1.5"
                 >
-                  <div className="flex items-center space-x-3 min-w-0 flex-1">
-                    <div
-                      style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
-                    >
-                      <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
-                          {tx.categoryName}
-                        </h5>
-                        {tx.valueScore && (
-                          <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
-                            ★ {tx.valueScore}分
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
-                        {tx.notes || tx.paymentMethodName}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2.5 text-right shrink-0">
-                    <div>
-                      <p
-                        className={`text-sm font-black ${
-                          tx.type === 'expense'
-                            ? 'text-calico-cocoa dark:text-zinc-100'
-                            : 'text-emerald-600 dark:text-emerald-400'
-                        }`}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <div
+                        style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                        className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                       >
-                        {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
-                      </p>
-                      <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
-                        {tx.date.slice(5, 10)}
-                      </p>
+                        <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                            {tx.categoryName}
+                          </h5>
+                          {tx.valueScore && (
+                            <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                              ★ {tx.valueScore}分
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
+                          {tx.notes || tx.paymentMethodName}
+                        </p>
+                      </div>
                     </div>
 
-                    <button
-                      onClick={() => deleteTransaction(tx.id)}
-                      className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
-                      title="刪除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center space-x-2.5 text-right shrink-0">
+                      <div>
+                        <p
+                          className={`text-sm font-black ${
+                            tx.type === 'expense'
+                              ? 'text-calico-cocoa dark:text-zinc-100'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
+                        </p>
+                        <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
+                          {tx.date.slice(5, 10)}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => deleteTransaction(tx.id)}
+                        className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
+                        title="刪除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {renderPeerRatingBadge(tx)}
                 </div>
               ))
             ) : (
@@ -794,57 +977,61 @@ export const AccountingView: React.FC = () => {
               monthlyTransactions.map((tx) => (
                 <div
                   key={tx.id}
-                  className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between"
+                  className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-1.5"
                 >
-                  <div className="flex items-center space-x-3 min-w-0 flex-1">
-                    <div
-                      style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
-                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
-                    >
-                      <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
-                    </div>
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center space-x-2">
-                        <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
-                          {tx.categoryName}
-                        </h5>
-                        {tx.valueScore && (
-                          <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
-                            ★ {tx.valueScore}分
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
-                        {tx.notes || tx.paymentMethodName}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center space-x-2.5 text-right shrink-0">
-                    <div>
-                      <p
-                        className={`text-sm font-black ${
-                          tx.type === 'expense'
-                            ? 'text-calico-cocoa dark:text-zinc-100'
-                            : 'text-emerald-600 dark:text-emerald-400'
-                        }`}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-3 min-w-0 flex-1">
+                      <div
+                        style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                        className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                       >
-                        {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
-                      </p>
-                      <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
-                        {tx.date.slice(5, 10)}
-                      </p>
+                        <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2">
+                          <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                            {tx.categoryName}
+                          </h5>
+                          {tx.valueScore && (
+                            <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                              ★ {tx.valueScore}分
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
+                          {tx.notes || tx.paymentMethodName}
+                        </p>
+                      </div>
                     </div>
 
-                    <button
-                      onClick={() => deleteTransaction(tx.id)}
-                      className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
-                      title="刪除"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center space-x-2.5 text-right shrink-0">
+                      <div>
+                        <p
+                          className={`text-sm font-black ${
+                            tx.type === 'expense'
+                              ? 'text-calico-cocoa dark:text-zinc-100'
+                              : 'text-emerald-600 dark:text-emerald-400'
+                          }`}
+                        >
+                          {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
+                        </p>
+                        <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
+                          {tx.date.slice(5, 10)}
+                        </p>
+                      </div>
+
+                      <button
+                        onClick={() => deleteTransaction(tx.id)}
+                        className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
+                        title="刪除"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
                   </div>
+
+                  {renderPeerRatingBadge(tx)}
                 </div>
               ))
             ) : (
@@ -971,62 +1158,66 @@ export const AccountingView: React.FC = () => {
             {filteredTransactions.map((tx) => (
               <div
                 key={tx.id}
-                className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between"
+                className="p-3.5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-1.5"
               >
-                {/* Left: Icon & Title */}
-                <div className="flex items-center space-x-3 min-w-0 flex-1">
-                  <div
-                    style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
-                    className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
-                  >
-                    <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center space-x-2">
-                      <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
-                        {tx.categoryName}
-                      </h4>
-                      {tx.valueScore && (
-                        <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
-                          ★ {tx.valueScore}分
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
-                      {tx.notes || tx.paymentMethodName}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Right: Amount & Delete */}
-                <div className="flex items-center space-x-3 text-right shrink-0">
-                  <div>
-                    <p
-                      className={`text-base font-black ${
-                        tx.type === 'expense'
-                          ? 'text-calico-cocoa dark:text-zinc-100'
-                          : 'text-calico-sage'
-                      }`}
+                <div className="flex items-center justify-between">
+                  {/* Left: Icon & Title */}
+                  <div className="flex items-center space-x-3 min-w-0 flex-1">
+                    <div
+                      style={{ backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`, color: tx.categoryColorHex || '#E67E22' }}
+                      className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
                     >
-                      {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
-                    </p>
-                    <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
-                      {new Date(tx.date).toLocaleDateString('zh-TW', {
-                        month: 'numeric',
-                        day: 'numeric',
-                      })}
-                    </p>
+                      <CategoryIcon icon={tx.categoryIcon} categoryName={tx.categoryName} className="w-5 h-5" />
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center space-x-2">
+                        <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                          {tx.categoryName}
+                        </h4>
+                        {tx.valueScore && (
+                          <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                            ★ {tx.valueScore}分
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
+                        {tx.notes || tx.paymentMethodName}
+                      </p>
+                    </div>
                   </div>
 
-                  <button
-                    onClick={() => deleteTransaction(tx.id)}
-                    className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
-                    title="刪除"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  {/* Right: Amount & Delete */}
+                  <div className="flex items-center space-x-3 text-right shrink-0">
+                    <div>
+                      <p
+                        className={`text-base font-black ${
+                          tx.type === 'expense'
+                            ? 'text-calico-cocoa dark:text-zinc-100'
+                            : 'text-calico-sage'
+                        }`}
+                      >
+                        {tx.type === 'expense' ? `-$${tx.amount}` : `+$${tx.amount}`}
+                      </p>
+                      <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
+                        {new Date(tx.date).toLocaleDateString('zh-TW', {
+                          month: 'numeric',
+                          day: 'numeric',
+                        })}
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={() => deleteTransaction(tx.id)}
+                      className="p-1 rounded-lg text-calico-cocoa/20 hover:text-red-500 transition-colors"
+                      title="刪除"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
+
+                {renderPeerRatingBadge(tx)}
               </div>
             ))}
 
@@ -1040,12 +1231,282 @@ export const AccountingView: React.FC = () => {
           </div>
         </div>
       )}
+    </>
+  )}
+
+      {/* ========================================================================= */}
+      {/* 🤝 SCOPE B: 好友帳本與評分 (FRIENDS ACCOUNTING & PEER RATING) */}
+      {/* ========================================================================= */}
+      {ledgerScope === 'friends' && (
+        <div className="space-y-4 animate-fade-in">
+          {savedFriends.length === 0 ? (
+            <div className="p-8 text-center rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+              <div className="w-14 h-14 mx-auto rounded-3xl bg-calico-orange/15 text-calico-orange flex items-center justify-center">
+                <Users className="w-7 h-7" />
+              </div>
+              <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100">
+                尚未新增任何好友 🐾
+              </h3>
+              <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                輸入好友的課表分享代碼（例如 舒舒、榮豐），即可在此即時查閱好友的帳本開銷，並為每筆消費給予 1~5 星評分與反饋！
+              </p>
+              <button
+                onClick={() => setIsShareModalOpen(true)}
+                className="mt-2 px-5 py-2.5 rounded-2xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm hover:brightness-105 active:scale-95 transition-all inline-flex items-center space-x-1.5"
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>輸入好友分享代碼</span>
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Friend Selector Tabs */}
+              <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+                {savedFriends.map((f, idx) => (
+                  <button
+                    key={f.shareCode}
+                    onClick={() => setSelectedFriendIndex(idx)}
+                    className={`px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-all ${
+                      selectedFriendIndex === idx
+                        ? 'bg-calico-orange text-white shadow-ios-sm'
+                        : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-300 border border-black/5 dark:border-white/10 hover:border-calico-orange/30'
+                    }`}
+                  >
+                    <span>👤 {f.nickname || f.ownerName}</span>
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                        selectedFriendIndex === idx
+                          ? 'bg-white/20 text-white'
+                          : 'bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400'
+                      }`}
+                    >
+                      {f.shareCode}
+                    </span>
+                  </button>
+                ))}
+
+                {/* Refresh Friend Data */}
+                <button
+                  onClick={handleRefreshFriend}
+                  disabled={isRefreshingFriend}
+                  className="p-2 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                  title="從雲端刷新好友帳本"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshingFriend ? 'animate-spin text-calico-orange' : ''}`} />
+                </button>
+
+                {/* Add more friends */}
+                <button
+                  onClick={() => setIsShareModalOpen(true)}
+                  className="p-2 rounded-2xl bg-white dark:bg-calico-darkCard border border-dashed border-black/15 dark:border-white/15 text-calico-cocoa/50 dark:text-zinc-400 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                  title="新增好友"
+                >
+                  <UserPlus className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Friend Summary KPI Cards */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios">
+                  <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block mb-1">
+                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的總開銷
+                  </span>
+                  <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
+                    ${friendStats.totalExpense}
+                  </p>
+                  <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
+                    共 {friendStats.txCount} 筆收支記錄
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-3xl bg-gradient-to-br from-orange-50 to-amber-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-orange-200/50 dark:border-zinc-700/40 shadow-ios">
+                  <span className="text-[11px] font-bold text-orange-700 dark:text-orange-400 block mb-1">
+                    好友互評平均
+                  </span>
+                  <div className="flex items-baseline space-x-1.5">
+                    <span className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
+                      {friendStats.avgRating ? `★ ${friendStats.avgRating}` : '尚無評分'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
+                    已評分 {friendStats.ratedCount} / {friendStats.txCount} 筆
+                  </p>
+                </div>
+              </div>
+
+              {/* Friend Expense Donut Chart */}
+              <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <div className="p-1.5 rounded-xl bg-calico-orange/15 text-calico-orange">
+                      <PieChart className="w-4 h-4" />
+                    </div>
+                    <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                      {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 開銷類別圓餅圖
+                    </h4>
+                  </div>
+                  <span className="text-xs font-bold text-calico-cocoa/40 dark:text-zinc-400">
+                    共 {friendStats.categories.length} 個類別
+                  </span>
+                </div>
+
+                <CategoryPieChart
+                  categories={friendStats.categories}
+                  totalExpense={friendStats.totalExpense}
+                  emptyText="好友目前尚無支出記錄"
+                />
+              </div>
+
+              {/* Friend Transactions List with Peer Rating Button */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <h4 className="text-xs font-black text-calico-cocoa/60 dark:text-zinc-400 uppercase tracking-wider">
+                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的收支明細與評分
+                  </h4>
+                  <span className="text-[11px] text-calico-orange font-bold">
+                    點擊評分即可給好友星級與留言 ⭐️
+                  </span>
+                </div>
+
+                {friendTransactions.length > 0 ? (
+                  friendTransactions.map((tx) => (
+                    <div
+                      key={tx.id}
+                      className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-2.5 transition-all"
+                    >
+                      {/* Top line: Category, Name, Amount, Date */}
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center space-x-3 min-w-0 flex-1">
+                          <div
+                            style={{
+                              backgroundColor: `${tx.categoryColorHex || '#E67E22'}20`,
+                              color: tx.categoryColorHex || '#E67E22',
+                            }}
+                            className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
+                          >
+                            <CategoryIcon
+                              icon={tx.categoryIcon}
+                              categoryName={tx.categoryName}
+                              className="w-5 h-5"
+                            />
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center space-x-2">
+                              <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                                {tx.categoryName}
+                              </h5>
+                              {tx.valueScore && (
+                                <span className="text-[10px] bg-calico-orange/15 text-calico-orange px-1.5 py-0.2 rounded-md font-bold shrink-0">
+                                  ★ 自評 {tx.valueScore}分
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
+                              {tx.notes || tx.paymentMethodName || '無備註'}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0 ml-3">
+                          <p
+                            className={`text-base font-black ${
+                              tx.type === 'expense' || !tx.type
+                                ? 'text-calico-cocoa dark:text-zinc-100'
+                                : 'text-calico-sage'
+                            }`}
+                          >
+                            {tx.type === 'expense' || !tx.type ? `-$${tx.amount}` : `+$${tx.amount}`}
+                          </p>
+                          <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400">
+                            {new Date(tx.date).toLocaleDateString('zh-TW', {
+                              month: 'numeric',
+                              day: 'numeric',
+                            })}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Rating Card / Rating Button */}
+                      {tx.peerRating ? (
+                        <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-xs bg-amber-500/5 dark:bg-amber-500/10 -mx-1 px-3 py-2 rounded-2xl">
+                          <div className="flex items-center space-x-1.5 min-w-0">
+                            <div className="flex items-center text-amber-500 shrink-0">
+                              {[...Array(5)].map((_, i) => (
+                                <Star
+                                  key={i}
+                                  className={`w-3.5 h-3.5 ${
+                                    i < (tx.peerRating || 0)
+                                      ? 'fill-amber-400 text-amber-500'
+                                      : 'text-gray-300 dark:text-zinc-600'
+                                  }`}
+                                />
+                              ))}
+                            </div>
+                            <span className="font-extrabold text-amber-700 dark:text-amber-300 shrink-0">
+                              {tx.peerRating}星
+                            </span>
+                            {tx.peerFeedback && (
+                              <span className="text-calico-cocoa/80 dark:text-zinc-300 truncate font-semibold">
+                                「{tx.peerFeedback}」
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            onClick={() => {
+                              setRatingModalTx(tx);
+                              setIsRatingModalOpen(true);
+                            }}
+                            className="text-[11px] font-bold text-calico-orange hover:underline shrink-0 ml-2"
+                          >
+                            重新評分
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setRatingModalTx(tx);
+                            setIsRatingModalOpen(true);
+                          }}
+                          className="w-full py-2 px-3 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/15 to-amber-500/15 hover:from-amber-500/25 hover:to-orange-500/25 border border-amber-500/20 text-amber-900 dark:text-amber-200 text-xs font-bold flex items-center justify-center space-x-1.5 active:scale-98 transition-all"
+                        >
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                          <span>給這筆開銷打個星級評分！⭐️</span>
+                        </button>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 rounded-3xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10 space-y-2">
+                    <p className="text-sm font-bold text-calico-cocoa/70 dark:text-zinc-300">
+                      好友目前尚無記帳記錄 ☕️
+                    </p>
+                    <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400">
+                      點擊上方重新整理按鈕，隨時同步好友最新公開帳本！
+                    </p>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Transaction Modal */}
       <TransactionModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={addTransaction}
+      />
+
+      {/* Peer Rating Modal */}
+      <PeerRatingModal
+        isOpen={isRatingModalOpen}
+        onClose={() => setIsRatingModalOpen(false)}
+        friendName={currentFriend ? (currentFriend.nickname || currentFriend.ownerName) : '好友'}
+        friendShareCode={currentFriend ? currentFriend.shareCode : ''}
+        transaction={ratingModalTx}
       />
     </div>
   );

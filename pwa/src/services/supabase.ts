@@ -37,6 +37,35 @@ export function resetSupabaseClient(url: string, key: string): SupabaseClient {
 }
 
 // -------------------------------------------------------------
+// 🔑 Deterministic UUID v4 Converter (Ensures valid Postgres UUID)
+// -------------------------------------------------------------
+export function toUUID(str: string): string {
+  if (!str) return '00000000-0000-4000-8000-000000000000';
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (uuidRegex.test(str)) return str;
+
+  let h1 = 0xdeadbeef, h2 = 0x41c6ce57, h3 = 0x9e3779b9, h4 = 0x85ebca6b;
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i);
+    h1 = Math.imul(h1 ^ ch, 2654435761);
+    h2 = Math.imul(h2 ^ ch, 1597334677);
+    h3 = Math.imul(h3 ^ ch, 3812015801);
+    h4 = Math.imul(h4 ^ ch, 2246822507);
+  }
+  const toHex = (n: number) => (n >>> 0).toString(16).padStart(8, '0');
+  const fullHex = (toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4)).toLowerCase();
+
+  return [
+    fullHex.slice(0, 8),
+    fullHex.slice(8, 12),
+    '4' + fullHex.slice(13, 16),
+    ((parseInt(fullHex.slice(16, 18), 16) & 0x3f) | 0x80).toString(16).padStart(2, '0') + fullHex.slice(18, 20),
+    fullHex.slice(20, 32),
+  ].join('-');
+}
+
+
+// -------------------------------------------------------------
 // 👤 User Account & Authentication (Multi-User Isolation)
 // -------------------------------------------------------------
 export async function registerUserAccount(
@@ -206,7 +235,7 @@ export async function upsertCourseToSupabase(course: Course, deviceIdOrUserId?: 
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('courses').upsert({
-      id: course.id,
+      id: toUUID(course.id),
       device_id: deviceIdOrUserId || course.userId || '',
       name: course.name,
       code: course.code,
@@ -227,7 +256,7 @@ export async function upsertCourseToSupabase(course: Course, deviceIdOrUserId?: 
 export async function deleteCourseFromSupabase(courseId: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('courses').delete().eq('id', courseId);
+    const { error } = await supabase.from('courses').delete().eq('id', toUUID(courseId));
     return !error;
   } catch {
     return false;
@@ -239,7 +268,7 @@ export async function batchUpsertCoursesToSupabase(courses: Course[], deviceIdOr
   try {
     const supabase = getSupabaseClient();
     const rows = courses.map((course) => ({
-      id: course.id,
+      id: toUUID(course.id),
       device_id: deviceIdOrUserId || course.userId || '',
       name: course.name,
       code: course.code,
@@ -301,7 +330,7 @@ export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('todos').upsert({
-      id: todo.id,
+      id: toUUID(todo.id),
       device_id: deviceIdOrUserId || todo.userId || '',
       title: todo.title,
       notes: todo.notes,
@@ -310,7 +339,7 @@ export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string
       is_completed: todo.isCompleted,
       priority: todo.priority,
       category: todo.category,
-      course_id: todo.courseId,
+      course_id: todo.courseId ? toUUID(todo.courseId) : undefined,
       paper_url: todo.paperUrl,
       reading_status: todo.readingStatus,
       has_reminder: (todo as any).hasReminder ?? (todo.reminderAdvance ? todo.reminderAdvance !== 'none' : true),
@@ -325,7 +354,7 @@ export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string
 export async function deleteTodoFromSupabase(todoId: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('todos').delete().eq('id', todoId);
+    const { error } = await supabase.from('todos').delete().eq('id', toUUID(todoId));
     return !error;
   } catch {
     return false;
@@ -337,7 +366,7 @@ export async function batchUpsertTodosToSupabase(todos: Todo[], deviceIdOrUserId
   try {
     const supabase = getSupabaseClient();
     const rows = todos.map((todo) => ({
-      id: todo.id,
+      id: toUUID(todo.id),
       device_id: deviceIdOrUserId || todo.userId || '',
       title: todo.title,
       notes: todo.notes,
@@ -346,7 +375,7 @@ export async function batchUpsertTodosToSupabase(todos: Todo[], deviceIdOrUserId
       is_completed: todo.isCompleted,
       priority: todo.priority,
       category: todo.category,
-      course_id: todo.courseId,
+      course_id: todo.courseId ? toUUID(todo.courseId) : undefined,
       paper_url: todo.paperUrl,
       reading_status: todo.readingStatus,
       has_reminder: (todo as any).hasReminder ?? (todo.reminderAdvance ? todo.reminderAdvance !== 'none' : true),
@@ -394,6 +423,8 @@ export async function fetchTransactionsFromSupabase(deviceIdOrUserId?: string): 
       notes: t.notes || '',
       valueScore: t.value_score || 8,
       isSharedWithFriends: t.is_shared_with_friends ?? true,
+      peerRating: t.peer_rating ? Number(t.peer_rating) : undefined,
+      peerFeedback: t.peer_feedback || undefined,
     }));
   } catch (err) {
     console.warn('fetchTransactions error:', err);
@@ -405,7 +436,7 @@ export async function upsertTransactionToSupabase(t: Transaction, deviceIdOrUser
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounting_transactions').upsert({
-      id: t.id,
+      id: toUUID(t.id),
       device_id: deviceIdOrUserId || t.userId || '',
       amount: t.amount,
       type: t.type,
@@ -417,6 +448,8 @@ export async function upsertTransactionToSupabase(t: Transaction, deviceIdOrUser
       notes: t.notes,
       value_score: t.valueScore,
       is_shared_with_friends: t.isSharedWithFriends ?? true,
+      peer_rating: t.peerRating,
+      peer_feedback: t.peerFeedback,
     });
     return !error;
   } catch {
@@ -427,7 +460,7 @@ export async function upsertTransactionToSupabase(t: Transaction, deviceIdOrUser
 export async function deleteTransactionFromSupabase(id: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('accounting_transactions').delete().eq('id', id);
+    const { error } = await supabase.from('accounting_transactions').delete().eq('id', toUUID(id));
     return !error;
   } catch {
     return false;
@@ -439,7 +472,7 @@ export async function batchUpsertTransactionsToSupabase(txs: Transaction[], devi
   try {
     const supabase = getSupabaseClient();
     const rows = txs.map((t) => ({
-      id: t.id,
+      id: toUUID(t.id),
       device_id: deviceIdOrUserId || t.userId || '',
       amount: t.amount,
       type: t.type,
@@ -451,6 +484,8 @@ export async function batchUpsertTransactionsToSupabase(txs: Transaction[], devi
       notes: t.notes,
       value_score: t.valueScore,
       is_shared_with_friends: t.isSharedWithFriends ?? true,
+      peer_rating: t.peerRating,
+      peer_feedback: t.peerFeedback,
     }));
     const { error } = await supabase.from('accounting_transactions').upsert(rows);
     return !error;
@@ -499,9 +534,8 @@ export async function upsertCalendarEventToSupabase(event: CalendarEvent, device
   try {
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('calendar_events').upsert({
-      id: event.id,
+      id: toUUID(event.id),
       device_id: deviceIdOrUserId || event.userId || '',
-
       title: event.title,
       start_date: event.startDate,
       end_date: event.endDate,
@@ -522,7 +556,7 @@ export async function upsertCalendarEventToSupabase(event: CalendarEvent, device
 export async function deleteCalendarEventFromSupabase(eventId: string): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('calendar_events').delete().eq('id', eventId);
+    const { error } = await supabase.from('calendar_events').delete().eq('id', toUUID(eventId));
     return !error;
   } catch {
     return false;
@@ -534,7 +568,7 @@ export async function batchUpsertCalendarEventsToSupabase(events: CalendarEvent[
   try {
     const supabase = getSupabaseClient();
     const rows = events.map((event) => ({
-      id: event.id,
+      id: toUUID(event.id),
       device_id: deviceIdOrUserId || event.userId || '',
       title: event.title,
       start_date: event.startDate,
@@ -633,6 +667,79 @@ export async function fetchSharedScheduleByCode(shareCode: string): Promise<Shar
     };
   } catch {
     return null;
+  }
+}
+
+export async function rateFriendTransaction(
+  friendShareCode: string,
+  transactionId: string,
+  rating: number,
+  feedback: string,
+  raterName: string
+): Promise<boolean> {
+  try {
+    const supabase = getSupabaseClient();
+    const cleanCode = friendShareCode.trim().toUpperCase();
+
+    // 1. Fetch friend's current shared schedule
+    const { data: currentSchedule, error: fetchErr } = await supabase
+      .from('shared_schedules')
+      .select('*')
+      .eq('share_code', cleanCode)
+      .maybeSingle();
+
+    if (fetchErr || !currentSchedule) return false;
+
+    const accountingList: Transaction[] = Array.isArray(currentSchedule.accounting_data)
+      ? currentSchedule.accounting_data
+      : [];
+
+    let matched = false;
+    const nowIso = new Date().toISOString();
+    const targetUuid = toUUID(transactionId);
+
+    const updatedAccounting = accountingList.map((tx) => {
+      if (tx.id === transactionId || toUUID(tx.id) === targetUuid) {
+        matched = true;
+        return {
+          ...tx,
+          peerRating: rating,
+          peerFeedback: feedback.trim(),
+          peerRaterName: raterName.trim(),
+          ratedAt: nowIso,
+        };
+      }
+      return tx;
+    });
+
+    if (!matched) return false;
+
+    // 2. Save back to shared_schedules
+    const { error: updateErr } = await supabase
+      .from('shared_schedules')
+      .update({
+        accounting_data: updatedAccounting,
+        updated_at: nowIso,
+      })
+      .eq('share_code', cleanCode);
+
+    if (updateErr) return false;
+
+    // 3. Also update accounting_transactions table if present
+    try {
+      await supabase
+        .from('accounting_transactions')
+        .update({
+          peer_rating: rating,
+          peer_feedback: feedback.trim(),
+        })
+        .eq('id', targetUuid);
+    } catch {}
+
+    return true;
+  } catch (err) {
+    console.warn('rateFriendTransaction error:', err);
+    return false;
   }
 }
 

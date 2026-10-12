@@ -653,36 +653,43 @@ export const CalendarView: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* 📅 2. 月曆 檢視 (Monthly Calendar - Image 3 Style) */}
+      {/* 📅 2. 月曆 檢視 (日式生活手帳特色風 Japanese Life Planner) */}
       {/* ======================================================== */}
       {calendarMode === 'month' && (
-        <div className="p-3 sm:p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+        <div className="p-3.5 sm:p-5 rounded-[28px] bg-white/95 dark:bg-calico-darkCard border border-amber-900/10 dark:border-white/10 shadow-ios space-y-3.5 transition-all">
           {/* Month Header Switcher */}
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <CalendarIcon className="w-5 h-5 text-calico-orange" />
-              <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100">
-                {year} 年 {month + 1} 月
-              </h3>
+            <div className="flex items-center space-x-2.5">
+              <span className="px-2.5 py-0.5 rounded-full bg-amber-500/10 dark:bg-amber-400/10 text-amber-700 dark:text-amber-400 text-[11px] font-black tracking-wider">
+                {year}
+              </span>
+              <div className="flex items-center space-x-1.5">
+                <h3 className="text-xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
+                  {month + 1} 月
+                </h3>
+                <span className="text-xs text-calico-orange/80 font-bold select-none">
+                  🐾
+                </span>
+              </div>
             </div>
 
-            <div className="flex items-center space-x-1">
+            <div className="flex items-center space-x-1.5">
               <button
                 onClick={handlePrevMonth}
-                className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 active:scale-95 transition-all"
+                className="p-1.5 sm:p-2 rounded-xl bg-amber-500/10 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200 hover:bg-calico-orange/20 active:scale-90 transition-all"
                 title="上個月"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 onClick={handleGoToday}
-                className="px-2 py-1 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 text-xs font-bold text-calico-cocoa dark:text-zinc-200 active:scale-95 transition-all"
+                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-calico-orange text-white text-xs font-black shadow-2xs hover:brightness-105 active:scale-95 transition-all"
               >
                 今天
               </button>
               <button
                 onClick={handleNextMonth}
-                className="p-1.5 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-calico-orange/20 active:scale-95 transition-all"
+                className="p-1.5 sm:p-2 rounded-xl bg-amber-500/10 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200 hover:bg-calico-orange/20 active:scale-90 transition-all"
                 title="下個月"
               >
                 <ChevronRight className="w-4 h-4" />
@@ -690,16 +697,16 @@ export const CalendarView: React.FC = () => {
             </div>
           </div>
 
-          {/* Weekday Names Header (Image 3: Sunday Red, Saturday Blue, Weekdays Neutral) */}
-          <div className="grid grid-cols-7 text-center pb-2 border-b border-black/5 dark:border-white/5">
+          {/* Weekday Names Header with Playful Bubbles (Sun Rose, Sat Sky, Weekdays Cocoa) */}
+          <div className="grid grid-cols-7 gap-1 text-center pb-1 border-b border-amber-900/10 dark:border-white/5">
             {WEEKDAYS_HEADER.map((w, idx) => (
               <div
                 key={w}
-                className={`text-xs font-black ${
+                className={`text-xs py-1 rounded-xl font-black transition-all ${
                   idx === 0
-                    ? 'text-red-500 dark:text-red-400'
+                    ? 'text-rose-500 dark:text-rose-400 bg-rose-50/80 dark:bg-rose-950/30'
                     : idx === 6
-                    ? 'text-blue-500 dark:text-blue-400'
+                    ? 'text-sky-500 dark:text-sky-400 bg-sky-50/80 dark:bg-sky-950/30'
                     : 'text-calico-cocoa/80 dark:text-zinc-300'
                 }`}
               >
@@ -709,14 +716,14 @@ export const CalendarView: React.FC = () => {
           </div>
 
           {/* 7-Column Month Grid Table with Continuous Spanning Ribbons */}
-          <div className="border-t border-l border-black/10 dark:border-white/10 rounded-2xl overflow-hidden bg-white dark:bg-zinc-900/40 shadow-2xs">
+          <div className="border border-amber-900/10 dark:border-white/10 rounded-2xl overflow-hidden bg-white/90 dark:bg-zinc-900/40 shadow-2xs">
             {monthWeeks.map((weekDays, wIdx) => {
               const { tracks, dayOverflowCount } = computeWeekTracks(weekDays, allSpanItems);
 
               return (
                 <div
                   key={`week-${wIdx}`}
-                  className="relative border-b border-black/10 dark:border-white/10 min-h-[82px] sm:min-h-[96px] flex flex-col justify-start"
+                  className="relative border-b last:border-b-0 border-amber-900/10 dark:border-white/10 min-h-[86px] sm:min-h-[100px] flex flex-col justify-start"
                 >
                   {/* 1. Underlying 7-Day Background Cells (Clickable day slots) */}
                   <div className="absolute inset-0 grid grid-cols-7 w-full h-full">
@@ -728,13 +735,13 @@ export const CalendarView: React.FC = () => {
                         <div
                           key={`bg-${cell.dateStr}`}
                           onClick={() => setSelectedDateStr(cell.dateStr)}
-                          className={`border-r border-black/10 dark:border-white/10 h-full transition-all cursor-pointer relative select-none ${
+                          className={`border-r last:border-r-0 border-amber-900/10 dark:border-white/10 h-full transition-all cursor-pointer relative select-none ${
                             isSelected
                               ? 'bg-calico-orange/10 ring-2 ring-inset ring-calico-orange z-10'
                               : isToday
-                              ? 'bg-red-50/40 dark:bg-red-950/20'
+                              ? 'bg-gradient-to-b from-amber-50/70 to-transparent dark:from-amber-950/20'
                               : !cell.isCurrentMonth
-                              ? 'bg-black/[0.02] dark:bg-white/[0.02]'
+                              ? 'bg-black/[0.015] dark:bg-white/[0.015]'
                               : 'hover:bg-calico-orange/5'
                           }`}
                         />
@@ -742,18 +749,20 @@ export const CalendarView: React.FC = () => {
                     })}
                   </div>
 
-                  {/* 2. Cell Header Row: Date numbers + Course indicator dots */}
+                  {/* 2. Cell Header Row: Date numbers + indicators */}
                   <div className="relative z-20 grid grid-cols-7 w-full pointer-events-none p-1 sm:p-1.5 pb-0.5">
                     {weekDays.map((cell, colIdx) => {
                       const isToday = cell.dateStr === todayStr;
                       const cellDate = new Date(cell.dateStr);
                       const cellDayOfWeek = (cellDate.getDay() === 0 ? 7 : cellDate.getDay()) as DayOfWeek;
                       const dayCourses = courses.filter((c) => c.dayOfWeek === cellDayOfWeek);
+                      const dayTodos = todos.filter((t) => t.dueDate && t.dueDate.slice(0, 10) === cell.dateStr && !t.isCompleted);
+                      const dayTxs = transactions.filter((t) => t.date.slice(0, 10) === cell.dateStr);
 
                       return (
                         <div key={`header-${cell.dateStr}`} className="flex items-center justify-between px-0.5">
                           {isToday ? (
-                            <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-red-500 text-white flex items-center justify-center font-black text-[11px] sm:text-xs shadow-xs">
+                            <div className="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-tr from-amber-500 to-calico-orange text-white flex items-center justify-center font-black text-[11px] sm:text-xs shadow-xs ring-2 ring-amber-300/40">
                               {cell.dayNum}
                             </div>
                           ) : (
@@ -761,15 +770,15 @@ export const CalendarView: React.FC = () => {
                               className={`text-[11px] sm:text-xs font-bold leading-tight ${
                                 !cell.isCurrentMonth
                                   ? colIdx === 0
-                                    ? 'text-red-300 dark:text-red-900/50'
+                                    ? 'text-rose-300/60 dark:text-rose-900/40'
                                     : colIdx === 6
-                                    ? 'text-blue-300 dark:text-blue-900/50'
+                                    ? 'text-sky-300/60 dark:text-sky-900/40'
                                     : 'text-zinc-300 dark:text-zinc-600'
                                   : colIdx === 0
-                                  ? 'text-red-500 font-extrabold'
+                                  ? 'text-rose-500 font-extrabold'
                                   : colIdx === 6
-                                  ? 'text-blue-500 font-extrabold'
-                                  : 'text-zinc-800 dark:text-zinc-200 font-bold'
+                                  ? 'text-sky-500 font-extrabold'
+                                  : 'text-calico-cocoa dark:text-zinc-200 font-bold'
                               }`}
                             >
                               {!cell.isCurrentMonth && (cell.dayNum === 1 || (wIdx === 0 && colIdx === 0))
@@ -778,13 +787,27 @@ export const CalendarView: React.FC = () => {
                             </span>
                           )}
 
-                          {/* Subtle course count dot */}
-                          {dayCourses.length > 0 && cell.isCurrentMonth && (
-                            <span
-                              className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0"
-                              title={`${dayCourses.length} 門課程`}
-                            />
-                          )}
+                          {/* Status Micro-dots (Courses amber, Todos mint, Txs coral) */}
+                          <div className="flex items-center space-x-0.5">
+                            {dayCourses.length > 0 && cell.isCurrentMonth && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-amber-400 shadow-2xs"
+                                title={`${dayCourses.length} 門課程`}
+                              />
+                            )}
+                            {dayTodos.length > 0 && cell.isCurrentMonth && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-emerald-400 shadow-2xs"
+                                title={`${dayTodos.length} 項待辦`}
+                              />
+                            )}
+                            {dayTxs.length > 0 && cell.isCurrentMonth && (
+                              <span
+                                className="w-1.5 h-1.5 rounded-full bg-rose-400 shadow-2xs"
+                                title={`${dayTxs.length} 筆收支`}
+                              />
+                            )}
+                          </div>
                         </div>
                       );
                     })}
@@ -795,7 +818,7 @@ export const CalendarView: React.FC = () => {
                     {tracks.map((trackSegs, tIdx) => (
                       <div
                         key={`track-${wIdx}-${tIdx}`}
-                        className="grid grid-cols-7 gap-x-0.5 h-4.5 sm:h-5 items-center relative"
+                        className="grid grid-cols-7 gap-x-0.5 h-5 sm:h-5.5 items-center relative"
                       >
                         {trackSegs.map((seg) => {
                           const isEvent = seg.item.type === 'event';
@@ -819,14 +842,14 @@ export const CalendarView: React.FC = () => {
                                 gridColumnStart: seg.startCol + 1,
                                 gridColumnEnd: seg.endCol + 2,
                                 gridRowStart: 1,
-                                backgroundColor: `${color}25`,
-                                borderColor: `${color}88`,
+                                backgroundColor: `${color}28`,
+                                borderColor: `${color}66`,
                                 color: color,
                               }}
-                              className={`h-full flex items-center px-1 text-[9px] sm:text-[9.5px] font-bold border truncate cursor-pointer hover:brightness-95 active:scale-[0.99] transition-all leading-tight shadow-2xs ${
-                                seg.isStart ? 'rounded-l-md ml-0.5' : 'rounded-l-none border-l-0 pl-1'
+                              className={`h-full flex items-center px-1.5 text-[9.5px] sm:text-[10px] font-black border truncate cursor-pointer hover:brightness-95 active:scale-[0.99] transition-all leading-tight shadow-2xs ${
+                                seg.isStart ? 'rounded-l-full ml-0.5 pl-2' : 'rounded-l-none border-l-0 pl-1'
                               } ${
-                                seg.isEnd ? 'rounded-r-md mr-0.5' : 'rounded-r-none border-r-0 pr-1'
+                                seg.isEnd ? 'rounded-r-full mr-0.5 pr-2' : 'rounded-r-none border-r-0 pr-1'
                               }`}
                               title={`${seg.item.title} (${seg.item.startDate} ~ ${seg.item.endDate})`}
                             >
@@ -834,7 +857,7 @@ export const CalendarView: React.FC = () => {
                                 <span className="opacity-70 text-[8px] mr-0.5 shrink-0 select-none">◀</span>
                               )}
                               <span
-                                className="w-1.5 h-1.5 rounded-full shrink-0 mr-1"
+                                className="w-1.5 h-1.5 rounded-full shrink-0 mr-1 shadow-2xs"
                                 style={{ backgroundColor: color }}
                               />
                               <span className="truncate">{seg.item.title}</span>
@@ -857,7 +880,7 @@ export const CalendarView: React.FC = () => {
                             className="text-left px-1"
                           >
                             {cnt > 0 && (
-                              <span className="text-[8px] sm:text-[8.5px] font-black text-calico-cocoa/50 dark:text-zinc-400">
+                              <span className="text-[8px] sm:text-[8.5px] font-black px-1 py-0.2 rounded-md bg-calico-orange/15 text-calico-orange">
                                 +{cnt} 更多
                               </span>
                             )}
@@ -913,13 +936,17 @@ export const CalendarView: React.FC = () => {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <span
-                        className={`text-xs font-black px-2 py-0.5 rounded-lg ${
+                        className={`text-xs font-black px-2.5 py-0.5 rounded-lg ${
                           isToday
-                            ? 'bg-calico-orange text-white'
+                            ? 'bg-gradient-to-r from-amber-500 to-calico-orange text-white shadow-2xs'
+                            : w.dayOfWeekNum === 7
+                            ? 'bg-rose-50 dark:bg-rose-950/40 text-rose-500'
+                            : w.dayOfWeekNum === 6
+                            ? 'bg-sky-50 dark:bg-sky-950/40 text-sky-500'
                             : 'bg-black/5 dark:bg-white/10 text-calico-cocoa dark:text-zinc-200'
                         }`}
                       >
-                        週{w.weekdayName}
+                        {w.weekdayName}
                       </span>
                       <span className="text-xs font-mono font-bold text-calico-cocoa/70 dark:text-zinc-300">
                         {w.dateStr.slice(5)}
@@ -967,28 +994,30 @@ export const CalendarView: React.FC = () => {
       {/* ======================================================== */}
       {/* 📋 4. 選取日期詳細行程 (Selected Date Agenda) */}
       {/* ======================================================== */}
-      <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
-        <div className="flex items-center justify-between border-b border-black/5 dark:border-white/5 pb-2.5">
+      <div className="p-4 sm:p-5 rounded-[28px] bg-white/95 dark:bg-calico-darkCard border border-amber-900/10 dark:border-white/10 shadow-ios space-y-3.5">
+        <div className="flex items-center justify-between border-b border-amber-900/10 dark:border-white/5 pb-3">
           <div>
-            <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
-              <span>{selectedDateStr} 行程明細</span>
+            <div className="flex items-center space-x-2">
+              <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+                <span>{selectedDateStr} 行程手帳</span>
+              </h4>
               {selectedDateStr === todayStr && (
-                <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-calico-orange text-white">
+                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-calico-orange text-white shadow-2xs">
                   今天
                 </span>
               )}
-            </h4>
-            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
+            </div>
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">
               包含當日課表、跨天活動、待辦作業與收支
             </p>
           </div>
 
-          <div className="flex items-center space-x-1">
+          <div className="flex items-center space-x-1.5">
             <button
               onClick={() => setIsTodoModalOpen(true)}
-              className="px-2.5 py-1 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-bold flex items-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all"
+              className="px-2.5 py-1.5 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-black flex items-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all shadow-2xs"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>加待辦</span>
             </button>
             <button
@@ -996,9 +1025,9 @@ export const CalendarView: React.FC = () => {
                 setEventToEdit(null);
                 setIsEventModalOpen(true);
               }}
-              className="px-2.5 py-1 rounded-xl bg-calico-orange/15 text-calico-orange text-xs font-bold flex items-center space-x-1 hover:bg-calico-orange/25 active:scale-95 transition-all"
+              className="px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-calico-orange text-white text-xs font-black flex items-center space-x-1 hover:brightness-105 active:scale-95 transition-all shadow-2xs"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>加活動</span>
             </button>
           </div>
@@ -1149,10 +1178,10 @@ export const CalendarView: React.FC = () => {
           selectedDateCourses.length === 0 &&
           selectedDateTodos.length === 0 &&
           selectedDateTransactions.length === 0 && (
-            <div className="text-center py-8 rounded-2xl bg-calico-cream/20 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10 space-y-2">
-              <Coffee className="w-6 h-6 text-calico-cocoa/30 dark:text-zinc-500 mx-auto" />
-              <p className="text-xs font-bold text-calico-cocoa/50 dark:text-zinc-400">
-                此日尚無排定事件、課程或待辦，是個放鬆的日子！
+            <div className="text-center py-10 rounded-2xl bg-calico-cream/30 dark:bg-zinc-800/20 border border-dashed border-amber-900/15 dark:border-white/10 space-y-2">
+              <div className="text-2xl select-none">☕️🐾</div>
+              <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                這天沒有排定行程或待辦，是個放鬆的美好日子！
               </p>
             </div>
           )}

@@ -68,6 +68,10 @@ export interface Transaction {
   notes?: string;
   valueScore?: number; // 1-10
   isSharedWithFriends?: boolean;
+  peerRating?: number; // 1-5 顆星 (或 1-10 分) 好友評分
+  peerFeedback?: string; // 好友評語留言
+  peerRaterName?: string; // 評分好友名稱
+  ratedAt?: string; // 評分時間 ISO
 }
 
 export interface Installment {
