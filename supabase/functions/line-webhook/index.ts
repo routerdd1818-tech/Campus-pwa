@@ -215,6 +215,7 @@ Deno.serve(async (req: Request) => {
       // 6. 若有 replyToken 且有 Access Token，自動在 LINE 聊天室回覆綁定結果與專屬快捷選單
       if (replyToken && lineAccessToken) {
         let replyMessage = "";
+        let replyFlexObj: any = null;
 
         if (eventType === "follow") {
           if (matchedShareCode) {
@@ -245,35 +246,47 @@ Deno.serve(async (req: Request) => {
           eventType === "message" &&
           (messageText.includes("晨報") || messageText === "測試推播" || messageText === "測試晨報推播")
         ) {
-          await supabase.rpc("test_push_briefing_card", {
+          // 透過 RPC 產生晨報 Flex 卡片 (p_send_push: false 避免消耗每月推播額度，直接以免費 reply 回覆)
+          const { data: testRes } = await supabase.rpc("test_push_briefing_card", {
             p_recipient_id: lineUserId,
             p_type: "morning",
+            p_send_push: false,
           });
-          replyMessage =
-            `☀️ 晨間課表簡報卡片已為您發送！\n\n` +
-            `包含今日所有課堂時段、待辦進度與本週剩餘課程統計，請查看上方訊息卡片喵！🐾`;
+          if (testRes?.flex_message) {
+            replyFlexObj = testRes.flex_message;
+          } else {
+            replyMessage = `☀️ 晨間課表簡報卡片產生失敗，請確認已設定課表與分享碼喵！🐾`;
+          }
         } else if (
           eventType === "message" &&
           (messageText.includes("晚報") || messageText === "測試晚報推播")
         ) {
-          await supabase.rpc("test_push_briefing_card", {
+          // 透過 RPC 產生晚報 Flex 卡片 (p_send_push: false 避免消耗每月推播額度，直接以免費 reply 回覆)
+          const { data: testRes } = await supabase.rpc("test_push_briefing_card", {
             p_recipient_id: lineUserId,
             p_type: "evening",
+            p_send_push: false,
           });
-          replyMessage =
-            `🌆 晚間叮嚀與收支總結卡片已為您發送！\n\n` +
-            `包含今日累計花費、尚未完成之待辦提醒與明日課表預告喵！🐾`;
+          if (testRes?.flex_message) {
+            replyFlexObj = testRes.flex_message;
+          } else {
+            replyMessage = `🌆 晚間叮嚀與收支總結卡片產生失敗，請確認已設定記帳與課表喵！🐾`;
+          }
         } else if (
           eventType === "message" &&
           (messageText.includes("提醒") || messageText === "待辦到期提醒")
         ) {
-          await supabase.rpc("test_push_briefing_card", {
+          // 透過 RPC 產生待辦到期提醒 Flex 卡片 (p_send_push: false 避免消耗每月推播額度，直接以免費 reply 回覆)
+          const { data: testRes } = await supabase.rpc("test_push_briefing_card", {
             p_recipient_id: lineUserId,
             p_type: "reminder",
+            p_send_push: false,
           });
-          replyMessage =
-            `⏰ 待辦到期提醒專屬卡片已為您發送！\n\n` +
-            `系統將依據您在 App 設定的提醒天數／時數提早推送專屬卡片通知喵！🐾`;
+          if (testRes?.flex_message) {
+            replyFlexObj = testRes.flex_message;
+          } else {
+            replyMessage = `⏰ 待辦到期提醒卡片產生失敗，請確認是否有未完成之待辦事項喵！🐾`;
+          }
         } else if (
           eventType === "message" &&
           (messageText.includes("狀態") || messageText.includes("查詢綁定"))
@@ -296,7 +309,25 @@ Deno.serve(async (req: Request) => {
               : `💡 您可以直接傳送 6 碼「課表分享碼」自動完成綁定！`);
         }
 
-        if (replyMessage) {
+        // 嚴格單一訊息限制：每次回覆僅發送 1 則訊息，透過 LINE 免費 reply 機制消耗 0 點額度！
+        if (replyFlexObj) {
+          await fetch("https://api.line.me/v2/bot/message/reply", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${lineAccessToken}`,
+            },
+            body: JSON.stringify({
+              replyToken,
+              messages: [
+                {
+                  ...replyFlexObj,
+                  quickReply: commonQuickReplies,
+                },
+              ],
+            }),
+          });
+        } else if (replyMessage) {
           await fetch("https://api.line.me/v2/bot/message/reply", {
             method: "POST",
             headers: {

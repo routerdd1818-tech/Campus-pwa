@@ -910,6 +910,45 @@ export function buildMorningBriefingFlex(
         }))
       : [{ type: 'text', text: '全部待辦事項皆已完成 ✨', size: 'xs', color: '#8E8E93', margin: 'sm' }];
 
+  // ⏰ 篩選未來 2 天內即將到期之待辦事項（直接整合至晨報單一卡片，節省發訊則數）
+  const twoDaysLaterStr = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const upcomingUrgentTodos = (todos || []).filter((t) => {
+    if (t.isCompleted || (t as any).is_completed) return false;
+    const due = (t.dueDate || (t as any).due_date || '').slice(0, 10);
+    return due && due >= todayStr && due <= twoDaysLaterStr;
+  });
+
+  const urgentBubbles =
+    upcomingUrgentTodos.length > 0
+      ? upcomingUrgentTodos.slice(0, 3).map((t) => ({
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'sm',
+          contents: [
+            { type: 'text', text: `⚠️ ${t.title}`, size: 'xs', weight: 'bold', color: '#991B1B', flex: 1, wrap: true },
+            { type: 'text', text: `${(t.dueDate || '').slice(5, 10)} 截止`, size: 'xxs', color: '#B91C1C', align: 'end' },
+          ],
+        }))
+      : [];
+
+  const urgentSection =
+    urgentBubbles.length > 0
+      ? [
+          { type: 'separator', margin: 'lg', color: '#E5E5EA' },
+          { type: 'text', text: '⏰ 近期截止警告 (2天內)', size: 'xs', weight: 'bold', color: '#DC2626', margin: 'lg' },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#FEF2F2',
+            cornerRadius: '10px',
+            paddingAll: '10px',
+            margin: 'md',
+            spacing: 'xs',
+            contents: urgentBubbles,
+          },
+        ]
+      : [];
+
   return {
     type: 'flex',
     altText: `Campus 晨間簡報 (${userName || '同學'})：${dateStr}`,
@@ -945,6 +984,7 @@ export function buildMorningBriefingFlex(
           { type: 'separator', margin: 'lg', color: '#E5E5EA' },
           { type: 'text', text: '今日待辦', size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
           ...todoBubbles,
+          ...urgentSection,
           { type: 'separator', margin: 'lg', color: '#E5E5EA' },
           { type: 'text', text: '本週規劃', size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
           {
@@ -1107,8 +1147,10 @@ export function buildEveningBriefingFlex(
 
 export function buildTodoReminderFlex(
   userName: string,
-  todo: Todo
+  todoOrTodos: Todo | Todo[]
 ): any {
+  const todoList = Array.isArray(todoOrTodos) ? todoOrTodos : [todoOrTodos];
+  const count = todoList.length;
   const advanceLabelMap: Record<string, string> = {
     due: '當天提醒',
     '1h': '1 小時前提醒',
@@ -1117,13 +1159,30 @@ export function buildTodoReminderFlex(
     '2d': '2 天前提醒',
     '3d': '3 天前提醒',
   };
-  const advanceText = advanceLabelMap[todo.reminderAdvance || '1d'] || '即將到期';
-  const priorityText = todo.priority === 'high' ? '高' : todo.priority === 'medium' ? '中' : '低';
-  const dueDisplay = todo.dueDate ? todo.dueDate.slice(0, 16).replace('T', ' ') : '近期截止';
+
+  const itemBoxes = todoList.slice(0, 4).map((t) => {
+    const advanceText = advanceLabelMap[t.reminderAdvance || '1d'] || '即將到期';
+    const priorityText = t.priority === 'high' ? '高' : t.priority === 'medium' ? '中' : '低';
+    const dueDisplay = t.dueDate ? t.dueDate.slice(0, 16).replace('T', ' ') : '近期截止';
+    return {
+      type: 'box',
+      layout: 'vertical',
+      backgroundColor: '#FEF2F2',
+      cornerRadius: '10px',
+      paddingAll: '10px',
+      margin: 'sm',
+      spacing: 'xs',
+      contents: [
+        { type: 'text', text: t.title, size: 'sm', weight: 'bold', color: '#991B1B', wrap: true },
+        { type: 'text', text: `📅 截止：${dueDisplay}`, size: 'xs', color: '#B91C1C' },
+        { type: 'text', text: `⚠️ 設定：${advanceText} · 優先級：${priorityText}`, size: 'xxs', color: '#7F1D1D' },
+      ],
+    };
+  });
 
   return {
     type: 'flex',
-    altText: `⏰ 待辦事項即將到期提醒：${todo.title}`,
+    altText: `⏰ 待辦事項即將到期提醒 (${count} 項)：${todoList[0]?.title || '待辦事項'}`,
     contents: {
       type: 'bubble',
       size: 'mega',
@@ -1134,22 +1193,9 @@ export function buildTodoReminderFlex(
         paddingAll: '20px',
         contents: [
           { type: 'text', text: `CAMPUS TASK ALERT · ${userName || '同學'}`, size: 'xxs', weight: 'bold', color: '#8E8E93' },
-          { type: 'text', text: '⏰ 待辦事項即將到期提醒！', size: 'lg', weight: 'bold', color: '#DC2626', margin: 'xs' },
+          { type: 'text', text: `⏰ 即將到期提醒 (${count} 項)`, size: 'lg', weight: 'bold', color: '#DC2626', margin: 'xs' },
           { type: 'separator', margin: 'md', color: '#E5E5EA' },
-          {
-            type: 'box',
-            layout: 'vertical',
-            backgroundColor: '#FEF2F2',
-            cornerRadius: '12px',
-            paddingAll: '14px',
-            margin: 'md',
-            spacing: 'xs',
-            contents: [
-              { type: 'text', text: todo.title, size: 'md', weight: 'bold', color: '#991B1B', wrap: true },
-              { type: 'text', text: `📅 到期時間：${dueDisplay}`, size: 'xs', color: '#B91C1C', margin: 'xs' },
-              { type: 'text', text: `⚠️ 提醒設定：${advanceText} · 優先級：${priorityText}`, size: 'xs', color: '#7F1D1D' },
-            ],
-          },
+          ...itemBoxes,
           { type: 'text', text: '請記得提早準備繳交或複習，加油喵！🐾', size: 'xs', color: '#8E8E93', margin: 'sm' },
         ],
       },
@@ -1164,12 +1210,12 @@ export function buildTodoReminderFlex(
         contents: [
           {
             type: 'button',
-            action: { type: 'message', label: '查看待辦事項', text: '查詢待辦事項' },
+            action: { type: 'message', label: '查看所有待辦', text: '查詢待辦事項' },
             style: 'primary',
             color: '#DC2626',
             height: 'sm',
           },
-          { type: 'text', text: 'Campus · 個人化待辦專屬提醒', size: 'xxs', color: '#C7C7CC', align: 'center', margin: 'md' },
+          { type: 'text', text: 'Campus · 單一訊息整合推播', size: 'xxs', color: '#C7C7CC', align: 'center', margin: 'md' },
         ],
       },
     },
@@ -1193,16 +1239,19 @@ export async function sendPersonalizedBriefingTest(
   } else if (type === 'evening') {
     flexMessage = buildEveningBriefingFlex(data.userName || '同學', data.courses, data.todos, data.transactions);
   } else {
-    const sampleTodo: Todo = data.targetTodo || data.todos.find((t) => !t.isCompleted) || {
-      id: 'sample',
-      title: '期中報告作業與論文閱讀',
-      dueDate: new Date(Date.now() + 86400000).toISOString(),
-      priority: 'high',
-      category: '作業',
-      isCompleted: false,
-      reminderAdvance: '1d',
-    };
-    flexMessage = buildTodoReminderFlex(data.userName || '同學', sampleTodo);
+    const uncompleted = (data.todos || []).filter((t) => !t.isCompleted);
+    const targetTodos = data.targetTodo ? [data.targetTodo] : uncompleted.length > 0 ? uncompleted.slice(0, 4) : [
+      {
+        id: 'sample',
+        title: '期中專案報告與作業繳交',
+        dueDate: new Date(Date.now() + 86400000).toISOString(),
+        priority: 'high' as const,
+        category: '作業',
+        isCompleted: false,
+        reminderAdvance: '1d' as const,
+      },
+    ];
+    flexMessage = buildTodoReminderFlex(data.userName || '同學', targetTodos);
   }
 
   // 1. Try relay_line_message RPC via Supabase

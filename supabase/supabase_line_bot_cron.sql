@@ -727,6 +727,11 @@ BEGIN
         v_is_direct := true;
     END IF;
 
+    -- 嚴格保障每月推播配額：每次請求最多發送 1 則訊息
+    IF jsonb_array_length(p_messages) > 1 THEN
+        p_messages := jsonb_build_array(p_messages->0);
+    END IF;
+
     IF v_is_direct AND v_resolved_recipient LIKE 'U%' AND length(v_resolved_recipient) >= 25 THEN
         v_target_url := 'https://api.line.me/v2/bot/message/push';
         v_payload := jsonb_build_object('to', v_resolved_recipient, 'messages', p_messages);
@@ -798,7 +803,8 @@ DECLARE
     target_url TEXT;
     is_morning_due BOOLEAN;
     is_evening_due BOOLEAN;
-    -- 階段 3 待辦到期提醒變數
+    upcoming_bubbles JSONB;
+    -- 階段 3 待辦到期提醒變數 (批次打包為單一卡片，嚴格限制每次推播僅一則訊息以節省額度)
     todo_rec JSONB;
     v_todo_id TEXT;
     v_reminder_advance TEXT;
@@ -807,6 +813,9 @@ DECLARE
     v_should_remind BOOLEAN;
     v_advance_label TEXT;
     v_priority_label TEXT;
+    due_todo_bubbles JSONB;
+    due_todo_item_count INT;
+    reminded_ids_to_add JSONB;
 BEGIN
     now_tw := now() AT TIME ZONE 'Asia/Taipei';
     today_date := now_tw::date;
@@ -1026,6 +1035,30 @@ BEGIN
                 );
             END IF;
 
+            -- ⏰ 篩選未來 2 天內即將到期之待辦事項（整合進晨報單一卡片，確保每次推播僅發送一則訊息以節省額度）
+            IF jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+                SELECT jsonb_agg(jsonb_build_object(
+                    'type', 'box',
+                    'layout', 'horizontal',
+                    'margin', 'sm',
+                    'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', '⚠️ ' || COALESCE(t->>'title', '待辦事項'), 'size', 'xs', 'weight', 'bold', 'color', '#991B1B', 'flex', 1, 'wrap', true),
+                        jsonb_build_object('type', 'text', 'text', SUBSTRING(COALESCE(t->>'dueDate', t->>'due_date') FROM 6 FOR 5) || ' 截止', 'size', 'xxs', 'color', '#B91C1C', 'align', 'end')
+                    )
+                )) INTO upcoming_bubbles
+                FROM (
+                    SELECT t FROM jsonb_array_elements(v_todos) AS t
+                    WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
+                      AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                      AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) >= today_date_str
+                      AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) <= to_char(now_tw + INTERVAL '2 days', 'YYYY-MM-DD')
+                    ORDER BY COALESCE(t->>'dueDate', t->>'due_date') ASC
+                    LIMIT 3
+                ) sub_urgent_t;
+            ELSE
+                upcoming_bubbles := NULL;
+            END IF;
+
             summary_text := courses_count || ' 堂課 · ' || todos_count || ' 項待辦';
             eyebrow_text := 'CAMPUS BRIEFING' || CASE WHEN cfg.user_name IS NOT NULL AND cfg.user_name <> '' THEN ' · ' || cfg.user_name ELSE '' END;
             footer_time_str := 'Campus · 晨間簡報 ' || LPAD(cfg.push_hour::text, 2, '0') || ':' || LPAD(cfg.push_minute::text, 2, '0');
@@ -1050,7 +1083,23 @@ BEGIN
             ) || course_bubbles || jsonb_build_array(
                 jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
                 jsonb_build_object('type', 'text', 'text', '今日待辦', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg')
-            ) || todo_bubbles || jsonb_build_array(
+            ) || todo_bubbles || CASE 
+                WHEN upcoming_bubbles IS NOT NULL THEN jsonb_build_array(
+                    jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
+                    jsonb_build_object('type', 'text', 'text', '⏰ 近期截止警告 (2天內)', 'size', 'xs', 'weight', 'bold', 'color', '#DC2626', 'margin', 'lg'),
+                    jsonb_build_object(
+                        'type', 'box',
+                        'layout', 'vertical',
+                        'backgroundColor', '#FEF2F2',
+                        'cornerRadius', '10px',
+                        'paddingAll', '10px',
+                        'margin', 'md',
+                        'spacing', 'xs',
+                        'contents', upcoming_bubbles
+                    )
+                )
+                ELSE '[]'::jsonb
+            END || jsonb_build_array(
                 jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
                 jsonb_build_object('type', 'text', 'text', '本週規劃', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg'),
                 jsonb_build_object(
@@ -1299,8 +1348,13 @@ BEGIN
 
         -- ====================================================================
         -- 階段 3：待辦事項到期前 LINE 提醒 (Todo Deadline Reminders)
+        -- 嚴格限制：每次提醒彙整為「單一則卡片訊息」，禁止多筆拆分發送以保護每月發送額度！
         -- ====================================================================
         IF COALESCE(cfg.todo_reminder_enabled, true) AND jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+            due_todo_bubbles := '[]'::jsonb;
+            reminded_ids_to_add := '[]'::jsonb;
+            due_todo_item_count := 0;
+
             FOR todo_rec IN
                 SELECT t FROM jsonb_array_elements(v_todos) AS t
                 WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
@@ -1348,6 +1402,9 @@ BEGIN
                 END IF;
 
                 IF v_should_remind THEN
+                    due_todo_item_count := due_todo_item_count + 1;
+                    reminded_ids_to_add := reminded_ids_to_add || jsonb_build_array(v_todo_id);
+
                     v_advance_label := CASE v_reminder_advance
                         WHEN 'due' THEN '當天到期'
                         WHEN '1h' THEN '1 小時前提醒'
@@ -1364,96 +1421,107 @@ BEGIN
                         ELSE '低'
                     END;
 
-                    flex_messages := jsonb_build_array(
-                        jsonb_build_object(
-                            'type', 'flex',
-                            'altText', '⏰ 待辦事項即將到期提醒：' || COALESCE(todo_rec->>'title', '待辦任務'),
-                            'contents', jsonb_build_object(
-                                'type', 'bubble',
-                                'size', 'mega',
-                                'body', jsonb_build_object(
-                                    'type', 'box',
-                                    'layout', 'vertical',
-                                    'backgroundColor', '#FFFFFF',
-                                    'paddingAll', '20px',
-                                    'contents', jsonb_build_array(
-                                        jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
-                                        jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒！', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
-                                        jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
-                                        jsonb_build_object(
-                                            'type', 'box',
-                                            'layout', 'vertical',
-                                            'backgroundColor', '#FEF2F2',
-                                            'cornerRadius', '12px',
-                                            'paddingAll', '14px',
-                                            'margin', 'md',
-                                            'spacing', 'xs',
-                                            'contents', jsonb_build_array(
-                                                jsonb_build_object('type', 'text', 'text', COALESCE(todo_rec->>'title', '待辦事項'), 'size', 'md', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
-                                                jsonb_build_object('type', 'text', 'text', '📅 到期時間：' || LEFT(replace(v_due_date_str, 'T', ' '), 16), 'size', 'xs', 'color', '#B91C1C', 'margin', 'xs'),
-                                                jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：' || v_advance_label || ' · 優先級：' || v_priority_label, 'size', 'xs', 'color', '#7F1D1D')
-                                            )
-                                        ),
-                                        jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
-                                    )
-                                ),
-                                'footer', jsonb_build_object(
-                                    'type', 'box',
-                                    'layout', 'vertical',
-                                    'paddingTop', '10px',
-                                    'paddingBottom', '16px',
-                                    'paddingStart', '20px',
-                                    'paddingEnd', '20px',
-                                    'backgroundColor', '#FFFFFF',
-                                    'contents', jsonb_build_array(
-                                        jsonb_build_object(
-                                            'type', 'button',
-                                            'action', jsonb_build_object('type', 'message', 'label', '查看待辦事項', 'text', '查詢待辦事項'),
-                                            'style', 'primary',
-                                            'color', '#DC2626',
-                                            'height', 'sm'
-                                        ),
-                                        jsonb_build_object('type', 'text', 'text', 'Campus · 個人化待辦專屬提醒', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
-                                    )
+                    -- 收集待辦提醒區塊 (最多前 4 筆放入卡片，其餘在標題統計)
+                    IF due_todo_item_count <= 4 THEN
+                        due_todo_bubbles := due_todo_bubbles || jsonb_build_array(
+                            jsonb_build_object(
+                                'type', 'box',
+                                'layout', 'vertical',
+                                'backgroundColor', '#FEF2F2',
+                                'cornerRadius', '10px',
+                                'paddingAll', '10px',
+                                'margin', 'sm',
+                                'spacing', 'xs',
+                                'contents', jsonb_build_array(
+                                    jsonb_build_object('type', 'text', 'text', COALESCE(todo_rec->>'title', '待辦事項'), 'size', 'sm', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
+                                    jsonb_build_object('type', 'text', 'text', '📅 到期時間：' || LEFT(replace(v_due_date_str, 'T', ' '), 16), 'size', 'xs', 'color', '#B91C1C'),
+                                    jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：' || v_advance_label || ' · 優先級：' || v_priority_label, 'size', 'xxs', 'color', '#7F1D1D')
+                                )
+                            )
+                        );
+                    END IF;
+                END IF;
+            END LOOP;
+
+            -- 若有任何待辦需發送提醒，打包為單一則 Flex 卡片發送（嚴格限制 1 則訊息）
+            IF due_todo_item_count > 0 THEN
+                flex_messages := jsonb_build_array(
+                    jsonb_build_object(
+                        'type', 'flex',
+                        'altText', '⏰ 待辦事項即將到期提醒 (' || due_todo_item_count || ' 項)',
+                        'contents', jsonb_build_object(
+                            'type', 'bubble',
+                            'size', 'mega',
+                            'body', jsonb_build_object(
+                                'type', 'box',
+                                'layout', 'vertical',
+                                'backgroundColor', '#FFFFFF',
+                                'paddingAll', '20px',
+                                'contents', jsonb_build_array(
+                                    jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                                    jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒 (' || due_todo_item_count || ' 項)', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
+                                    jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA')
+                                ) || due_todo_bubbles || jsonb_build_array(
+                                    jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                                )
+                            ),
+                            'footer', jsonb_build_object(
+                                'type', 'box',
+                                'layout', 'vertical',
+                                'paddingTop', '10px',
+                                'paddingBottom', '16px',
+                                'paddingStart', '20px',
+                                'paddingEnd', '20px',
+                                'backgroundColor', '#FFFFFF',
+                                'contents', jsonb_build_array(
+                                    jsonb_build_object(
+                                        'type', 'button',
+                                        'action', jsonb_build_object('type', 'message', 'label', '查看所有待辦', 'text', '查詢待辦事項'),
+                                        'style', 'primary',
+                                        'color', '#DC2626',
+                                        'height', 'sm'
+                                    ),
+                                    jsonb_build_object('type', 'text', 'text', 'Campus · 單一訊息整合推播', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
                                 )
                             )
                         )
-                    );
+                    )
+                );
 
-                    IF v_target_uid LIKE 'U%' AND length(v_target_uid) >= 25 THEN
-                        target_url := 'https://api.line.me/v2/bot/message/push';
-                        flex_payload := jsonb_build_object('to', v_target_uid, 'messages', flex_messages);
-                    ELSE
-                        target_url := 'https://api.line.me/v2/bot/message/broadcast';
-                        flex_payload := jsonb_build_object('messages', flex_messages);
-                    END IF;
-
-                    PERFORM net.http_post(
-                        url := target_url,
-                        headers := jsonb_build_object(
-                            'Content-Type', 'application/json',
-                            'Authorization', 'Bearer ' || v_token
-                        ),
-                        body := flex_payload
-                    );
-
-                    -- 記錄此待辦已提醒，防止一分鐘後重複發送
-                    UPDATE public.line_bot_settings
-                    SET reminded_todo_ids = COALESCE(reminded_todo_ids, '[]'::jsonb) || jsonb_build_array(v_todo_id),
-                        updated_at = now()
-                    WHERE user_id = cfg.user_id;
+                IF v_target_uid LIKE 'U%' AND length(v_target_uid) >= 25 THEN
+                    target_url := 'https://api.line.me/v2/bot/message/push';
+                    flex_payload := jsonb_build_object('to', v_target_uid, 'messages', flex_messages);
+                ELSE
+                    target_url := 'https://api.line.me/v2/bot/message/broadcast';
+                    flex_payload := jsonb_build_object('messages', flex_messages);
                 END IF;
-            END LOOP;
+
+                PERFORM net.http_post(
+                    url := target_url,
+                    headers := jsonb_build_object(
+                        'Content-Type', 'application/json',
+                        'Authorization', 'Bearer ' || v_token
+                    ),
+                    body := flex_payload
+                );
+
+                -- 記錄所有已提醒待辦，防止重複發送
+                UPDATE public.line_bot_settings
+                SET reminded_todo_ids = COALESCE(reminded_todo_ids, '[]'::jsonb) || reminded_ids_to_add,
+                    updated_at = now()
+                WHERE user_id = cfg.user_id;
+            END IF;
         END IF;
 
     END LOOP;
 END;
 $$;
 
--- 雲端測試個人化卡片 RPC
+-- 雲端測試個人化卡片 RPC (支援 p_send_push 開關，供 Webhook 免費 reply 使用以節省額度)
 CREATE OR REPLACE FUNCTION public.test_push_briefing_card(
     p_recipient_id TEXT,
-    p_type TEXT DEFAULT 'morning'
+    p_type TEXT DEFAULT 'morning',
+    p_send_push BOOLEAN DEFAULT true
 )
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -1481,6 +1549,7 @@ DECLARE
     today_expense_count INT := 0;
     course_bubbles JSONB;
     todo_bubbles JSONB;
+    upcoming_bubbles JSONB;
     body_contents JSONB;
     flex_messages JSONB;
     target_url TEXT;
@@ -1492,7 +1561,7 @@ BEGIN
     END IF;
 
     v_token := public.get_cloud_line_token(v_clean_uid);
-    IF v_token = '' THEN
+    IF v_token = '' AND p_send_push THEN
         RETURN jsonb_build_object('ok', false, 'error', 'No LINE Channel Access Token available');
     END IF;
 
@@ -1548,6 +1617,26 @@ BEGIN
                 )
             )) INTO todo_bubbles
             FROM (SELECT t FROM jsonb_array_elements(v_todos) AS t WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false LIMIT 4) sub_t;
+
+            -- ⏰ 篩選未來 2 天內即將到期之待辦事項（整合進晨報單一卡片）
+            SELECT jsonb_agg(jsonb_build_object(
+                'type', 'box',
+                'layout', 'horizontal',
+                'margin', 'sm',
+                'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'text', 'text', '⚠️ ' || COALESCE(t->>'title', '待辦事項'), 'size', 'xs', 'weight', 'bold', 'color', '#991B1B', 'flex', 1, 'wrap', true),
+                    jsonb_build_object('type', 'text', 'text', SUBSTRING(COALESCE(t->>'dueDate', t->>'due_date') FROM 6 FOR 5) || ' 截止', 'size', 'xxs', 'color', '#B91C1C', 'align', 'end')
+                )
+            )) INTO upcoming_bubbles
+            FROM (
+                SELECT t FROM jsonb_array_elements(v_todos) AS t
+                WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
+                  AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                  AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) >= today_date_str
+                  AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) <= to_char(now_tw + INTERVAL '2 days', 'YYYY-MM-DD')
+                ORDER BY COALESCE(t->>'dueDate', t->>'due_date') ASC
+                LIMIT 3
+            ) sub_urgent_t;
         END IF;
 
         IF todo_bubbles IS NULL THEN
@@ -1566,7 +1655,23 @@ BEGIN
         ) || course_bubbles || jsonb_build_array(
             jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
             jsonb_build_object('type', 'text', 'text', '今日待辦', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg')
-        ) || todo_bubbles;
+        ) || todo_bubbles || CASE 
+            WHEN upcoming_bubbles IS NOT NULL THEN jsonb_build_array(
+                jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
+                jsonb_build_object('type', 'text', 'text', '⏰ 近期截止警告 (2天內)', 'size', 'xs', 'weight', 'bold', 'color', '#DC2626', 'margin', 'lg'),
+                jsonb_build_object(
+                    'type', 'box',
+                    'layout', 'vertical',
+                    'backgroundColor', '#FEF2F2',
+                    'cornerRadius', '10px',
+                    'paddingAll', '10px',
+                    'margin', 'md',
+                    'spacing', 'xs',
+                    'contents', upcoming_bubbles
+                )
+            )
+            ELSE '[]'::jsonb
+        END;
 
         flex_messages := jsonb_build_array(jsonb_build_object(
             'type', 'flex',
@@ -1610,48 +1715,96 @@ BEGIN
             )
         ));
     ELSE
+        -- reminder: 彙整待辦為單一卡片
+        IF jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+            SELECT jsonb_agg(jsonb_build_object(
+                'type', 'box',
+                'layout', 'vertical',
+                'backgroundColor', '#FEF2F2',
+                'cornerRadius', '10px',
+                'paddingAll', '10px',
+                'margin', 'sm',
+                'spacing', 'xs',
+                'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'text', 'text', COALESCE(t->>'title', '待辦事項'), 'size', 'sm', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
+                    jsonb_build_object('type', 'text', 'text', '📅 截止：' || LEFT(replace(COALESCE(t->>'dueDate', t->>'due_date', today_date_str), 'T', ' '), 16), 'size', 'xs', 'color', '#B91C1C'),
+                    jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：1 天前提醒 · 優先級：' || CASE COALESCE(t->>'priority', 'medium') WHEN 'high' THEN '高' WHEN 'medium' THEN '中' ELSE '低' END, 'size', 'xxs', 'color', '#7F1D1D')
+                )
+            )) INTO todo_bubbles
+            FROM (
+                SELECT t FROM jsonb_array_elements(v_todos) AS t
+                WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
+                LIMIT 4
+            ) sub_remind_t;
+        END IF;
+
+        IF todo_bubbles IS NULL THEN
+            todo_bubbles := jsonb_build_array(
+                jsonb_build_object(
+                    'type', 'box',
+                    'layout', 'vertical',
+                    'backgroundColor', '#FEF2F2',
+                    'cornerRadius', '10px',
+                    'paddingAll', '10px',
+                    'margin', 'sm',
+                    'spacing', 'xs',
+                    'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', '期中專案報告與作業繳交', 'size', 'sm', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
+                        jsonb_build_object('type', 'text', 'text', '📅 截止：' || today_date_str || ' 23:59', 'size', 'xs', 'color', '#B91C1C'),
+                        jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：1 天前提醒 · 優先級：高', 'size', 'xxs', 'color', '#7F1D1D')
+                    )
+                )
+            );
+        END IF;
+
         flex_messages := jsonb_build_array(jsonb_build_object(
             'type', 'flex',
-            'altText', '【測試】⏰ 待辦事項即將到期提醒：期中專案報告與作業繳交',
+            'altText', '【測試】⏰ 待辦事項即將到期提醒',
             'contents', jsonb_build_object(
                 'type', 'bubble', 'size', 'mega',
-                'body', jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFFFFF', 'paddingAll', '20px', 'contents', jsonb_build_array(
-                    jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT (測試) · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
-                    jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒！', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
-                    jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
-                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FEF2F2', 'cornerRadius', '12px', 'paddingAll', '14px', 'margin', 'md', 'spacing', 'xs', 'contents', jsonb_build_array(
-                        jsonb_build_object('type', 'text', 'text', '期中專案報告與作業繳交', 'size', 'md', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
-                        jsonb_build_object('type', 'text', 'text', '📅 到期時間：' || today_date_str || ' 23:59', 'size', 'xs', 'color', '#B91C1C', 'margin', 'xs'),
-                        jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：1 天前提醒 · 優先級：高', 'size', 'xs', 'color', '#7F1D1D')
-                    )),
-                    jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
-                )),
+                'body', jsonb_build_object(
+                    'type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFFFFF', 'paddingAll', '20px',
+                    'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT (測試) · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                        jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒！', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
+                        jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA')
+                    ) || todo_bubbles || jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                    )
+                ),
                 'footer', jsonb_build_object('type', 'box', 'layout', 'vertical', 'paddingTop', '10px', 'paddingBottom', '16px', 'paddingStart', '20px', 'paddingEnd', '20px', 'backgroundColor', '#FFFFFF', 'contents', jsonb_build_array(
-                    jsonb_build_object('type', 'button', 'action', jsonb_build_object('type', 'message', 'label', '查看待辦事項', 'text', '查詢待辦事項'), 'style', 'primary', 'color', '#DC2626', 'height', 'sm'),
+                    jsonb_build_object('type', 'button', 'action', jsonb_build_object('type', 'message', 'label', '查看所有待辦', 'text', '查詢待辦事項'), 'style', 'primary', 'color', '#DC2626', 'height', 'sm'),
                     jsonb_build_object('type', 'text', 'text', 'Campus · 到期專屬測試推播', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
                 ))
             )
         ));
     END IF;
 
-    IF v_clean_uid LIKE 'U%' AND length(v_clean_uid) >= 25 THEN
-        target_url := 'https://api.line.me/v2/bot/message/push';
-        flex_payload := jsonb_build_object('to', v_clean_uid, 'messages', flex_messages);
-    ELSE
-        target_url := 'https://api.line.me/v2/bot/message/broadcast';
-        flex_payload := jsonb_build_object('messages', flex_messages);
+    IF p_send_push THEN
+        IF v_clean_uid LIKE 'U%' AND length(v_clean_uid) >= 25 THEN
+            target_url := 'https://api.line.me/v2/bot/message/push';
+            flex_payload := jsonb_build_object('to', v_clean_uid, 'messages', flex_messages);
+        ELSE
+            target_url := 'https://api.line.me/v2/bot/message/broadcast';
+            flex_payload := jsonb_build_object('messages', flex_messages);
+        END IF;
+
+        PERFORM net.http_post(
+            url := target_url,
+            headers := jsonb_build_object(
+                'Content-Type', 'application/json',
+                'Authorization', 'Bearer ' || v_token
+            ),
+            body := flex_payload
+        );
     END IF;
 
-    PERFORM net.http_post(
-        url := target_url,
-        headers := jsonb_build_object(
-            'Content-Type', 'application/json',
-            'Authorization', 'Bearer ' || v_token
-        ),
-        body := flex_payload
+    RETURN jsonb_build_object(
+        'ok', true,
+        'type', p_type,
+        'recipient', v_clean_uid,
+        'flex_message', flex_messages->0
     );
-
-    RETURN jsonb_build_object('ok', true, 'type', p_type, 'recipient', v_clean_uid);
 END;
 $$;
 
