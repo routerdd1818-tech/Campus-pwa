@@ -1,5 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { useApp } from '../context/AppContext';
+import {
+  useApp,
+  deduplicateCalendarEvents,
+  deduplicateTodos,
+  deduplicateCourses,
+} from '../context/AppContext';
 import { CalendarEvent, DayOfWeek, Todo, Course, Transaction } from '../types';
 import { EventModal } from '../components/EventModal';
 import { ShareModal } from '../components/ShareModal';
@@ -68,8 +73,10 @@ export const CalendarView: React.FC = () => {
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
 
-  // Calendar Scope: 'mine' (我的行事曆) vs 'shared' (共享行事曆)
-  const [calendarScope, setCalendarScope] = useState<'mine' | 'shared'>('mine');
+  // Calendar Source Selection (自己行事曆 vs 共同行事曆) & Collapsible State
+  const [showMineCalendar, setShowMineCalendar] = useState<boolean>(true);
+  const [showSharedCalendar, setShowSharedCalendar] = useState<boolean>(false);
+  const [isFilterExpanded, setIsFilterExpanded] = useState<boolean>(false);
   const [selectedFriendIndex, setSelectedFriendIndex] = useState<number>(0);
   const [isRefreshingShared, setIsRefreshingShared] = useState<boolean>(false);
 
@@ -94,45 +101,56 @@ export const CalendarView: React.FC = () => {
     }
   };
 
-  // Compute displayed events based on calendarScope
+  // Compute displayed events based on calendar source selection (with deduplication)
   const displayedCalendarEvents = useMemo(() => {
-    if (calendarScope === 'mine') {
-      return calendarEvents;
+    let list: CalendarEvent[] = [];
+    if (showMineCalendar) {
+      list = list.concat(calendarEvents);
     }
-    const friendEvents: CalendarEvent[] = (friendSchedule?.calendarEventsData || []).map((e) => ({
-      ...e,
-      notes: e.notes ? `${e.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
-    }));
-    return [...calendarEvents, ...friendEvents];
-  }, [calendarScope, calendarEvents, friendSchedule, activeFriend]);
-
-  // Compute displayed todos based on calendarScope
-  const displayedTodos = useMemo(() => {
-    if (calendarScope === 'mine') {
-      return todos;
-    }
-    // 'shared': user's todos that have isSharedToCalendar === true + friend's todos that have isSharedToCalendar === true (or all friend's shared todos)
-    const mySharedTodos = todos.filter((t) => t.isSharedToCalendar);
-    const friendTodos: Todo[] = (friendSchedule?.todosData || [])
-      .filter((t) => t.isSharedToCalendar || (t as any).isSharedWithFriends !== false)
-      .map((t) => ({
-        ...t,
-        notes: t.notes ? `${t.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+    if (showSharedCalendar) {
+      const friendEvents: CalendarEvent[] = (friendSchedule?.calendarEventsData || []).map((e) => ({
+        ...e,
+        notes: e.notes ? `${e.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
       }));
-    return [...mySharedTodos, ...friendTodos];
-  }, [calendarScope, todos, friendSchedule, activeFriend]);
-
-  // Compute displayed courses based on calendarScope
-  const displayedCourses = useMemo(() => {
-    if (calendarScope === 'mine') {
-      return courses;
+      list = list.concat(friendEvents);
     }
-    const friendCourses = (friendSchedule?.coursesData || []).map((c) => ({
-      ...c,
-      name: `${c.name} (${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
-    }));
-    return [...courses, ...friendCourses];
-  }, [calendarScope, courses, friendSchedule, activeFriend]);
+    return deduplicateCalendarEvents(list);
+  }, [showMineCalendar, showSharedCalendar, calendarEvents, friendSchedule, activeFriend]);
+
+  // Compute displayed todos based on calendar source selection (with deduplication)
+  const displayedTodos = useMemo(() => {
+    let list: Todo[] = [];
+    if (showMineCalendar) {
+      list = list.concat(todos);
+    }
+    if (showSharedCalendar) {
+      const mySharedTodos = todos.filter((t) => t.isSharedToCalendar);
+      const friendTodos: Todo[] = (friendSchedule?.todosData || [])
+        .filter((t) => t.isSharedToCalendar || (t as any).isSharedWithFriends !== false)
+        .map((t) => ({
+          ...t,
+          notes: t.notes ? `${t.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+        }));
+      list = list.concat(mySharedTodos, friendTodos);
+    }
+    return deduplicateTodos(list);
+  }, [showMineCalendar, showSharedCalendar, todos, friendSchedule, activeFriend]);
+
+  // Compute displayed courses based on calendar source selection (with deduplication)
+  const displayedCourses = useMemo(() => {
+    let list: Course[] = [];
+    if (showMineCalendar) {
+      list = list.concat(courses);
+    }
+    if (showSharedCalendar) {
+      const friendCourses = (friendSchedule?.coursesData || []).map((c) => ({
+        ...c,
+        name: `${c.name} (${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+      }));
+      list = list.concat(friendCourses);
+    }
+    return deduplicateCourses(list);
+  }, [showMineCalendar, showSharedCalendar, courses, friendSchedule, activeFriend]);
 
   // Calendar View Mode: Month vs Week
   const [calendarMode, setCalendarMode] = useState<'month' | 'week'>('month');
@@ -244,7 +262,7 @@ export const CalendarView: React.FC = () => {
   };
 
   // -------------------------------------------------------------
-  // 🌟 TimeTree Multi-Day Span Event & Period Todos Logic
+  // 🌟 Japanese Planner Multi-Day Span Event & Period Todos Logic
   // -------------------------------------------------------------
   const getAllSpanItemsForDate = (dateStr: string): UnifiedSpanItem[] => {
     // 1. Calendar Events covering this date
@@ -482,98 +500,228 @@ export const CalendarView: React.FC = () => {
 
   return (
     <div className="space-y-4 pb-28">
-      {/* 🌟 Calendar Scope Switcher (我的行事曆 vs 共享行事曆) */}
+      {/* 🌟 日式手帳行事曆頁首 */}
       <div className="flex items-center justify-between pb-1">
         <div>
           <h2 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
-            <span>{calendarScope === 'mine' ? '📅 我的手帳行事曆' : '🤝 好友共享行事曆'}</span>
+            <span>📅 日式手帳生活行事曆</span>
           </h2>
           <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
-            {calendarScope === 'mine'
-              ? '個人日程、課堂與專屬待辦事項'
-              : '同步瀏覽好友行程與共同待辦，到期雙向推播！'}
+            {showMineCalendar && showSharedCalendar
+              ? '個人日程與好友共享行事曆雙軌合併檢視'
+              : showSharedCalendar
+              ? '同步瀏覽好友行程與共同待辦，到期雙向推播！'
+              : '個人日程、課堂與專屬待辦事項'}
           </p>
-        </div>
-
-        <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
-          <button
-            onClick={() => setCalendarScope('mine')}
-            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
-              calendarScope === 'mine'
-                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
-                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
-            }`}
-          >
-            <span>🐱 我的</span>
-          </button>
-
-          <button
-            onClick={() => setCalendarScope('shared')}
-            className={`px-3 py-1.5 rounded-xl transition-all flex items-center space-x-1.5 ${
-              calendarScope === 'shared'
-                ? 'bg-white dark:bg-calico-darkCard text-calico-orange shadow-ios-sm font-black'
-                : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
-            }`}
-          >
-            <Users className="w-3.5 h-3.5" />
-            <span>共享</span>
-            {savedFriends.length > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-calico-orange"></span>
-            )}
-          </button>
         </div>
       </div>
 
-      {/* 共享行事曆好友選擇列 (僅在 shared 模式下顯示) */}
-      {calendarScope === 'shared' && (
-        <div className="animate-fade-in space-y-2">
-          {savedFriends.length === 0 ? (
-            <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center justify-between">
-              <span>尚無已儲存的好友，點擊右方按鈕輸入好友分享代碼開始共享！</span>
-              <button
-                onClick={() => setIsShareModalOpen(true)}
-                className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-[11px] font-black shrink-0 ml-2 shadow-xs active:scale-95 transition-all"
-              >
-                加入好友
-              </button>
+      {/* 🌟 行事曆來源選擇與折疊面板 (可自由選擇顯示自己行事曆或共同行事曆) */}
+      <div className="rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios overflow-hidden transition-all">
+        {/* 折疊收合標題列 */}
+        <div
+          onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+          className="p-3.5 flex items-center justify-between cursor-pointer select-none hover:bg-black/[0.02] dark:hover:bg-white/[0.02] transition-colors"
+        >
+          <div className="flex items-center space-x-2.5">
+            <div className="p-2 rounded-2xl bg-calico-orange/15 text-calico-orange">
+              <CalendarDays className="w-4 h-4" />
             </div>
-          ) : (
-            <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
-              {savedFriends.map((f, idx) => (
-                <button
-                  key={f.shareCode}
-                  onClick={() => setSelectedFriendIndex(idx)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-all ${
-                    selectedFriendIndex === idx
-                      ? 'bg-calico-orange text-white shadow-ios-sm'
-                      : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-300 border border-black/5 dark:border-white/10'
-                  }`}
-                >
-                  <span>👥 {f.nickname || f.ownerName}</span>
-                  <span className="text-[10px] opacity-75">({f.shareCode})</span>
-                </button>
-              ))}
-
-              <button
-                onClick={handleRefreshSharedCalendar}
-                disabled={isRefreshingShared}
-                className="p-1.5 rounded-xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange active:scale-95 transition-all shrink-0"
-                title="重新整理好友共享行事曆"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingShared ? 'animate-spin text-calico-orange' : ''}`} />
-              </button>
-
-              <button
-                onClick={() => setIsShareModalOpen(true)}
-                className="p-1.5 rounded-xl bg-white dark:bg-calico-darkCard border border-dashed border-black/15 dark:border-white/15 text-calico-cocoa/50 dark:text-zinc-400 hover:text-calico-orange active:scale-95 transition-all shrink-0"
-                title="新增好友"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-              </button>
+            <div>
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                  行事曆顯示來源
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-black/5 dark:bg-white/10 text-calico-cocoa/80 dark:text-zinc-300">
+                  {showMineCalendar && showSharedCalendar
+                    ? '🐱 我的 + 🤝 共同'
+                    : showSharedCalendar
+                    ? '🤝 共同行事曆'
+                    : '🐱 我的行事曆'}
+                </span>
+              </div>
+              <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400">
+                點擊以{isFilterExpanded ? '收合' : '展開'}篩選（可切換個人 / 共同行事曆）
+              </p>
             </div>
-          )}
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-xs font-bold text-calico-orange flex items-center space-x-0.5">
+              <span>{isFilterExpanded ? '收合' : '展開篩選'}</span>
+              {isFilterExpanded ? (
+                <ChevronUp className="w-4 h-4 text-calico-orange" />
+              ) : (
+                <ChevronDown className="w-4 h-4 text-calico-orange" />
+              )}
+            </span>
+          </div>
         </div>
-      )}
+
+        {/* 展開後的篩選器與好友列表 */}
+        {isFilterExpanded && (
+          <div className="p-4 pt-1 border-t border-black/5 dark:border-white/5 space-y-3 animate-fade-in">
+            {/* 快速切換捷徑按鈕 */}
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-1 scrollbar-none text-xs font-bold">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMineCalendar(true);
+                  setShowSharedCalendar(false);
+                }}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  showMineCalendar && !showSharedCalendar
+                    ? 'bg-calico-orange text-white shadow-xs font-black'
+                    : 'bg-calico-cream dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange'
+                }`}
+              >
+                🐱 僅自己
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMineCalendar(false);
+                  setShowSharedCalendar(true);
+                }}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  !showMineCalendar && showSharedCalendar
+                    ? 'bg-calico-orange text-white shadow-xs font-black'
+                    : 'bg-calico-cream dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange'
+                }`}
+              >
+                🤝 僅共同
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowMineCalendar(true);
+                  setShowSharedCalendar(true);
+                }}
+                className={`px-3 py-1.5 rounded-xl transition-all ${
+                  showMineCalendar && showSharedCalendar
+                    ? 'bg-calico-orange text-white shadow-xs font-black'
+                    : 'bg-calico-cream dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange'
+                }`}
+              >
+                ✨ 全部合併
+              </button>
+            </div>
+
+            {/* 自選來源多選勾選盒 */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs font-bold">
+              <label
+                className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                  showMineCalendar
+                    ? 'bg-calico-orange/10 border-calico-orange/30 text-calico-cocoa dark:text-zinc-100'
+                    : 'bg-calico-cream/50 dark:bg-zinc-800/50 border-black/5 dark:border-white/5 text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <span className="text-base">🐱</span>
+                  <div>
+                    <span className="block font-black">自己的行事曆</span>
+                    <span className="text-[10px] opacity-75 font-normal">個人行程、日常課表、專屬待辦</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showMineCalendar}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    if (!next && !showSharedCalendar) return;
+                    setShowMineCalendar(next);
+                  }}
+                  className="accent-calico-orange w-4 h-4 rounded cursor-pointer"
+                />
+              </label>
+
+              <label
+                className={`p-3 rounded-2xl border flex items-center justify-between cursor-pointer transition-all ${
+                  showSharedCalendar
+                    ? 'bg-calico-orange/10 border-calico-orange/30 text-calico-cocoa dark:text-zinc-100'
+                    : 'bg-calico-cream/50 dark:bg-zinc-800/50 border-black/5 dark:border-white/5 text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                <div className="flex items-center space-x-2">
+                  <span className="text-base">🤝</span>
+                  <div>
+                    <span className="block font-black">共同行事曆</span>
+                    <span className="text-[10px] opacity-75 font-normal">好友共享活動、共同待辦任務</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={showSharedCalendar}
+                  onChange={(e) => {
+                    const next = e.target.checked;
+                    if (!next && !showMineCalendar) return;
+                    setShowSharedCalendar(next);
+                  }}
+                  className="accent-calico-orange w-4 h-4 rounded cursor-pointer"
+                />
+              </label>
+            </div>
+
+            {/* 共同行事曆好友切換列 */}
+            {showSharedCalendar && (
+              <div className="pt-2 border-t border-black/5 dark:border-white/5 space-y-2">
+                <span className="text-[11px] font-black text-calico-cocoa/70 dark:text-zinc-400 block">
+                  共同行事曆好友來源：
+                </span>
+                {savedFriends.length === 0 ? (
+                  <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-xs font-bold text-amber-800 dark:text-amber-200 flex items-center justify-between">
+                    <span>尚無已儲存的好友，輸入好友分享代碼開始共享！</span>
+                    <button
+                      type="button"
+                      onClick={() => setIsShareModalOpen(true)}
+                      className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-[11px] font-black shrink-0 ml-2 shadow-xs active:scale-95 transition-all"
+                    >
+                      加入好友
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center space-x-2 overflow-x-auto pb-1 scrollbar-none">
+                    {savedFriends.map((f, idx) => (
+                      <button
+                        type="button"
+                        key={f.shareCode}
+                        onClick={() => setSelectedFriendIndex(idx)}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-bold flex items-center space-x-1.5 shrink-0 transition-all ${
+                          selectedFriendIndex === idx
+                            ? 'bg-calico-orange text-white shadow-ios-sm font-black'
+                            : 'bg-calico-cream dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-300 border border-black/5 dark:border-white/10'
+                        }`}
+                      >
+                        <span>👥 {f.nickname || f.ownerName}</span>
+                        <span className="text-[10px] opacity-75">({f.shareCode})</span>
+                      </button>
+                    ))}
+
+                    <button
+                      type="button"
+                      onClick={handleRefreshSharedCalendar}
+                      disabled={isRefreshingShared}
+                      className="p-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/10 text-calico-cocoa/70 dark:text-zinc-300 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                      title="重新整理好友共享行事曆"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingShared ? 'animate-spin text-calico-orange' : ''}`} />
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setIsShareModalOpen(true)}
+                      className="p-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-dashed border-black/15 dark:border-white/15 text-calico-cocoa/50 dark:text-zinc-400 hover:text-calico-orange active:scale-95 transition-all shrink-0"
+                      title="新增好友"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1198,7 +1346,7 @@ export const CalendarView: React.FC = () => {
           </div>
         </div>
 
-        {/* 4.1 TimeTree Span Items on Selected Date */}
+        {/* 4.1 Multi-Day Span Items on Selected Date */}
         {selectedDateSpanItems.length > 0 && (
           <div className="space-y-1.5">
             <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
@@ -1355,7 +1503,7 @@ export const CalendarView: React.FC = () => {
       {/* ======================================================== */}
       {/* 5. Modals */}
       {/* ======================================================== */}
-      {/* TimeTree Span Event Modal */}
+      {/* Planner Span Event Modal */}
       <EventModal
         isOpen={isEventModalOpen}
         event={eventToEdit}

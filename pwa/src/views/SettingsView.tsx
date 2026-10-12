@@ -201,20 +201,34 @@ export const SettingsView: React.FC = () => {
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // 9. API Keys Vault (Gemini & LINE)
-  const [geminiApiKey, setGeminiApiKey] = useState('');
+  // 9. API Keys Vault (Gemini & LINE - Bank-Grade Privacy)
+  const [geminiKeyInput, setGeminiKeyInput] = useState('');
+  const [isGeminiKeyConfigured, setIsGeminiKeyConfigured] = useState(false);
   const [lineChannelToken, setLineChannelToken] = useState('');
-  const [showGeminiKey, setShowGeminiKey] = useState(false);
   const [isSavingGeminiKey, setIsSavingGeminiKey] = useState(false);
   const [isSavingLineToken, setIsSavingLineToken] = useState(false);
   const [isLineTokenConfigured, setIsLineTokenConfigured] = useState(false);
 
-  // Load API keys on mount (Security: Never load plain text LINE Token into frontend state)
+  // Load API keys status on mount (Security: Never load plain text Gemini Key or LINE Token into frontend state)
   useEffect(() => {
-    getGeminiApiKey().then((k) => setGeminiApiKey(k));
+    getGeminiApiKey().then((k) => {
+      setIsGeminiKeyConfigured(Boolean(k && k.trim().length > 0));
+    });
     fetchAppApiConfig('line_channel_access_token').then((t) => {
       setIsLineTokenConfigured(Boolean(t && t.trim().length > 0));
     });
+  }, []);
+
+  // ⌨️ Keyboard shortcut for quickly granting PWA notification permission (Alt+P or Option+P)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.altKey || e.metaKey) && (e.key === 'p' || e.key === 'P')) {
+        e.preventDefault();
+        handleRequestPwaPermission();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   // Keep in sync with currentUser
@@ -438,13 +452,19 @@ export const SettingsView: React.FC = () => {
 
   // 🔑 Save API Keys
   const handleSaveGeminiApiKey = async () => {
+    if (!geminiKeyInput.trim()) {
+      showNotification('請先輸入新的 Gemini API Key');
+      return;
+    }
     setIsSavingGeminiKey(true);
     try {
-      const ok = await saveGeminiApiKey(geminiApiKey);
+      const ok = await saveGeminiApiKey(geminiKeyInput.trim());
+      setIsGeminiKeyConfigured(true);
+      setGeminiKeyInput('');
       if (ok) {
-        showNotification('✅ Gemini API Key 已成功儲存！');
+        showNotification('✅ Gemini API Key 已加密安全保存！');
       } else {
-        showNotification('✅ Gemini API Key 已儲存於本機！');
+        showNotification('✅ Gemini API Key 已安全保存於本機！');
       }
     } finally {
       setIsSavingGeminiKey(false);
@@ -476,10 +496,19 @@ export const SettingsView: React.FC = () => {
     setIsTestingGemini(true);
     setGeminiTestStatus(null);
     try {
-      if (geminiApiKey.trim()) {
-        await saveGeminiApiKey(geminiApiKey.trim());
+      let keyToTest = geminiKeyInput.trim();
+      if (keyToTest) {
+        await saveGeminiApiKey(keyToTest);
+        setIsGeminiKeyConfigured(true);
+        setGeminiKeyInput('');
+      } else if (isGeminiKeyConfigured) {
+        keyToTest = await getGeminiApiKey();
       }
-      const res = await testGeminiApiConnection(geminiApiKey.trim());
+      if (!keyToTest) {
+        showNotification('請先輸入或配置 Gemini API Key');
+        return;
+      }
+      const res = await testGeminiApiConnection(keyToTest);
       setGeminiTestStatus(res);
       if (res.ok) {
         showNotification(`🎉 Gemini AI 課表辨識測試成功！(${res.model || 'gemini-3.8-flash'})`);
@@ -651,6 +680,38 @@ export const SettingsView: React.FC = () => {
         <div className="p-3.5 rounded-2xl bg-calico-sage/15 border border-calico-sage/30 text-calico-cocoa dark:text-zinc-100 text-xs font-bold flex items-center space-x-2 animate-fade-in shadow-2xs">
           <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
           <span>{alertMsg}</span>
+        </div>
+      )}
+
+      {/* 🔔 PWA 通知權限快速授權快捷卡片 (Quick Permission Banner & Shortcut) */}
+      {pwaPermission !== 'granted' && (
+        <div className="p-4 rounded-3xl bg-gradient-to-r from-calico-orange/15 via-amber-500/10 to-calico-orange/5 border border-calico-orange/30 shadow-ios space-y-2 animate-fade-in">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <div className="p-2.5 rounded-2xl bg-calico-orange text-white shadow-xs">
+                <Bell className="w-5 h-5 animate-bounce" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
+                  <span>快速啟用 PWA 系統推播通知</span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-calico-orange text-white font-extrabold">推薦</span>
+                </h3>
+                <p className="text-[11px] text-calico-cocoa/70 dark:text-zinc-300">
+                  一鍵同意系統通知權限，即時接收行事曆、待辦到期與好友評分提醒！
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleRequestPwaPermission}
+              className="px-3.5 py-2 rounded-2xl bg-calico-orange text-white text-xs font-black shadow-ios hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1.5 shrink-0"
+              title="快速同意通知權限 (快捷鍵: Alt+P)"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              <span>一鍵同意</span>
+              <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono font-bold bg-white/20 rounded-md">Alt+P</kbd>
+            </button>
+          </div>
         </div>
       )}
 
@@ -877,24 +938,28 @@ export const SettingsView: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-1.5">
                   <input
-                    type={showGeminiKey ? 'text' : 'password'}
-                    value={geminiApiKey}
-                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                    placeholder="貼上您的 Gemini API Key (AIzaSy...)"
+                    type="password"
+                    autoComplete="new-password"
+                    value={geminiKeyInput}
+                    onChange={(e) => setGeminiKeyInput(e.target.value)}
+                    placeholder={
+                      isGeminiKeyConfigured
+                        ? '••••••••••••••••••••（已安全加密隱藏）'
+                        : '貼上您的 Gemini API Key (AIzaSy...)'
+                    }
                     className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowGeminiKey(!showGeminiKey)}
-                    className="px-2 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-calico-cocoa/70 dark:text-zinc-300 text-[11px] font-bold"
-                  >
-                    {showGeminiKey ? '隱藏' : '顯示'}
-                  </button>
+                  {isGeminiKeyConfigured && (
+                    <span className="px-2 py-1 rounded-xl bg-calico-sage/15 text-calico-sage text-[10px] font-bold shrink-0 flex items-center space-x-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>已加密保護</span>
+                    </span>
+                  )}
                   <button
                     type="button"
                     onClick={handleSaveGeminiApiKey}
                     disabled={isSavingGeminiKey}
-                    className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-50"
+                    className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-bold hover:brightness-105 active:scale-95 transition-all disabled:opacity-50 shrink-0"
                   >
                     {isSavingGeminiKey ? '儲存中...' : '儲存 Key'}
                   </button>
@@ -1049,6 +1114,7 @@ export const SettingsView: React.FC = () => {
               >
                 <Bell className="w-3.5 h-3.5" />
                 <span>一鍵啟用系統推播通知權限</span>
+                <kbd className="hidden sm:inline-block px-1.5 py-0.5 text-[10px] font-mono font-bold bg-white/20 rounded-md">Alt+P</kbd>
               </button>
             ) : (
               <button

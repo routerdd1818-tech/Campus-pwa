@@ -126,7 +126,7 @@ export const EventModal: React.FC<EventModalProps> = ({
                 {event ? '編輯行事曆活動' : '新增行事曆區間活動'}
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                TimeTree 風格彩色時間區間橫幅
+                日式手帳風格彩色時間區間活動
               </p>
             </div>
           </div>
@@ -267,7 +267,7 @@ export const EventModal: React.FC<EventModalProps> = ({
             </div>
           </div>
 
-          {/* Color Palette (TimeTree Style & Custom Color) */}
+          {/* Color Palette (Planner Style & Custom Color) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400">

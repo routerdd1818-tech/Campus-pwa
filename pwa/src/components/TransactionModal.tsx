@@ -239,7 +239,21 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             </div>
           </div>
 
-          {/* Category selection & Custom Category Creator & Management */}
+          {/* 2. 消費物品名稱 */}
+          <div>
+            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
+              消費物品名稱 *
+            </label>
+            <input
+              type="text"
+              placeholder="例如：排骨便當、拿鐵咖啡、文具筆記本..."
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-bold text-calico-cocoa dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
+            />
+          </div>
+
+          {/* 3. 種類 (Category selection & Custom Category Creator & Management) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
@@ -564,37 +578,13 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             )}
           </div>
 
-          {/* Payment Method */}
-          <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center space-x-1">
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>支付方式</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PAYMENT_METHODS.map((pm) => (
-                <button
-                  type="button"
-                  key={pm}
-                  onClick={() => setPaymentMethod(pm)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethod === pm
-                      ? 'bg-calico-cocoa text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-105'
-                      : 'bg-calico-cream/80 dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-400 hover:bg-calico-orange/10'
-                  }`}
-                >
-                  {pm}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Value score rating (for expenses) */}
+          {/* 4. 自評 (Value score rating for expenses) */}
           {type === 'expense' && (
             <div className="p-3.5 rounded-2xl bg-calico-cream/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
                   <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
-                  <span>花費價值感評分</span>
+                  <span>花費價值感自評</span>
                 </label>
                 <span className="text-xs font-extrabold text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15">
                   {valueScore} / 10 分
@@ -616,18 +606,28 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             </div>
           )}
 
-          {/* Notes */}
+          {/* 5. 付款方式 (Payment Method) */}
           <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              備註說明
+            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center space-x-1">
+              <CreditCard className="w-3.5 h-3.5" />
+              <span>付款方式</span>
             </label>
-            <input
-              type="text"
-              placeholder="例如：午餐特餐、買文具"
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
-            />
+            <div className="flex flex-wrap gap-1.5">
+              {PAYMENT_METHODS.map((pm) => (
+                <button
+                  type="button"
+                  key={pm}
+                  onClick={() => setPaymentMethod(pm)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                    paymentMethod === pm
+                      ? 'bg-calico-cocoa text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-105'
+                      : 'bg-calico-cream/80 dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-400 hover:bg-calico-orange/10'
+                  }`}
+                >
+                  {pm}
+                </button>
+              ))}
+            </div>
           </div>
 
           <button

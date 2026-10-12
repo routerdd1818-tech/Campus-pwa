@@ -361,6 +361,157 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | null>(null);
 
 
+export function deduplicateCourses(list: Course[]): Course[] {
+  if (!list || !Array.isArray(list)) return [];
+  const result: Course[] = [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  for (const item of list) {
+    if (!item) continue;
+    const rawId = String(item.id || '');
+    const uuid = toUUID(rawId);
+    const name = (item.name || '').trim().toLowerCase();
+    const fp = `${name}|${item.dayOfWeek}|${item.startTime || ''}`;
+
+    if (
+      (rawId && seenIds.has(rawId)) ||
+      (uuid && seenIds.has(uuid)) ||
+      (name && seenFingerprints.has(fp))
+    ) {
+      continue;
+    }
+
+    if (rawId) seenIds.add(rawId);
+    if (uuid) seenIds.add(uuid);
+    if (name) seenFingerprints.add(fp);
+    result.push(item);
+  }
+  return result;
+}
+
+export function deduplicateTodos(list: Todo[]): Todo[] {
+  if (!list || !Array.isArray(list)) return [];
+  const result: Todo[] = [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  for (const item of list) {
+    if (!item) continue;
+    const rawId = String(item.id || '');
+    const uuid = toUUID(rawId);
+    const title = (item.title || '').trim().toLowerCase();
+    const start = (item.startDate || '').slice(0, 10);
+    const due = (item.dueDate || '').slice(0, 10);
+    const fp = `${title}|${start}|${due}`;
+
+    const isDuplicate =
+      (rawId && seenIds.has(rawId)) ||
+      (uuid && seenIds.has(uuid)) ||
+      (title && seenFingerprints.has(fp));
+
+    if (isDuplicate) {
+      // If duplicate, preserve completion state if one is completed
+      if (item.isCompleted) {
+        const existing = result.find(
+          (r) =>
+            r.id === rawId ||
+            toUUID(r.id) === uuid ||
+            (title && `${(r.title || '').trim().toLowerCase()}|${(r.startDate || '').slice(0, 10)}|${(r.dueDate || '').slice(0, 10)}` === fp)
+        );
+        if (existing) {
+          existing.isCompleted = true;
+        }
+      }
+      continue;
+    }
+
+    if (rawId) seenIds.add(rawId);
+    if (uuid) seenIds.add(uuid);
+    if (title) seenFingerprints.add(fp);
+    result.push(item);
+  }
+  return result;
+}
+
+export function deduplicateTransactions(list: Transaction[]): Transaction[] {
+  if (!list || !Array.isArray(list)) return [];
+  const result: Transaction[] = [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  for (const item of list) {
+    if (!item) continue;
+    const rawId = String(item.id || '');
+    const uuid = toUUID(rawId);
+    const date = (item.date || '').slice(0, 10);
+    const amount = Math.round(Number(item.amount) * 100) / 100;
+    const notes = (item.notes || '').trim().toLowerCase();
+    const cat = (item.categoryName || '').trim().toLowerCase();
+    const type = item.type || 'expense';
+    const fp = `${type}|${amount}|${date}|${cat}|${notes}`;
+
+    const isDuplicate =
+      (rawId && seenIds.has(rawId)) ||
+      (uuid && seenIds.has(uuid)) ||
+      seenFingerprints.has(fp);
+
+    if (isDuplicate) {
+      if (item.peerRating || item.peerFeedback) {
+        const existing = result.find(
+          (r) =>
+            r.id === rawId ||
+            toUUID(r.id) === uuid ||
+            `${r.type || 'expense'}|${Math.round(Number(r.amount) * 100) / 100}|${(r.date || '').slice(0, 10)}|${(r.categoryName || '').trim().toLowerCase()}|${(r.notes || '').trim().toLowerCase()}` === fp
+        );
+        if (existing) {
+          if (item.peerRating && !existing.peerRating) existing.peerRating = item.peerRating;
+          if (item.peerFeedback && !existing.peerFeedback) existing.peerFeedback = item.peerFeedback;
+          if (item.peerRaterName && !existing.peerRaterName) existing.peerRaterName = item.peerRaterName;
+        }
+      }
+      continue;
+    }
+
+    if (rawId) seenIds.add(rawId);
+    if (uuid) seenIds.add(uuid);
+    seenFingerprints.add(fp);
+    result.push(item);
+  }
+  return result;
+}
+
+export function deduplicateCalendarEvents(list: CalendarEvent[]): CalendarEvent[] {
+  if (!list || !Array.isArray(list)) return [];
+  const result: CalendarEvent[] = [];
+  const seenIds = new Set<string>();
+  const seenFingerprints = new Set<string>();
+
+  for (const item of list) {
+    if (!item) continue;
+    const rawId = String(item.id || '');
+    const uuid = toUUID(rawId);
+    const title = (item.title || '').trim().toLowerCase();
+    const start = (item.startDate || '').slice(0, 10);
+    const end = (item.endDate || '').slice(0, 10);
+    const fp = `${title}|${start}|${end}`;
+
+    if (
+      (rawId && seenIds.has(rawId)) ||
+      (uuid && seenIds.has(uuid)) ||
+      (title && seenFingerprints.has(fp))
+    ) {
+      continue;
+    }
+
+    if (rawId) seenIds.add(rawId);
+    if (uuid) seenIds.add(uuid);
+    if (title) seenFingerprints.add(fp);
+    result.push(item);
+  }
+  return result;
+}
+
 function getScopedKey(userId: string | null | undefined, key: string): string {
   return userId ? `campus_user_${userId}_${key}` : `campus_guest_${key}`;
 }
@@ -394,13 +545,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
-  // Load from LocalStorage (Scoped strictly per user account)
   // Load from LocalStorage (Scoped strictly per user account, with fallback for guest / initial session)
   const [courses, setCourses] = useState<Course[]>(() => {
     const uid = initialUser?.id;
     const saved = localStorage.getItem(getScopedKey(uid, 'courses')) || (!uid ? localStorage.getItem('campus_courses') : null);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return deduplicateCourses(JSON.parse(saved)); } catch {}
     }
     return [];
   });
@@ -409,7 +559,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = initialUser?.id;
     const saved = localStorage.getItem(getScopedKey(uid, 'todos')) || (!uid ? localStorage.getItem('campus_todos') : null);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return deduplicateTodos(JSON.parse(saved)); } catch {}
     }
     return [];
   });
@@ -418,7 +568,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = initialUser?.id;
     const saved = localStorage.getItem(getScopedKey(uid, 'transactions')) || (!uid ? localStorage.getItem('campus_transactions') : null);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return deduplicateTransactions(JSON.parse(saved)); } catch {}
     }
     return [];
   });
@@ -427,7 +577,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = initialUser?.id;
     const saved = localStorage.getItem(getScopedKey(uid, 'calendar_events')) || (!uid ? localStorage.getItem('campus_calendar_events') : null);
     if (saved) {
-      try { return JSON.parse(saved); } catch {}
+      try { return deduplicateCalendarEvents(JSON.parse(saved)); } catch {}
     }
     return [];
   });
@@ -665,9 +815,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 3. Load next user's data from their scoped storage
     const rawCourses = localStorage.getItem(getScopedKey(newUid, 'courses'));
     if (rawCourses) {
-      setCourses(JSON.parse(rawCourses));
+      setCourses(deduplicateCourses(JSON.parse(rawCourses)));
     } else if (newUid) {
-      const starter = INITIAL_COURSES.map((c) => ({ ...c, id: `c_${newUid}_${c.id}`, userId: newUid }));
+      const starter = deduplicateCourses(INITIAL_COURSES.map((c) => ({ ...c, id: `c_${newUid}_${c.id}`, userId: newUid })));
       setCourses(starter);
       localStorage.setItem(getScopedKey(newUid, 'courses'), JSON.stringify(starter));
     } else {
@@ -676,9 +826,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawTodos = localStorage.getItem(getScopedKey(newUid, 'todos'));
     if (rawTodos) {
-      setTodos(JSON.parse(rawTodos));
+      setTodos(deduplicateTodos(JSON.parse(rawTodos)));
     } else if (newUid) {
-      const starter = INITIAL_TODOS.map((t) => ({ ...t, id: `t_${newUid}_${t.id}`, userId: newUid }));
+      const starter = deduplicateTodos(INITIAL_TODOS.map((t) => ({ ...t, id: `t_${newUid}_${t.id}`, userId: newUid })));
       setTodos(starter);
       localStorage.setItem(getScopedKey(newUid, 'todos'), JSON.stringify(starter));
     } else {
@@ -687,9 +837,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawTx = localStorage.getItem(getScopedKey(newUid, 'transactions'));
     if (rawTx) {
-      setTransactions(JSON.parse(rawTx));
+      setTransactions(deduplicateTransactions(JSON.parse(rawTx)));
     } else if (newUid) {
-      const starter = INITIAL_TRANSACTIONS.map((tx) => ({ ...tx, id: `tx_${newUid}_${tx.id}`, userId: newUid }));
+      const starter = deduplicateTransactions(INITIAL_TRANSACTIONS.map((tx) => ({ ...tx, id: `tx_${newUid}_${tx.id}`, userId: newUid })));
       setTransactions(starter);
       localStorage.setItem(getScopedKey(newUid, 'transactions'), JSON.stringify(starter));
     } else {
@@ -698,9 +848,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawEvents = localStorage.getItem(getScopedKey(newUid, 'calendar_events'));
     if (rawEvents) {
-      setCalendarEvents(JSON.parse(rawEvents));
+      setCalendarEvents(deduplicateCalendarEvents(JSON.parse(rawEvents)));
     } else if (newUid) {
-      const starter = INITIAL_CALENDAR_EVENTS.map((e) => ({ ...e, id: `e_${newUid}_${e.id}`, userId: newUid }));
+      const starter = deduplicateCalendarEvents(INITIAL_CALENDAR_EVENTS.map((e) => ({ ...e, id: `e_${newUid}_${e.id}`, userId: newUid })));
       setCalendarEvents(starter);
       localStorage.setItem(getScopedKey(newUid, 'calendar_events'), JSON.stringify(starter));
     } else {
@@ -750,10 +900,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     try {
       // 1. 本機資料優先：先將手機上的所有課程、待辦、收支、行事曆推送到 Supabase
       const currentLocalData = {
-        courses: coursesRef.current,
-        todos: todosRef.current,
-        transactions: transactionsRef.current,
-        calendarEvents: calendarEventsRef.current,
+        courses: deduplicateCourses(coursesRef.current),
+        todos: deduplicateTodos(todosRef.current),
+        transactions: deduplicateTransactions(transactionsRef.current),
+        calendarEvents: deduplicateCalendarEvents(calendarEventsRef.current),
       };
 
       await syncAllLocalDataToSupabase(userKey, currentLocalData);
@@ -789,7 +939,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ).catch(() => {});
       }
 
-      // 2. 擷取雲端最新資料（僅做合併補齊，絕不覆蓋或清空本機既有資料）
+      // 2. 擷取雲端最新資料（透過智慧指紋去重合併補齊，絕不產生雙份重複紀錄）
       const [cloudCourses, cloudTodos, cloudTx, cloudEvents] = await Promise.all([
         fetchCoursesFromSupabase(userKey),
         fetchTodosFromSupabase(userKey),
@@ -800,32 +950,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       // Guard: 確保在異步請求期間使用者帳號未切換
       if ((activeUser?.id || null) === activeUserIdRef.current) {
         if (cloudCourses.length > 0) {
-          setCourses((prev) => {
-            const existingIds = new Set(prev.map((c) => c.id));
-            const newFromCloud = cloudCourses.filter((c) => !existingIds.has(c.id));
-            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
-          });
+          setCourses((prev) => deduplicateCourses([...prev, ...cloudCourses]));
         }
         if (cloudTodos.length > 0) {
-          setTodos((prev) => {
-            const existingIds = new Set(prev.map((t) => t.id));
-            const newFromCloud = cloudTodos.filter((t) => !existingIds.has(t.id));
-            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
-          });
+          setTodos((prev) => deduplicateTodos([...prev, ...cloudTodos]));
         }
         if (cloudTx.length > 0) {
-          setTransactions((prev) => {
-            const existingIds = new Set(prev.map((t) => t.id));
-            const newFromCloud = cloudTx.filter((t) => !existingIds.has(t.id));
-            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
-          });
+          setTransactions((prev) => deduplicateTransactions([...prev, ...cloudTx]));
         }
         if (cloudEvents.length > 0) {
-          setCalendarEvents((prev) => {
-            const existingIds = new Set(prev.map((e) => e.id));
-            const newFromCloud = cloudEvents.filter((e) => !existingIds.has(e.id));
-            return newFromCloud.length > 0 ? [...prev, ...newFromCloud] : prev;
-          });
+          setCalendarEvents((prev) => deduplicateCalendarEvents([...prev, ...cloudEvents]));
         }
       }
 
@@ -1154,7 +1288,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Actions
   const addCourse = async (course: Course) => {
     const enriched = { ...course, userId: currentUser?.id || course.userId };
-    setCourses((prev) => [...prev, enriched]);
+    setCourses((prev) => deduplicateCourses([...prev, enriched]));
     await upsertCourseToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
@@ -1194,7 +1328,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addTodo = async (todo: Todo) => {
     const enriched = { ...todo, userId: currentUser?.id || todo.userId };
     setTodos((prev) => {
-      const next = [enriched, ...prev];
+      const next = deduplicateTodos([enriched, ...prev]);
       todosRef.current = next;
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
@@ -1244,7 +1378,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addTransaction = async (t: Transaction) => {
     const enriched = { ...t, userId: currentUser?.id || t.userId };
     setTransactions((prev) => {
-      const next = [enriched, ...prev];
+      const next = deduplicateTransactions([enriched, ...prev]);
       transactionsRef.current = next;
       // Real-time publish to shared_schedules for friends
       syncScheduleToCloud(coursesRef.current, todosRef.current, next, calendarEventsRef.current);
@@ -1311,7 +1445,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addCalendarEvent = async (e: CalendarEvent) => {
     const enriched = { ...e, userId: currentUser?.id || e.userId };
     setCalendarEvents((prev) => {
-      const next = [...prev, enriched];
+      const next = deduplicateCalendarEvents([...prev, enriched]);
       calendarEventsRef.current = next;
       syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
       return next;

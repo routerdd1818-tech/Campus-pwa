@@ -496,7 +496,7 @@ export async function batchUpsertTransactionsToSupabase(txs: Transaction[], devi
 }
 
 // -------------------------------------------------------------
-// 📅 Calendar Events & Multi-day Spans (TimeTree style)
+// 📅 Calendar Events & Multi-day Spans (Japanese Planner style)
 // -------------------------------------------------------------
 export async function fetchCalendarEventsFromSupabase(deviceIdOrUserId?: string): Promise<CalendarEvent[]> {
   try {
