@@ -313,6 +313,8 @@ export async function upsertTodoToSupabase(todo: Todo, deviceIdOrUserId?: string
       course_id: todo.courseId,
       paper_url: todo.paperUrl,
       reading_status: todo.readingStatus,
+      has_reminder: (todo as any).hasReminder ?? (todo.reminderAdvance ? todo.reminderAdvance !== 'none' : true),
+      reminder_advance: todo.reminderAdvance || '1d',
     });
     return !error;
   } catch {
@@ -347,6 +349,8 @@ export async function batchUpsertTodosToSupabase(todos: Todo[], deviceIdOrUserId
       course_id: todo.courseId,
       paper_url: todo.paperUrl,
       reading_status: todo.readingStatus,
+      has_reminder: (todo as any).hasReminder ?? (todo.reminderAdvance ? todo.reminderAdvance !== 'none' : true),
+      reminder_advance: todo.reminderAdvance || '1d',
     }));
     const { error } = await supabase.from('todos').upsert(rows);
     return !error;
@@ -648,11 +652,29 @@ export async function saveUserLineBotPushSettings(
   eveningPushEnabled: boolean = true,
   eveningPushHour: number = 18,
   eveningPushMinute: number = 0,
-  accountingData: Transaction[] = []
+  accountingData: Transaction[] = [],
+  todoReminderEnabled: boolean = true
 ): Promise<boolean> {
   try {
     const supabase = getSupabaseClient();
     const targetUserId = lineUserId.trim() || `AUTO_${shareCode.toUpperCase()}`;
+
+    // Map to include both camelCase and snake_case so SQL functions match seamlessly
+    const normalizedCourses = (coursesData || []).map((c) => ({
+      ...c,
+      day_of_week: c.dayOfWeek,
+      start_time: c.startTime,
+      end_time: c.endTime,
+      color_hex: c.colorHex,
+    }));
+
+    const normalizedTodos = (todosData || []).map((t) => ({
+      ...t,
+      is_completed: t.isCompleted,
+      due_date: t.dueDate,
+      start_date: t.startDate,
+      reminder_advance: t.reminderAdvance || '1d',
+    }));
 
     const { error } = await supabase.from('line_bot_settings').upsert({
       user_id: targetUserId,
@@ -665,12 +687,13 @@ export async function saveUserLineBotPushSettings(
       evening_push_enabled: eveningPushEnabled,
       evening_push_hour: eveningPushHour,
       evening_push_minute: eveningPushMinute,
+      todo_reminder_enabled: todoReminderEnabled,
       include_schedule: true,
       include_todos: true,
       include_weekly_plan: true,
       include_expense_summary: true,
-      courses_data: coursesData,
-      todos_data: todosData,
+      courses_data: normalizedCourses,
+      todos_data: normalizedTodos,
       accounting_data: accountingData,
       updated_at: new Date().toISOString(),
     });
@@ -779,6 +802,450 @@ export async function sendTestLineMessage(
   }
 
   return { ok: false, error: '請確認 Supabase app_api_configs 是否已儲存 line_channel_access_token' };
+}
+
+// -------------------------------------------------------------
+// 💌 LINE Flex Message Builders (晨報、晚報、待辦到期提醒卡片)
+// -------------------------------------------------------------
+export function buildMorningBriefingFlex(
+  userName: string,
+  courses: Course[],
+  todos: Todo[]
+): any {
+  const now = new Date();
+  const dayNames = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+  const dayOfWeek = now.getDay() === 0 ? 7 : now.getDay();
+  const dateStr = `${now.getMonth() + 1}月${now.getDate()}日 ${dayNames[now.getDay()]}`;
+
+  const todayCourses = (courses || [])
+    .filter((c) => (c.dayOfWeek || (c as any).day_of_week) === dayOfWeek)
+    .sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const remainingCoursesCount = (courses || []).filter(
+    (c) => (c.dayOfWeek || (c as any).day_of_week) >= dayOfWeek
+  ).length;
+
+  const todayStr = now.toISOString().slice(0, 10);
+  const uncompletedTodos = (todos || []).filter((t) => {
+    if (t.isCompleted || (t as any).is_completed) return false;
+    const due = (t.dueDate || (t as any).due_date || '').slice(0, 10);
+    const start = (t.startDate || (t as any).start_date || '').slice(0, 10);
+    if (start && due && todayStr >= start && todayStr <= due) return true;
+    if (due && due === todayStr) return true;
+    return false;
+  });
+
+  const courseBubbles =
+    todayCourses.length > 0
+      ? todayCourses.map((c) => ({
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'md',
+          spacing: 'md',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              width: '3px',
+              backgroundColor: c.colorHex || '#3182CE',
+              cornerRadius: '2px',
+              contents: [{ type: 'text', text: ' ', size: 'xxs' }],
+            },
+            {
+              type: 'box',
+              layout: 'vertical',
+              flex: 1,
+              contents: [
+                {
+                  type: 'box',
+                  layout: 'horizontal',
+                  contents: [
+                    { type: 'text', text: c.name, weight: 'bold', size: 'sm', color: '#1C1C1E', wrap: true },
+                    { type: 'text', text: `${c.startTime} - ${c.endTime}`, size: 'xs', color: '#8E8E93', align: 'end' },
+                  ],
+                },
+                {
+                  type: 'text',
+                  text: `${c.classroom || '未指定教室'}${c.instructor ? ` · ${c.instructor}` : ''}`,
+                  size: 'xs',
+                  color: '#8E8E93',
+                  margin: 'xs',
+                },
+              ],
+            },
+          ],
+        }))
+      : [{ type: 'text', text: '今日無排定課程喵 🐾', size: 'xs', color: '#8E8E93', margin: 'sm' }];
+
+  const todoBubbles =
+    uncompletedTodos.length > 0
+      ? uncompletedTodos.slice(0, 4).map((t) => ({
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'md',
+          spacing: 'md',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              width: '8px',
+              height: '8px',
+              cornerRadius: '4px',
+              backgroundColor: t.priority === 'high' ? '#FF3B30' : t.priority === 'medium' ? '#FF9500' : '#34C759',
+              contents: [{ type: 'text', text: ' ', size: 'xxs' }],
+            },
+            { type: 'text', text: t.title, size: 'sm', color: '#1C1C1E', flex: 1, wrap: true },
+            {
+              type: 'box',
+              layout: 'vertical',
+              backgroundColor: '#F2F2F7',
+              cornerRadius: '4px',
+              paddingStart: '6px',
+              paddingEnd: '6px',
+              paddingTop: '2px',
+              paddingBottom: '2px',
+              contents: [{ type: 'text', text: t.category || '待辦', size: 'xxs', color: '#8E8E93' }],
+            },
+          ],
+        }))
+      : [{ type: 'text', text: '全部待辦事項皆已完成 ✨', size: 'xs', color: '#8E8E93', margin: 'sm' }];
+
+  return {
+    type: 'flex',
+    altText: `Campus 晨間簡報 (${userName || '同學'})：${dateStr}`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        paddingAll: '20px',
+        contents: [
+          { type: 'text', text: `CAMPUS BRIEFING · ${userName || '同學'}`, size: 'xxs', weight: 'bold', color: '#8E8E93' },
+          {
+            type: 'box',
+            layout: 'horizontal',
+            margin: 'xs',
+            contents: [
+              { type: 'text', text: dateStr, size: 'xl', weight: 'bold', color: '#1C1C1E', flex: 1 },
+              {
+                type: 'text',
+                text: `${todayCourses.length} 堂課 · ${uncompletedTodos.length} 項待辦`,
+                size: 'xs',
+                color: '#8E8E93',
+                align: 'end',
+                gravity: 'bottom',
+              },
+            ],
+          },
+          { type: 'separator', margin: 'md', color: '#E5E5EA' },
+          { type: 'text', text: '今日課表', size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
+          ...courseBubbles,
+          { type: 'separator', margin: 'lg', color: '#E5E5EA' },
+          { type: 'text', text: '今日待辦', size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
+          ...todoBubbles,
+          { type: 'separator', margin: 'lg', color: '#E5E5EA' },
+          { type: 'text', text: '本週規劃', size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#F2F2F7',
+            cornerRadius: '10px',
+            paddingAll: '12px',
+            margin: 'md',
+            spacing: 'xs',
+            contents: [
+              { type: 'text', text: `• 本週後續剩餘堂數：${remainingCoursesCount} 堂課`, size: 'xs', color: '#3C3C43' },
+            ],
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingTop: '10px',
+        paddingBottom: '16px',
+        paddingStart: '20px',
+        paddingEnd: '20px',
+        backgroundColor: '#FFFFFF',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'message', label: '確認今日日程', text: '已確認今日日程' },
+            style: 'primary',
+            color: '#007AFF',
+            height: 'sm',
+          },
+          { type: 'text', text: 'Campus · 晨間專屬簡報', size: 'xxs', color: '#C7C7CC', align: 'center', margin: 'md' },
+        ],
+      },
+    },
+  };
+}
+
+export function buildEveningBriefingFlex(
+  userName: string,
+  courses: Course[],
+  todos: Todo[],
+  transactions: Transaction[]
+): any {
+  const now = new Date();
+  const todayStr = now.toISOString().slice(0, 10);
+  const tomorrowDayOfWeek = (now.getDay() % 7) + 1;
+
+  const todayExpenseList = (transactions || []).filter(
+    (tx) => tx.type === 'expense' && tx.date.slice(0, 10) === todayStr
+  );
+  const todayExpenseSum = todayExpenseList.reduce((sum, tx) => sum + tx.amount, 0);
+
+  const tomorrowCoursesCount = (courses || []).filter(
+    (c) => (c.dayOfWeek || (c as any).day_of_week) === tomorrowDayOfWeek
+  ).length;
+
+  const uncompletedTodos = (todos || []).filter((t) => {
+    if (t.isCompleted || (t as any).is_completed) return false;
+    const due = (t.dueDate || (t as any).due_date || '').slice(0, 10);
+    const start = (t.startDate || (t as any).start_date || '').slice(0, 10);
+    if (due && due <= todayStr) return true;
+    if (start && todayStr >= start) return true;
+    return false;
+  });
+
+  const todoBubbles =
+    uncompletedTodos.length > 0
+      ? uncompletedTodos.slice(0, 4).map((t) => ({
+          type: 'box',
+          layout: 'horizontal',
+          margin: 'md',
+          spacing: 'md',
+          contents: [
+            {
+              type: 'box',
+              layout: 'vertical',
+              width: '8px',
+              height: '8px',
+              cornerRadius: '4px',
+              backgroundColor: '#FF3B30',
+              contents: [{ type: 'text', text: ' ', size: 'xxs' }],
+            },
+            { type: 'text', text: t.title, size: 'sm', color: '#1C1C1E', flex: 1, wrap: true },
+            { type: 'text', text: '未完成', size: 'xs', color: '#FF3B30', weight: 'bold' },
+          ],
+        }))
+      : [{ type: 'text', text: '今日待辦已全數完成喵 🎉', size: 'xs', color: '#34C759', margin: 'sm' }];
+
+  return {
+    type: 'flex',
+    altText: `Campus 晚間叮嚀：今日支出 $${todayExpenseSum} 元，尚有 ${uncompletedTodos.length} 項待辦事項`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        paddingAll: '20px',
+        contents: [
+          { type: 'text', text: `CAMPUS EVENING BRIEFING · ${userName || '同學'}`, size: 'xxs', weight: 'bold', color: '#8E8E93' },
+          { type: 'text', text: '🌆 晚間叮嚀與收支總結', size: 'lg', weight: 'bold', color: '#1C1C1E', margin: 'xs' },
+          { type: 'separator', margin: 'md', color: '#E5E5EA' },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#FFF7ED',
+            cornerRadius: '12px',
+            paddingAll: '12px',
+            margin: 'md',
+            contents: [
+              { type: 'text', text: '💰 今日累計花費', size: 'xs', color: '#C2410C', weight: 'bold' },
+              {
+                type: 'text',
+                text: `$ ${todayExpenseSum} 元 (${todayExpenseList.length} 筆記帳)`,
+                size: 'xl',
+                weight: 'bold',
+                color: '#EA580C',
+                margin: 'xs',
+              },
+            ],
+          },
+          { type: 'text', text: `⚠️ 尚未完成的待辦事項 (${uncompletedTodos.length} 項)`, size: 'xs', weight: 'bold', color: '#8E8E93', margin: 'lg' },
+          ...todoBubbles,
+          { type: 'separator', margin: 'lg', color: '#E5E5EA' },
+          {
+            type: 'text',
+            text: `📚 明日課表預告：共 ${tomorrowCoursesCount} 堂課，提早收拾書包早點休息喵！🐾`,
+            size: 'xs',
+            color: '#8E8E93',
+            margin: 'md',
+            wrap: true,
+          },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingTop: '10px',
+        paddingBottom: '16px',
+        paddingStart: '20px',
+        paddingEnd: '20px',
+        backgroundColor: '#FFFFFF',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'message', label: '前往完成待辦', text: '查詢待辦事項' },
+            style: 'primary',
+            color: '#EA580C',
+            height: 'sm',
+          },
+          { type: 'text', text: 'Campus · 晚間 18:00 專屬推播', size: 'xxs', color: '#C7C7CC', align: 'center', margin: 'md' },
+        ],
+      },
+    },
+  };
+}
+
+export function buildTodoReminderFlex(
+  userName: string,
+  todo: Todo
+): any {
+  const advanceLabelMap: Record<string, string> = {
+    due: '當天提醒',
+    '1h': '1 小時前提醒',
+    '3h': '3 小時前提醒',
+    '1d': '1 天前提醒',
+    '2d': '2 天前提醒',
+    '3d': '3 天前提醒',
+  };
+  const advanceText = advanceLabelMap[todo.reminderAdvance || '1d'] || '即將到期';
+  const priorityText = todo.priority === 'high' ? '高' : todo.priority === 'medium' ? '中' : '低';
+  const dueDisplay = todo.dueDate ? todo.dueDate.slice(0, 16).replace('T', ' ') : '近期截止';
+
+  return {
+    type: 'flex',
+    altText: `⏰ 待辦事項即將到期提醒：${todo.title}`,
+    contents: {
+      type: 'bubble',
+      size: 'mega',
+      body: {
+        type: 'box',
+        layout: 'vertical',
+        backgroundColor: '#FFFFFF',
+        paddingAll: '20px',
+        contents: [
+          { type: 'text', text: `CAMPUS TASK ALERT · ${userName || '同學'}`, size: 'xxs', weight: 'bold', color: '#8E8E93' },
+          { type: 'text', text: '⏰ 待辦事項即將到期提醒！', size: 'lg', weight: 'bold', color: '#DC2626', margin: 'xs' },
+          { type: 'separator', margin: 'md', color: '#E5E5EA' },
+          {
+            type: 'box',
+            layout: 'vertical',
+            backgroundColor: '#FEF2F2',
+            cornerRadius: '12px',
+            paddingAll: '14px',
+            margin: 'md',
+            spacing: 'xs',
+            contents: [
+              { type: 'text', text: todo.title, size: 'md', weight: 'bold', color: '#991B1B', wrap: true },
+              { type: 'text', text: `📅 到期時間：${dueDisplay}`, size: 'xs', color: '#B91C1C', margin: 'xs' },
+              { type: 'text', text: `⚠️ 提醒設定：${advanceText} · 優先級：${priorityText}`, size: 'xs', color: '#7F1D1D' },
+            ],
+          },
+          { type: 'text', text: '請記得提早準備繳交或複習，加油喵！🐾', size: 'xs', color: '#8E8E93', margin: 'sm' },
+        ],
+      },
+      footer: {
+        type: 'box',
+        layout: 'vertical',
+        paddingTop: '10px',
+        paddingBottom: '16px',
+        paddingStart: '20px',
+        paddingEnd: '20px',
+        backgroundColor: '#FFFFFF',
+        contents: [
+          {
+            type: 'button',
+            action: { type: 'message', label: '查看待辦事項', text: '查詢待辦事項' },
+            style: 'primary',
+            color: '#DC2626',
+            height: 'sm',
+          },
+          { type: 'text', text: 'Campus · 個人化待辦專屬提醒', size: 'xxs', color: '#C7C7CC', align: 'center', margin: 'md' },
+        ],
+      },
+    },
+  };
+}
+
+export async function sendPersonalizedBriefingTest(
+  userId: string,
+  type: 'morning' | 'evening' | 'reminder',
+  data: {
+    userName?: string;
+    courses: Course[];
+    todos: Todo[];
+    transactions: Transaction[];
+    targetTodo?: Todo;
+  }
+): Promise<{ ok: boolean; error?: string }> {
+  let flexMessage: any;
+  if (type === 'morning') {
+    flexMessage = buildMorningBriefingFlex(data.userName || '同學', data.courses, data.todos);
+  } else if (type === 'evening') {
+    flexMessage = buildEveningBriefingFlex(data.userName || '同學', data.courses, data.todos, data.transactions);
+  } else {
+    const sampleTodo: Todo = data.targetTodo || data.todos.find((t) => !t.isCompleted) || {
+      id: 'sample',
+      title: '期中報告作業與論文閱讀',
+      dueDate: new Date(Date.now() + 86400000).toISOString(),
+      priority: 'high',
+      category: '作業',
+      isCompleted: false,
+      reminderAdvance: '1d',
+    };
+    flexMessage = buildTodoReminderFlex(data.userName || '同學', sampleTodo);
+  }
+
+  // 1. Try relay_line_message RPC via Supabase
+  try {
+    const supabase = getSupabaseClient();
+    const { data: resData, error } = await supabase.rpc('relay_line_message', {
+      p_recipient_id: userId,
+      p_is_direct_push: true,
+      p_messages: [flexMessage],
+    });
+    if (!error && resData?.ok === true) {
+      return { ok: true };
+    }
+  } catch (err) {
+    console.warn('relay_line_message error, falling back to direct push:', err);
+  }
+
+  // 2. Direct LINE Push API fallback via token
+  try {
+    const token = await fetchAppApiConfig('line_channel_access_token');
+    if (token) {
+      const res = await fetch('https://api.line.me/v2/bot/message/push', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          to: userId,
+          messages: [flexMessage],
+        }),
+      });
+      if (res.ok) {
+        return { ok: true };
+      }
+      const errJson = await res.json();
+      return { ok: false, error: errJson?.message || `LINE API 回傳 HTTP ${res.status}` };
+    }
+  } catch (err: any) {
+    return { ok: false, error: err.message || '連線至 LINE 失敗' };
+  }
+
+  return { ok: false, error: '請確認 LINE Token 設定' };
 }
 
 // -------------------------------------------------------------

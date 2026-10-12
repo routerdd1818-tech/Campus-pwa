@@ -762,7 +762,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           currentSettings.lineEveningPushEnabled ?? true,
           currentSettings.lineEveningPushHour ?? 18,
           currentSettings.lineEveningPushMinute ?? 0,
-          currentLocalData.transactions
+          currentLocalData.transactions,
+          currentSettings.lineTodoReminderEnabled ?? true
         ).catch(() => {});
       }
 

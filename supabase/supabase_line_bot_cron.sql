@@ -347,6 +347,8 @@ ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS last_evening_sent_
 ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS evening_push_enabled BOOLEAN DEFAULT true;
 ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS evening_push_hour INT DEFAULT 18;
 ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS evening_push_minute INT DEFAULT 0;
+ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS todo_reminder_enabled BOOLEAN DEFAULT true;
+ALTER TABLE public.line_bot_settings ADD COLUMN IF NOT EXISTS reminded_todo_ids JSONB DEFAULT '[]'::jsonb;
 
 ALTER TABLE public.line_bot_settings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow public all access on line_bot_settings" ON public.line_bot_settings;
@@ -796,6 +798,15 @@ DECLARE
     target_url TEXT;
     is_morning_due BOOLEAN;
     is_evening_due BOOLEAN;
+    -- 階段 3 待辦到期提醒變數
+    todo_rec JSONB;
+    v_todo_id TEXT;
+    v_reminder_advance TEXT;
+    v_due_date_str TEXT;
+    v_due_ts TIMESTAMP;
+    v_should_remind BOOLEAN;
+    v_advance_label TEXT;
+    v_priority_label TEXT;
 BEGIN
     now_tw := now() AT TIME ZONE 'Asia/Taipei';
     today_date := now_tw::date;
@@ -887,11 +898,11 @@ BEGIN
             IF jsonb_typeof(v_courses) = 'array' AND jsonb_array_length(v_courses) > 0 THEN
                 SELECT COUNT(*) INTO courses_count
                 FROM jsonb_array_elements(v_courses) AS c
-                WHERE COALESCE((c->>'day_of_week')::INT, 0) = today_weekday;
+                WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = today_weekday;
 
                 SELECT COUNT(*) INTO remaining_courses_count
                 FROM jsonb_array_elements(v_courses) AS c
-                WHERE COALESCE((c->>'day_of_week')::INT, 0) >= today_weekday;
+                WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) >= today_weekday;
 
                 SELECT jsonb_agg(jsonb_build_object(
                     'type', 'box',
@@ -903,7 +914,7 @@ BEGIN
                             'type', 'box',
                             'layout', 'vertical',
                             'width', '3px',
-                            'backgroundColor', COALESCE(NULLIF(c->>'color_hex', ''), '#007AFF'),
+                            'backgroundColor', COALESCE(NULLIF(c->>'colorHex', ''), NULLIF(c->>'color_hex', ''), '#007AFF'),
                             'cornerRadius', '2px',
                             'contents', jsonb_build_array(jsonb_build_object('type', 'text', 'text', ' ', 'size', 'xxs'))
                         ),
@@ -917,18 +928,18 @@ BEGIN
                                     'layout', 'horizontal',
                                     'contents', jsonb_build_array(
                                         jsonb_build_object('type', 'text', 'text', COALESCE(c->>'name', '課程'), 'weight', 'bold', 'size', 'sm', 'color', '#1C1C1E', 'wrap', true),
-                                        jsonb_build_object('type', 'text', 'text', COALESCE(c->>'start_time', '') || ' - ' || COALESCE(c->>'end_time', ''), 'size', 'xs', 'color', '#8E8E93', 'align', 'end')
+                                        jsonb_build_object('type', 'text', 'text', COALESCE(c->>'startTime', c->>'start_time', '') || ' - ' || COALESCE(c->>'endTime', c->>'end_time', ''), 'size', 'xs', 'color', '#8E8E93', 'align', 'end')
                                     )
                                 ),
-                                jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(c->>'classroom', ''), '未指定地點') || CASE WHEN c->>'instructor' IS NOT NULL AND c->>'instructor' <> '' THEN ' · ' || (c->>'instructor') ELSE '' END, 'size', 'xs', 'color', '#8E8E93', 'margin', 'xs')
+                                jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(c->>'classroom', ''), '未指定地點') || CASE WHEN COALESCE(c->>'instructor', '') <> '' THEN ' · ' || COALESCE(c->>'instructor', '') ELSE '' END, 'size', 'xs', 'color', '#8E8E93', 'margin', 'xs')
                             )
                         )
                     )
                 )) INTO course_bubbles
                 FROM (
                     SELECT c FROM jsonb_array_elements(v_courses) AS c
-                    WHERE COALESCE((c->>'day_of_week')::INT, 0) = today_weekday
-                    ORDER BY c->>'start_time' ASC
+                    WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = today_weekday
+                    ORDER BY COALESCE(c->>'startTime', c->>'start_time') ASC
                 ) sub_c;
             ELSE
                 courses_count := 0;
@@ -938,21 +949,23 @@ BEGIN
 
             IF course_bubbles IS NULL THEN
                 course_bubbles := jsonb_build_array(
-                    jsonb_build_object('type', 'text', 'text', '今日無排定課程', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                    jsonb_build_object('type', 'text', 'text', '今日無排定課程喵 🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
                 );
             END IF;
 
             IF jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
                 SELECT COUNT(*) INTO todos_count
                 FROM jsonb_array_elements(v_todos) AS t
-                WHERE COALESCE((t->>'is_completed')::BOOLEAN, false) = false
+                WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
                   AND (
-                      (NULLIF(t->>'start_date', '') IS NOT NULL AND NULLIF(t->>'due_date', '') IS NOT NULL
-                       AND today_date >= ((t->>'start_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date
-                       AND today_date <= ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date)
+                      (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NOT NULL 
+                       AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                       AND today_date_str >= LEFT(COALESCE(t->>'startDate', t->>'start_date'), 10)
+                       AND today_date_str <= LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10))
                       OR
-                      (NULLIF(t->>'start_date', '') IS NULL AND NULLIF(t->>'due_date', '') IS NOT NULL
-                       AND ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date = today_date)
+                      (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NULL 
+                       AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                       AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) = today_date_str)
                   );
 
                 SELECT jsonb_agg(jsonb_build_object(
@@ -981,21 +994,23 @@ BEGIN
                             'paddingTop', '2px',
                             'paddingBottom', '2px',
                             'contents', jsonb_build_array(
-                                jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(t->>'custom_category_name', ''), COALESCE(t->>'category', '待辦')), 'size', 'xxs', 'color', '#8E8E93')
+                                jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(t->>'customCategoryName', ''), NULLIF(t->>'custom_category_name', ''), COALESCE(t->>'category', '待辦')), 'size', 'xxs', 'color', '#8E8E93')
                             )
                         )
                     )
                 )) INTO todo_bubbles
                 FROM (
                     SELECT t FROM jsonb_array_elements(v_todos) AS t
-                    WHERE COALESCE((t->>'is_completed')::BOOLEAN, false) = false
+                    WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
                       AND (
-                          (NULLIF(t->>'start_date', '') IS NOT NULL AND NULLIF(t->>'due_date', '') IS NOT NULL
-                           AND today_date >= ((t->>'start_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date
-                           AND today_date <= ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date)
+                          (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NOT NULL 
+                           AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                           AND today_date_str >= LEFT(COALESCE(t->>'startDate', t->>'start_date'), 10)
+                           AND today_date_str <= LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10))
                           OR
-                          (NULLIF(t->>'start_date', '') IS NULL AND NULLIF(t->>'due_date', '') IS NOT NULL
-                           AND ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date = today_date)
+                          (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NULL 
+                           AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+                           AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) = today_date_str)
                       )
                     ORDER BY CASE COALESCE(t->>'priority', 'medium') WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
                     LIMIT 4
@@ -1007,7 +1022,7 @@ BEGIN
 
             IF todo_bubbles IS NULL THEN
                 todo_bubbles := jsonb_build_array(
-                    jsonb_build_object('type', 'text', 'text', '全部待辦事項皆已完成', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                    jsonb_build_object('type', 'text', 'text', '全部待辦事項皆已完成 ✨', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
                 );
             END IF;
 
@@ -1016,7 +1031,7 @@ BEGIN
             footer_time_str := 'Campus · 晨間簡報 ' || LPAD(cfg.push_hour::text, 2, '0') || ':' || LPAD(cfg.push_minute::text, 2, '0');
 
             week_info_bubbles := jsonb_build_array(
-                jsonb_build_object('type', 'text', 'text', '• 本週後續剩餘堂數：' || remaining_courses_count || ' 堂', 'size', 'xs', 'color', '#3C3C43')
+                jsonb_build_object('type', 'text', 'text', '• 本週後續剩餘堂數：' || remaining_courses_count || ' 堂課', 'size', 'xs', 'color', '#3C3C43')
             );
 
             body_contents := jsonb_build_array(
@@ -1117,21 +1132,29 @@ BEGIN
 
         -- ====================================================================
         -- 階段 2：晚間六點推播 (Evening 18:00 Briefing：花費 + 剩餘待辦)
-        -- 規則：若今日待辦事項全數完成，無論平日或假日皆不推播！
+        -- 規則 1：假日 (週六、週日) 晚上自動不推播！
+        -- 規則 2：若今日待辦事項全數完成，無論平日或假日晚上皆不推播！
         -- ====================================================================
         is_evening_due := COALESCE(cfg.evening_push_enabled, true)
             AND (cfg.last_evening_sent_date IS NULL OR cfg.last_evening_sent_date <> today_date_str)
             AND (current_hour > COALESCE(cfg.evening_push_hour, 18) OR (current_hour = COALESCE(cfg.evening_push_hour, 18) AND current_minute >= COALESCE(cfg.evening_push_minute, 0)));
 
+        -- 假日 (週六、週日) 晚上不推播
+        IF today_weekday IN (6, 7) THEN
+            is_evening_due := false;
+        END IF;
+
         IF is_evening_due THEN
             -- 計算今天尚未完成的待辦任務總數
             SELECT COUNT(*) INTO uncompleted_today_todos_count
             FROM jsonb_array_elements(v_todos) AS t
-            WHERE COALESCE((t->>'is_completed')::BOOLEAN, false) = false
+            WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
               AND (
-                  (NULLIF(t->>'due_date', '') IS NOT NULL AND ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date <= today_date)
+                  (NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL 
+                   AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) <= today_date_str)
                   OR
-                  (NULLIF(t->>'start_date', '') IS NOT NULL AND today_date >= ((t->>'start_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date)
+                  (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NOT NULL 
+                   AND today_date_str >= LEFT(COALESCE(t->>'startDate', t->>'start_date'), 10))
               );
 
             -- 關鍵邏輯：若今日所有待辦事項皆已完成（計數為 0），晚上自動靜音不打擾！
@@ -1146,12 +1169,12 @@ BEGIN
                 INTO today_expense_sum, today_expense_count
                 FROM jsonb_array_elements(v_accounting) AS tx
                 WHERE tx->>'type' = 'expense'
-                  AND ((tx->>'date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date = today_date;
+                  AND LEFT(COALESCE(tx->>'date', ''), 10) = today_date_str;
 
                 -- 計算明天課表堂數
                 SELECT COUNT(*) INTO tomorrow_courses_count
                 FROM jsonb_array_elements(v_courses) AS c
-                WHERE COALESCE((c->>'day_of_week')::INT, 0) = tomorrow_weekday;
+                WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = tomorrow_weekday;
 
                 -- 構建晚間推播未完成待辦清單
                 SELECT jsonb_agg(jsonb_build_object(
@@ -1175,11 +1198,13 @@ BEGIN
                 )) INTO todo_bubbles
                 FROM (
                     SELECT t FROM jsonb_array_elements(v_todos) AS t
-                    WHERE COALESCE((t->>'is_completed')::BOOLEAN, false) = false
+                    WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
                       AND (
-                          (NULLIF(t->>'due_date', '') IS NOT NULL AND ((t->>'due_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date <= today_date)
+                          (NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL 
+                           AND LEFT(COALESCE(t->>'dueDate', t->>'due_date'), 10) <= today_date_str)
                           OR
-                          (NULLIF(t->>'start_date', '') IS NOT NULL AND today_date >= ((t->>'start_date')::timestamptz AT TIME ZONE 'Asia/Taipei')::date)
+                          (NULLIF(COALESCE(t->>'startDate', t->>'start_date'), '') IS NOT NULL 
+                           AND today_date_str >= LEFT(COALESCE(t->>'startDate', t->>'start_date'), 10))
                       )
                     ORDER BY CASE COALESCE(t->>'priority', 'medium') WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END
                     LIMIT 4
@@ -1197,8 +1222,8 @@ BEGIN
                                 'layout', 'vertical',
                                 'backgroundColor', '#FFFFFF',
                                 'paddingAll', '20px',
-                                'contents', jsonb_build_array(
-                                    jsonb_build_object('type', 'text', 'text', 'CAMPUS EVENING BRIEFING', 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                                'contents', jsonb_array_elements(jsonb_build_array(
+                                    jsonb_build_object('type', 'text', 'text', 'CAMPUS EVENING BRIEFING · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
                                     jsonb_build_object('type', 'text', 'text', '🌆 晚間叮嚀與收支總結', 'size', 'lg', 'weight', 'bold', 'color', '#1C1C1E', 'margin', 'xs'),
                                     jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
                                     -- 今日支出區塊
@@ -1215,7 +1240,7 @@ BEGIN
                                         )
                                     ),
                                     jsonb_build_object('type', 'text', 'text', '⚠️ 尚未完成的待辦事項 (' || uncompleted_today_todos_count || ' 項)', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg')
-                                ) || COALESCE(todo_bubbles, jsonb_build_array()) || jsonb_build_array(
+                                )) || COALESCE(todo_bubbles, jsonb_build_array()) || jsonb_build_array(
                                     jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
                                     jsonb_build_object('type', 'text', 'text', '📚 明日課表預告：共 ' || tomorrow_courses_count || ' 堂課，提早收拾書包早點休息喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'md', 'wrap', true)
                                 )
@@ -1271,7 +1296,362 @@ BEGIN
                 WHERE user_id = cfg.user_id;
             END IF;
         END IF;
+
+        -- ====================================================================
+        -- 階段 3：待辦事項到期前 LINE 提醒 (Todo Deadline Reminders)
+        -- ====================================================================
+        IF COALESCE(cfg.todo_reminder_enabled, true) AND jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+            FOR todo_rec IN
+                SELECT t FROM jsonb_array_elements(v_todos) AS t
+                WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false
+                  AND NULLIF(COALESCE(t->>'dueDate', t->>'due_date'), '') IS NOT NULL
+            LOOP
+                v_todo_id := todo_rec->>'id';
+                IF v_todo_id IS NULL OR v_todo_id = '' THEN
+                    CONTINUE;
+                END IF;
+
+                -- 若此待辦已經發過提醒，略過不重發
+                IF COALESCE(cfg.reminded_todo_ids, '[]'::jsonb) ? v_todo_id THEN
+                    CONTINUE;
+                END IF;
+
+                v_reminder_advance := COALESCE(todo_rec->>'reminderAdvance', todo_rec->>'reminder_advance', '1d');
+                IF v_reminder_advance = 'none' THEN
+                    CONTINUE;
+                END IF;
+
+                BEGIN
+                    v_due_date_str := COALESCE(todo_rec->>'dueDate', todo_rec->>'due_date');
+                    IF length(v_due_date_str) = 10 THEN
+                        v_due_ts := (v_due_date_str || ' 23:59:59')::timestamp;
+                    ELSE
+                        v_due_ts := (v_due_date_str)::timestamptz AT TIME ZONE 'Asia/Taipei';
+                    END IF;
+                EXCEPTION WHEN OTHERS THEN
+                    CONTINUE;
+                END;
+
+                v_should_remind := false;
+                IF v_reminder_advance = 'due' THEN
+                    v_should_remind := (today_date_str = LEFT(v_due_date_str, 10));
+                ELSIF v_reminder_advance = '1h' THEN
+                    v_should_remind := (now_tw >= (v_due_ts - INTERVAL '1 hour') AND now_tw <= v_due_ts);
+                ELSIF v_reminder_advance = '3h' THEN
+                    v_should_remind := (now_tw >= (v_due_ts - INTERVAL '3 hours') AND now_tw <= v_due_ts);
+                ELSIF v_reminder_advance = '1d' THEN
+                    v_should_remind := (now_tw >= (v_due_ts - INTERVAL '1 day') AND now_tw <= v_due_ts);
+                ELSIF v_reminder_advance = '2d' THEN
+                    v_should_remind := (now_tw >= (v_due_ts - INTERVAL '2 days') AND now_tw <= v_due_ts);
+                ELSIF v_reminder_advance = '3d' THEN
+                    v_should_remind := (now_tw >= (v_due_ts - INTERVAL '3 days') AND now_tw <= v_due_ts);
+                END IF;
+
+                IF v_should_remind THEN
+                    v_advance_label := CASE v_reminder_advance
+                        WHEN 'due' THEN '當天到期'
+                        WHEN '1h' THEN '1 小時前提醒'
+                        WHEN '3h' THEN '3 小時前提醒'
+                        WHEN '1d' THEN '1 天前提醒'
+                        WHEN '2d' THEN '2 天前提醒'
+                        WHEN '3d' THEN '3 天前提醒'
+                        ELSE '即將到期'
+                    END;
+
+                    v_priority_label := CASE COALESCE(todo_rec->>'priority', 'medium')
+                        WHEN 'high' THEN '高'
+                        WHEN 'medium' THEN '中'
+                        ELSE '低'
+                    END;
+
+                    flex_messages := jsonb_build_array(
+                        jsonb_build_object(
+                            'type', 'flex',
+                            'altText', '⏰ 待辦事項即將到期提醒：' || COALESCE(todo_rec->>'title', '待辦任務'),
+                            'contents', jsonb_build_object(
+                                'type', 'bubble',
+                                'size', 'mega',
+                                'body', jsonb_build_object(
+                                    'type', 'box',
+                                    'layout', 'vertical',
+                                    'backgroundColor', '#FFFFFF',
+                                    'paddingAll', '20px',
+                                    'contents', jsonb_build_array(
+                                        jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                                        jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒！', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
+                                        jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
+                                        jsonb_build_object(
+                                            'type', 'box',
+                                            'layout', 'vertical',
+                                            'backgroundColor', '#FEF2F2',
+                                            'cornerRadius', '12px',
+                                            'paddingAll', '14px',
+                                            'margin', 'md',
+                                            'spacing', 'xs',
+                                            'contents', jsonb_build_array(
+                                                jsonb_build_object('type', 'text', 'text', COALESCE(todo_rec->>'title', '待辦事項'), 'size', 'md', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
+                                                jsonb_build_object('type', 'text', 'text', '📅 到期時間：' || LEFT(replace(v_due_date_str, 'T', ' '), 16), 'size', 'xs', 'color', '#B91C1C', 'margin', 'xs'),
+                                                jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：' || v_advance_label || ' · 優先級：' || v_priority_label, 'size', 'xs', 'color', '#7F1D1D')
+                                            )
+                                        ),
+                                        jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                                    )
+                                ),
+                                'footer', jsonb_build_object(
+                                    'type', 'box',
+                                    'layout', 'vertical',
+                                    'paddingTop', '10px',
+                                    'paddingBottom', '16px',
+                                    'paddingStart', '20px',
+                                    'paddingEnd', '20px',
+                                    'backgroundColor', '#FFFFFF',
+                                    'contents', jsonb_build_array(
+                                        jsonb_build_object(
+                                            'type', 'button',
+                                            'action', jsonb_build_object('type', 'message', 'label', '查看待辦事項', 'text', '查詢待辦事項'),
+                                            'style', 'primary',
+                                            'color', '#DC2626',
+                                            'height', 'sm'
+                                        ),
+                                        jsonb_build_object('type', 'text', 'text', 'Campus · 個人化待辦專屬提醒', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
+                                    )
+                                )
+                            )
+                        )
+                    );
+
+                    IF v_target_uid LIKE 'U%' AND length(v_target_uid) >= 25 THEN
+                        target_url := 'https://api.line.me/v2/bot/message/push';
+                        flex_payload := jsonb_build_object('to', v_target_uid, 'messages', flex_messages);
+                    ELSE
+                        target_url := 'https://api.line.me/v2/bot/message/broadcast';
+                        flex_payload := jsonb_build_object('messages', flex_messages);
+                    END IF;
+
+                    PERFORM net.http_post(
+                        url := target_url,
+                        headers := jsonb_build_object(
+                            'Content-Type', 'application/json',
+                            'Authorization', 'Bearer ' || v_token
+                        ),
+                        body := flex_payload
+                    );
+
+                    -- 記錄此待辦已提醒，防止一分鐘後重複發送
+                    UPDATE public.line_bot_settings
+                    SET reminded_todo_ids = COALESCE(reminded_todo_ids, '[]'::jsonb) || jsonb_build_array(v_todo_id),
+                        updated_at = now()
+                    WHERE user_id = cfg.user_id;
+                END IF;
+            END LOOP;
+        END IF;
+
     END LOOP;
+END;
+$$;
+
+-- 雲端測試個人化卡片 RPC
+CREATE OR REPLACE FUNCTION public.test_push_briefing_card(
+    p_recipient_id TEXT,
+    p_type TEXT DEFAULT 'morning'
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_clean_uid TEXT := trim(p_recipient_id);
+    cfg RECORD;
+    v_token TEXT;
+    v_courses JSONB;
+    v_todos JSONB;
+    v_accounting JSONB;
+    now_tw TIMESTAMP;
+    today_date_str TEXT;
+    today_weekday INT;
+    tomorrow_weekday INT;
+    date_str TEXT;
+    weekday_str TEXT;
+    header_title TEXT;
+    summary_text TEXT;
+    courses_count INT := 0;
+    todos_count INT := 0;
+    tomorrow_courses_count INT := 0;
+    today_expense_sum NUMERIC := 0;
+    today_expense_count INT := 0;
+    course_bubbles JSONB;
+    todo_bubbles JSONB;
+    body_contents JSONB;
+    flex_messages JSONB;
+    target_url TEXT;
+    flex_payload JSONB;
+BEGIN
+    SELECT * INTO cfg FROM public.line_bot_settings WHERE user_id = v_clean_uid LIMIT 1;
+    IF cfg IS NULL THEN
+        SELECT * INTO cfg FROM public.line_bot_settings WHERE user_id LIKE 'U%' LIMIT 1;
+    END IF;
+
+    v_token := public.get_cloud_line_token(v_clean_uid);
+    IF v_token = '' THEN
+        RETURN jsonb_build_object('ok', false, 'error', 'No LINE Channel Access Token available');
+    END IF;
+
+    now_tw := now() AT TIME ZONE 'Asia/Taipei';
+    today_date_str := to_char(now_tw, 'YYYY-MM-DD');
+    today_weekday := CASE EXTRACT(DOW FROM now_tw) WHEN 0 THEN 7 ELSE EXTRACT(DOW FROM now_tw)::INT END;
+    tomorrow_weekday := (today_weekday % 7) + 1;
+    date_str := to_char(now_tw, 'FMMM"月"FMDD"日"');
+    weekday_str := CASE today_weekday
+        WHEN 1 THEN '星期一' WHEN 2 THEN '星期二' WHEN 3 THEN '星期三'
+        WHEN 4 THEN '星期四' WHEN 5 THEN '星期五' WHEN 6 THEN '星期六' ELSE '星期日' END;
+    header_title := date_str || ' ' || weekday_str;
+
+    v_courses := COALESCE(cfg.courses_data, '[]'::jsonb);
+    v_todos := COALESCE(cfg.todos_data, '[]'::jsonb);
+    v_accounting := COALESCE(cfg.accounting_data, '[]'::jsonb);
+
+    IF p_type = 'morning' THEN
+        IF jsonb_typeof(v_courses) = 'array' AND jsonb_array_length(v_courses) > 0 THEN
+            SELECT COUNT(*) INTO courses_count FROM jsonb_array_elements(v_courses) AS c
+            WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = today_weekday;
+
+            SELECT jsonb_agg(jsonb_build_object(
+                'type', 'box', 'layout', 'horizontal', 'margin', 'md', 'spacing', 'md',
+                'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'width', '3px', 'backgroundColor', COALESCE(NULLIF(c->>'colorHex', ''), NULLIF(c->>'color_hex', ''), '#007AFF'), 'cornerRadius', '2px', 'contents', jsonb_build_array(jsonb_build_object('type', 'text', 'text', ' ', 'size', 'xxs'))),
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'flex', 1, 'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'box', 'layout', 'horizontal', 'contents', jsonb_build_array(
+                            jsonb_build_object('type', 'text', 'text', COALESCE(c->>'name', '課程'), 'weight', 'bold', 'size', 'sm', 'color', '#1C1C1E', 'wrap', true),
+                            jsonb_build_object('type', 'text', 'text', COALESCE(c->>'startTime', c->>'start_time', '') || ' - ' || COALESCE(c->>'endTime', c->>'end_time', ''), 'size', 'xs', 'color', '#8E8E93', 'align', 'end')
+                        )),
+                        jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(c->>'classroom', ''), '未指定地點') || CASE WHEN COALESCE(c->>'instructor', '') <> '' THEN ' · ' || COALESCE(c->>'instructor', '') ELSE '' END, 'size', 'xs', 'color', '#8E8E93', 'margin', 'xs')
+                    ))
+                )
+            )) INTO course_bubbles
+            FROM (SELECT c FROM jsonb_array_elements(v_courses) AS c WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = today_weekday ORDER BY COALESCE(c->>'startTime', c->>'start_time') ASC) sub_c;
+        END IF;
+
+        IF course_bubbles IS NULL THEN
+            course_bubbles := jsonb_build_array(jsonb_build_object('type', 'text', 'text', '今日無排定課程喵 🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm'));
+        END IF;
+
+        IF jsonb_typeof(v_todos) = 'array' AND jsonb_array_length(v_todos) > 0 THEN
+            SELECT COUNT(*) INTO todos_count FROM jsonb_array_elements(v_todos) AS t
+            WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false;
+
+            SELECT jsonb_agg(jsonb_build_object(
+                'type', 'box', 'layout', 'horizontal', 'margin', 'md', 'spacing', 'md',
+                'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'width', '8px', 'height', '8px', 'cornerRadius', '4px', 'backgroundColor', CASE COALESCE(t->>'priority', 'medium') WHEN 'high' THEN '#FF3B30' WHEN 'medium' THEN '#FF9500' ELSE '#34C759' END, 'contents', jsonb_build_array(jsonb_build_object('type', 'text', 'text', ' ', 'size', 'xxs'))),
+                    jsonb_build_object('type', 'text', 'text', COALESCE(t->>'title', '待辦事項'), 'size', 'sm', 'color', '#1C1C1E', 'flex', 1, 'wrap', true),
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#F2F2F7', 'cornerRadius', '4px', 'paddingStart', '6px', 'paddingEnd', '6px', 'paddingTop', '2px', 'paddingBottom', '2px', 'contents', jsonb_build_array(jsonb_build_object('type', 'text', 'text', COALESCE(NULLIF(t->>'customCategoryName', ''), NULLIF(t->>'custom_category_name', ''), COALESCE(t->>'category', '待辦')), 'size', 'xxs', 'color', '#8E8E93')))
+                )
+            )) INTO todo_bubbles
+            FROM (SELECT t FROM jsonb_array_elements(v_todos) AS t WHERE COALESCE((COALESCE(t->>'isCompleted', t->>'is_completed'))::BOOLEAN, false) = false LIMIT 4) sub_t;
+        END IF;
+
+        IF todo_bubbles IS NULL THEN
+            todo_bubbles := jsonb_build_array(jsonb_build_object('type', 'text', 'text', '全部待辦事項皆已完成 ✨', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm'));
+        END IF;
+
+        summary_text := courses_count || ' 堂課 · ' || todos_count || ' 項待辦';
+        body_contents := jsonb_build_array(
+            jsonb_build_object('type', 'text', 'text', 'CAMPUS BRIEFING (測試) · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+            jsonb_build_object('type', 'box', 'layout', 'horizontal', 'margin', 'xs', 'contents', jsonb_build_array(
+                jsonb_build_object('type', 'text', 'text', header_title, 'size', 'xl', 'weight', 'bold', 'color', '#1C1C1E', 'flex', 1),
+                jsonb_build_object('type', 'text', 'text', summary_text, 'size', 'xs', 'color', '#8E8E93', 'align', 'end', 'gravity', 'bottom')
+            )),
+            jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
+            jsonb_build_object('type', 'text', 'text', '今日課表', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg')
+        ) || course_bubbles || jsonb_build_array(
+            jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
+            jsonb_build_object('type', 'text', 'text', '今日待辦', 'size', 'xs', 'weight', 'bold', 'color', '#8E8E93', 'margin', 'lg')
+        ) || todo_bubbles;
+
+        flex_messages := jsonb_build_array(jsonb_build_object(
+            'type', 'flex',
+            'altText', '【測試】Campus 晨間簡報：' || header_title,
+            'contents', jsonb_build_object(
+                'type', 'bubble', 'size', 'mega',
+                'body', jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFFFFF', 'paddingAll', '20px', 'contents', body_contents),
+                'footer', jsonb_build_object('type', 'box', 'layout', 'vertical', 'paddingTop', '10px', 'paddingBottom', '16px', 'paddingStart', '20px', 'paddingEnd', '20px', 'backgroundColor', '#FFFFFF', 'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'button', 'action', jsonb_build_object('type', 'message', 'label', '確認今日日程', 'text', '已確認今日日程'), 'style', 'primary', 'color', '#007AFF', 'height', 'sm'),
+                    jsonb_build_object('type', 'text', 'text', 'Campus · 晨間專屬測試推播', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
+                ))
+            )
+        ));
+    ELSIF p_type = 'evening' THEN
+        SELECT COALESCE(SUM((tx->>'amount')::NUMERIC), 0), COUNT(*) INTO today_expense_sum, today_expense_count
+        FROM jsonb_array_elements(v_accounting) AS tx WHERE tx->>'type' = 'expense' AND LEFT(COALESCE(tx->>'date', ''), 10) = today_date_str;
+
+        SELECT COUNT(*) INTO tomorrow_courses_count FROM jsonb_array_elements(v_courses) AS c
+        WHERE COALESCE((COALESCE(c->>'dayOfWeek', c->>'day_of_week'))::INT, 0) = tomorrow_weekday;
+
+        flex_messages := jsonb_build_array(jsonb_build_object(
+            'type', 'flex',
+            'altText', '【測試】Campus 晚間叮嚀：今日支出 $' || today_expense_sum || ' 元',
+            'contents', jsonb_build_object(
+                'type', 'bubble', 'size', 'mega',
+                'body', jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFFFFF', 'paddingAll', '20px', 'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'text', 'text', 'CAMPUS EVENING BRIEFING (測試) · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                    jsonb_build_object('type', 'text', 'text', '🌆 晚間叮嚀與收支總結', 'size', 'lg', 'weight', 'bold', 'color', '#1C1C1E', 'margin', 'xs'),
+                    jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFF7ED', 'cornerRadius', '12px', 'paddingAll', '12px', 'margin', 'md', 'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', '💰 今日累計花費', 'size', 'xs', 'color', '#C2410C', 'weight', 'bold'),
+                        jsonb_build_object('type', 'text', 'text', '$ ' || today_expense_sum || ' 元 (' || today_expense_count || ' 筆記帳)', 'size', 'xl', 'weight', 'bold', 'color', '#EA580C', 'margin', 'xs')
+                    )),
+                    jsonb_build_object('type', 'separator', 'margin', 'lg', 'color', '#E5E5EA'),
+                    jsonb_build_object('type', 'text', 'text', '📚 明日課表預告：共 ' || tomorrow_courses_count || ' 堂課，提早收拾書包早點休息喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'md', 'wrap', true)
+                )),
+                'footer', jsonb_build_object('type', 'box', 'layout', 'vertical', 'paddingTop', '10px', 'paddingBottom', '16px', 'paddingStart', '20px', 'paddingEnd', '20px', 'backgroundColor', '#FFFFFF', 'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'button', 'action', jsonb_build_object('type', 'message', 'label', '前往完成待辦', 'text', '查詢待辦事項'), 'style', 'primary', 'color', '#EA580C', 'height', 'sm'),
+                    jsonb_build_object('type', 'text', 'text', 'Campus · 晚間 18:00 專屬推播測試', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
+                ))
+            )
+        ));
+    ELSE
+        flex_messages := jsonb_build_array(jsonb_build_object(
+            'type', 'flex',
+            'altText', '【測試】⏰ 待辦事項即將到期提醒：期中專案報告與作業繳交',
+            'contents', jsonb_build_object(
+                'type', 'bubble', 'size', 'mega',
+                'body', jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FFFFFF', 'paddingAll', '20px', 'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'text', 'text', 'CAMPUS TASK ALERT (測試) · ' || COALESCE(cfg.user_name, '同學'), 'size', 'xxs', 'weight', 'bold', 'color', '#8E8E93'),
+                    jsonb_build_object('type', 'text', 'text', '⏰ 待辦事項即將到期提醒！', 'size', 'lg', 'weight', 'bold', 'color', '#DC2626', 'margin', 'xs'),
+                    jsonb_build_object('type', 'separator', 'margin', 'md', 'color', '#E5E5EA'),
+                    jsonb_build_object('type', 'box', 'layout', 'vertical', 'backgroundColor', '#FEF2F2', 'cornerRadius', '12px', 'paddingAll', '14px', 'margin', 'md', 'spacing', 'xs', 'contents', jsonb_build_array(
+                        jsonb_build_object('type', 'text', 'text', '期中專案報告與作業繳交', 'size', 'md', 'weight', 'bold', 'color', '#991B1B', 'wrap', true),
+                        jsonb_build_object('type', 'text', 'text', '📅 到期時間：' || today_date_str || ' 23:59', 'size', 'xs', 'color', '#B91C1C', 'margin', 'xs'),
+                        jsonb_build_object('type', 'text', 'text', '⚠️ 提醒設定：1 天前提醒 · 優先級：高', 'size', 'xs', 'color', '#7F1D1D')
+                    )),
+                    jsonb_build_object('type', 'text', 'text', '請記得提早準備繳交或複習，加油喵！🐾', 'size', 'xs', 'color', '#8E8E93', 'margin', 'sm')
+                )),
+                'footer', jsonb_build_object('type', 'box', 'layout', 'vertical', 'paddingTop', '10px', 'paddingBottom', '16px', 'paddingStart', '20px', 'paddingEnd', '20px', 'backgroundColor', '#FFFFFF', 'contents', jsonb_build_array(
+                    jsonb_build_object('type', 'button', 'action', jsonb_build_object('type', 'message', 'label', '查看待辦事項', 'text', '查詢待辦事項'), 'style', 'primary', 'color', '#DC2626', 'height', 'sm'),
+                    jsonb_build_object('type', 'text', 'text', 'Campus · 到期專屬測試推播', 'size', 'xxs', 'color', '#C7C7CC', 'align', 'center', 'margin', 'md')
+                ))
+            )
+        ));
+    END IF;
+
+    IF v_clean_uid LIKE 'U%' AND length(v_clean_uid) >= 25 THEN
+        target_url := 'https://api.line.me/v2/bot/message/push';
+        flex_payload := jsonb_build_object('to', v_clean_uid, 'messages', flex_messages);
+    ELSE
+        target_url := 'https://api.line.me/v2/bot/message/broadcast';
+        flex_payload := jsonb_build_object('messages', flex_messages);
+    END IF;
+
+    PERFORM net.http_post(
+        url := target_url,
+        headers := jsonb_build_object(
+            'Content-Type', 'application/json',
+            'Authorization', 'Bearer ' || v_token
+        ),
+        body := flex_payload
+    );
+
+    RETURN jsonb_build_object('ok', true, 'type', p_type, 'recipient', v_clean_uid);
 END;
 $$;
 

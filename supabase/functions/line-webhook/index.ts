@@ -173,8 +173,24 @@ Deno.serve(async (req: Request) => {
             type: "action",
             action: {
               type: "message",
-              label: "⏰ 測試晨報推播",
-              text: "測試推播",
+              label: "☀️ 測試晨報推播",
+              text: "測試晨報推播",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "🌆 測試晚報推播",
+              text: "測試晚報推播",
+            },
+          },
+          {
+            type: "action",
+            action: {
+              type: "message",
+              label: "⏰ 待辦到期提醒",
+              text: "待辦到期提醒",
             },
           },
           {
@@ -225,14 +241,39 @@ Deno.serve(async (req: Request) => {
             `🐾 快速綁定課表分享碼：\n\n` +
             `請直接回覆您的 6 碼分享碼（例如：CAMP88 或 綁定 CAMP88）。\n` +
             `系統會在收到後 1 秒內為您自動綁定每日晨報！`;
-        } else if (eventType === "message" && (messageText.includes("測試推播") || messageText.includes("測試"))) {
+        } else if (
+          eventType === "message" &&
+          (messageText.includes("晨報") || messageText === "測試推播" || messageText === "測試晨報推播")
+        ) {
+          await supabase.rpc("test_push_briefing_card", {
+            p_recipient_id: lineUserId,
+            p_type: "morning",
+          });
           replyMessage =
-            `🔔 叮咚！這是來自 Campus 可樂管家的推播測試！\n\n` +
-            `👤 您好 ${displayName}，您的 LINE 推播連線完全正常！\n` +
-            (matchedShareCode
-              ? `🔗 目前綁定課表：【${matchedShareCode}】\n`
-              : `⚠️ 尚未綁定課表，請傳送 6 碼分享碼進行綁定！\n`) +
-            `每日晨報將在設定時間準時送達，祝您學習順心！🐾`;
+            `☀️ 晨間課表簡報卡片已為您發送！\n\n` +
+            `包含今日所有課堂時段、待辦進度與本週剩餘課程統計，請查看上方訊息卡片喵！🐾`;
+        } else if (
+          eventType === "message" &&
+          (messageText.includes("晚報") || messageText === "測試晚報推播")
+        ) {
+          await supabase.rpc("test_push_briefing_card", {
+            p_recipient_id: lineUserId,
+            p_type: "evening",
+          });
+          replyMessage =
+            `🌆 晚間叮嚀與收支總結卡片已為您發送！\n\n` +
+            `包含今日累計花費、尚未完成之待辦提醒與明日課表預告喵！🐾`;
+        } else if (
+          eventType === "message" &&
+          (messageText.includes("提醒") || messageText === "待辦到期提醒")
+        ) {
+          await supabase.rpc("test_push_briefing_card", {
+            p_recipient_id: lineUserId,
+            p_type: "reminder",
+          });
+          replyMessage =
+            `⏰ 待辦到期提醒專屬卡片已為您發送！\n\n` +
+            `系統將依據您在 App 設定的提醒天數／時數提早推送專屬卡片通知喵！🐾`;
         } else if (
           eventType === "message" &&
           (messageText.includes("狀態") || messageText.includes("查詢綁定"))
@@ -242,7 +283,7 @@ Deno.serve(async (req: Request) => {
             `👤 暱稱：${displayName}\n` +
             `🆔 LINE User ID：${lineUserId}\n` +
             (matchedShareCode
-              ? `🔗 已綁定課表分享碼：【${matchedShareCode}】\n✅ 每日晨報：已啟用`
+              ? `🔗 已綁定課表分享碼：【${matchedShareCode}】\n✅ 每日晨報：已啟用\n✅ 晚間推播：已啟用\n✅ 待辦到期提醒：已啟用`
               : `⚠️ 尚未綁定課表分享碼\n💡 請直接回覆 6 碼分享碼（如 CAMP88）即可立刻綁定！`);
         } else if (
           eventType === "message" &&

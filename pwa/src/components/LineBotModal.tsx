@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import {
   bindLineFollower,
   sendTestLineMessage,
+  sendPersonalizedBriefingTest,
   saveUserLineBotPushSettings,
 } from '../services/supabase';
 import {
@@ -16,6 +17,9 @@ import {
   ExternalLink,
   ShieldCheck,
   Sparkles,
+  Sun,
+  Moon,
+  BellRing,
 } from 'lucide-react';
 
 interface LineBotModalProps {
@@ -24,7 +28,7 @@ interface LineBotModalProps {
 }
 
 export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) => {
-  const { currentUser, settings, updateSettings, courses, todos } = useApp();
+  const { currentUser, settings, updateSettings, courses, todos, transactions } = useApp();
 
   const userKey = currentUser ? currentUser.id : 'device_local';
   const shareCode = currentUser ? currentUser.shareCode : settings.shareCode;
@@ -34,8 +38,11 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
   const [pushHour, setPushHour] = useState(settings.linePushHour ?? 7);
   const [pushMinute, setPushMinute] = useState(settings.linePushMinute ?? 0);
   const [isEnabled, setIsEnabled] = useState(settings.isLinePushEnabled ?? true);
+  const [isEveningEnabled, setIsEveningEnabled] = useState(settings.lineEveningPushEnabled ?? true);
+  const [isTodoReminderEnabled, setIsTodoReminderEnabled] = useState(settings.lineTodoReminderEnabled ?? true);
 
   const [isLoading, setIsLoading] = useState(false);
+  const [testingType, setTestingType] = useState<'morning' | 'evening' | 'reminder' | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isSuccess, setIsSuccess] = useState(false);
 
@@ -63,29 +70,32 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
     }
   };
 
-  const handleSendTest = async () => {
+  const handleTestBriefing = async (type: 'morning' | 'evening' | 'reminder') => {
     if (!lineUserId) {
       setIsSuccess(false);
       setStatusMessage('請先綁定 LINE User ID！');
       return;
     }
 
-    setIsLoading(true);
+    setTestingType(type);
     setStatusMessage(null);
     try {
-      const res = await sendTestLineMessage(
-        lineUserId,
-        `🐾 哈囉 ${userName}！這是來自可樂管家專屬您的獨立推播測試！\n您的課表代碼為【${shareCode}】\n每日晨報將在每天早上 ${String(pushHour).padStart(2, '0')}:${String(pushMinute).padStart(2, '0')} 準時為您發送！`
-      );
+      const res = await sendPersonalizedBriefingTest(lineUserId, type, {
+        userName,
+        courses,
+        todos,
+        transactions,
+      });
       if (res.ok) {
         setIsSuccess(true);
-        setStatusMessage('測試訊息已成功發送至您的 LINE，請查看聊天室！');
+        const nameMap = { morning: '晨間課表簡報卡片', evening: '晚間收支叮嚀卡片', reminder: '待辦到期提醒卡片' };
+        setStatusMessage(`🎉 ${nameMap[type]} 已成功發送至您的 LINE，請查看聊天室！`);
       } else {
         setIsSuccess(false);
         setStatusMessage(res.error ? `推播失敗：${res.error}` : '推播失敗，請確認 Supabase 雲端 Token 是否正常');
       }
     } finally {
-      setIsLoading(false);
+      setTestingType(null);
     }
   };
 
@@ -97,6 +107,8 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
         linePushHour: pushHour,
         linePushMinute: pushMinute,
         isLinePushEnabled: isEnabled,
+        lineEveningPushEnabled: isEveningEnabled,
+        lineTodoReminderEnabled: isTodoReminderEnabled,
       });
 
       const ok = await saveUserLineBotPushSettings(
@@ -108,7 +120,12 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
         pushMinute,
         isEnabled,
         courses,
-        todos
+        todos,
+        isEveningEnabled,
+        settings.lineEveningPushHour ?? 18,
+        settings.lineEveningPushMinute ?? 0,
+        transactions,
+        isTodoReminderEnabled
       );
 
       setIsSuccess(true);
@@ -257,16 +274,44 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
           </div>
         </div>
 
-        {/* Actions */}
-        <div className="mt-5 space-y-2">
-          <button
-            onClick={handleSendTest}
-            disabled={isLoading || !lineUserId}
-            className="w-full py-3 rounded-xl bg-calico-cream dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-200 font-extrabold text-xs flex items-center justify-center space-x-1.5 border border-black/10 dark:border-white/10 hover:bg-black/5 active:scale-95 transition-all disabled:opacity-40"
-          >
-            <Send className="w-3.5 h-3.5" />
-            <span>發送單人測試推播至我的 LINE</span>
-          </button>
+        {/* Actions & Card Tests */}
+        <div className="mt-5 space-y-2.5">
+          <div className="p-3 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-2">
+            <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400 block">
+              即時預覽與測試個人化卡片：
+            </span>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleTestBriefing('morning')}
+                disabled={testingType !== null || !lineUserId}
+                className="py-2.5 px-2 rounded-xl bg-calico-orange/15 text-calico-orange font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-calico-orange/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <Sun className={`w-3.5 h-3.5 ${testingType === 'morning' ? 'animate-spin' : ''}`} />
+                <span>{testingType === 'morning' ? '發送中...' : '測試晨報'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTestBriefing('evening')}
+                disabled={testingType !== null || !lineUserId}
+                className="py-2.5 px-2 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400 font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-orange-500/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <Moon className={`w-3.5 h-3.5 ${testingType === 'evening' ? 'animate-spin' : ''}`} />
+                <span>{testingType === 'evening' ? '發送中...' : '測試晚報'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => handleTestBriefing('reminder')}
+                disabled={testingType !== null || !lineUserId}
+                className="py-2.5 px-2 rounded-xl bg-red-500/15 text-red-600 dark:text-red-400 font-bold text-[11px] flex flex-col items-center justify-center space-y-1 hover:bg-red-500/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <BellRing className={`w-3.5 h-3.5 ${testingType === 'reminder' ? 'animate-spin' : ''}`} />
+                <span>{testingType === 'reminder' ? '發送中...' : '到期提醒'}</span>
+              </button>
+            </div>
+          </div>
 
           <button
             onClick={handleSaveSettings}

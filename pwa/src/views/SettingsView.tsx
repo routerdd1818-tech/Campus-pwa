@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext';
 import {
   bindLineFollower,
   sendTestLineMessage,
+  saveUserLineBotPushSettings,
+  sendPersonalizedBriefingTest,
   resetSupabaseClient,
   publishSharedSchedule,
   fetchSharedScheduleByCode,
@@ -120,6 +122,7 @@ export const SettingsView: React.FC = () => {
   const [isTodoReminderEnabled, setIsTodoReminderEnabled] = useState(settings.lineTodoReminderEnabled ?? true);
   const [isClaimingLineId, setIsClaimingLineId] = useState(false);
   const [isSendingTestPush, setIsSendingTestPush] = useState(false);
+  const [testingBriefingType, setTestingBriefingType] = useState<'morning' | 'evening' | 'reminder' | null>(null);
 
   // 4. Class Periods
   const [periods, setPeriods] = useState<ClassPeriod[]>(classPeriods && classPeriods.length > 0 ? classPeriods : DEFAULT_CLASS_PERIODS);
@@ -216,6 +219,28 @@ export const SettingsView: React.FC = () => {
       theme,
     });
     resetSupabaseClient(supabaseUrl, supabaseAnonKey);
+
+    // 同步更新 Supabase line_bot_settings 個人化排程與快照
+    const userKey = currentUser ? currentUser.id : 'device_local';
+    if (lineUserId) {
+      await saveUserLineBotPushSettings(
+        userKey,
+        lineUserId,
+        shareCode,
+        ownerName,
+        pushHour,
+        pushMinute,
+        isLinePushEnabled,
+        courses,
+        todos,
+        isEveningPushEnabled,
+        settings.lineEveningPushHour ?? 18,
+        settings.lineEveningPushMinute ?? 0,
+        transactions,
+        isTodoReminderEnabled
+      );
+    }
+
     showNotification('✅ 所有設定、課表節次與自訂稱呼已成功儲存！');
   };
 
@@ -246,7 +271,7 @@ export const SettingsView: React.FC = () => {
     }
   };
 
-  // 💬 Send Test Push
+  // 💬 Send Test Push (Text)
   const handleSendTestPush = async () => {
     if (!lineUserId) {
       showNotification('請先填入或自動認領 LINE User ID！');
@@ -265,6 +290,31 @@ export const SettingsView: React.FC = () => {
       }
     } finally {
       setIsSendingTestPush(false);
+    }
+  };
+
+  // 💌 Send Personalized Flex Card Test
+  const handleSendTestBriefing = async (type: 'morning' | 'evening' | 'reminder') => {
+    if (!lineUserId) {
+      showNotification('請先填入或自動認領 LINE User ID！');
+      return;
+    }
+    setTestingBriefingType(type);
+    try {
+      const res = await sendPersonalizedBriefingTest(lineUserId, type, {
+        userName: ownerName,
+        courses,
+        todos,
+        transactions,
+      });
+      if (res.ok) {
+        const nameMap = { morning: '晨間課表簡報卡片', evening: '晚間收支叮嚀卡片', reminder: '待辦到期提醒卡片' };
+        showNotification(`🎉 ${nameMap[type]} 已成功發送至您的 LINE，請查看聊天室！`);
+      } else {
+        showNotification(res.error ? `推播失敗：${res.error}` : '推播失敗，請確認 LINE Token 設定');
+      }
+    } finally {
+      setTestingBriefingType(null);
     }
   };
 
@@ -1081,15 +1131,39 @@ export const SettingsView: React.FC = () => {
               <UserCheck className="w-3.5 h-3.5" />
               <span>{isClaimingLineId ? '尋找新好友中...' : '一鍵自動認領 LINE ID'}</span>
             </button>
+          </div>
 
-            <button
-              onClick={handleSendTestPush}
-              disabled={isSendingTestPush || !lineUserId}
-              className="py-2 px-3 rounded-xl bg-calico-orange/15 text-calico-orange text-xs font-bold flex items-center justify-center space-x-1 hover:bg-calico-orange/25 active:scale-95 transition-all disabled:opacity-40"
-            >
-              <Send className="w-3.5 h-3.5" />
-              <span>測試推播</span>
-            </button>
+          {/* 3 Real Flex Card Test Buttons */}
+          <div className="space-y-1.5 pt-1">
+            <label className="block text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
+              發送真實個人化卡片測試（點擊後直接於 LINE 聊天室呈現）：
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => handleSendTestBriefing('morning')}
+                disabled={testingBriefingType !== null || !lineUserId}
+                className="py-2 px-2 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-amber-500/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span>{testingBriefingType === 'morning' ? '發送中...' : '☀️ 測試晨報'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendTestBriefing('evening')}
+                disabled={testingBriefingType !== null || !lineUserId}
+                className="py-2 px-2 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-purple-500/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span>{testingBriefingType === 'evening' ? '發送中...' : '🌆 測試晚報'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleSendTestBriefing('reminder')}
+                disabled={testingBriefingType !== null || !lineUserId}
+                className="py-2 px-2 rounded-xl bg-rose-500/15 text-rose-600 dark:text-rose-400 text-xs font-black flex items-center justify-center space-x-1 hover:bg-rose-500/25 active:scale-95 transition-all disabled:opacity-40"
+              >
+                <span>{testingBriefingType === 'reminder' ? '發送中...' : '⏰ 到期提醒'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Webhook & Setup Guide Accordion */}
