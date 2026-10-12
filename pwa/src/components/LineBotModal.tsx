@@ -193,7 +193,7 @@ export const LineBotModal: React.FC<LineBotModalProps> = ({ isOpen, onClose }) =
         {/* Step 1 & Step 2 Buttons */}
         <div className="mt-4 space-y-2.5">
           <a
-            href="https://line.me/R/ti/p/@2011715565"
+            href="https://line.me/R/ti/p/@112mlifa"
             target="_blank"
             rel="noreferrer"
             className="w-full py-3 px-4 rounded-xl bg-[#06C755] text-white font-extrabold flex items-center justify-center space-x-2 shadow-sm hover:brightness-105 active:scale-95 transition-all text-xs"
