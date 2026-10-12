@@ -139,6 +139,27 @@ ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS peer_rating 
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS peer_feedback TEXT DEFAULT '';
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS is_shared_with_friends BOOLEAN DEFAULT true;
 ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS meal_type TEXT DEFAULT '';
+ALTER TABLE public.accounting_transactions ADD COLUMN IF NOT EXISTS device_id TEXT DEFAULT '';
+
+-- 4.5 行事曆活動與跨日連續彩帶資料表 (calendar_events)
+CREATE TABLE IF NOT EXISTS public.calendar_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id TEXT DEFAULT '',
+    title TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    start_time TEXT,
+    end_time TEXT,
+    is_all_day BOOLEAN DEFAULT true,
+    color_hex TEXT DEFAULT '#E67E22',
+    category TEXT DEFAULT '活動',
+    notes TEXT DEFAULT '',
+    is_shared_with_friends BOOLEAN DEFAULT true,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.calendar_events ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "Allow all operations on calendar_events for anon" ON public.calendar_events;
+CREATE POLICY "Allow all operations on calendar_events for anon" ON public.calendar_events FOR ALL USING (true) WITH CHECK (true);
 
 -- 5. 分期付款資料表 (accounting_installments)
 CREATE TABLE IF NOT EXISTS public.accounting_installments (

@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Transaction } from '../types';
 import { useApp } from '../context/AppContext';
+import { toUUID } from '../services/supabase';
 import { X, Wallet, Tag, CreditCard, Sparkles, Plus, Check, Palette, GripVertical, Pencil, Trash2, ArrowUp, ArrowDown, ChevronLeft, Settings2 } from 'lucide-react';
 import {
   CategoryIcon,
@@ -19,6 +21,7 @@ const QUICK_AMOUNTS = [50, 80, 100, 150, 200, 500, 1000];
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, onSave }) => {
   const { customExpenseCategories, customIncomeCategories, addCustomCategory, updateCustomCategory, reorderCustomCategories, deleteCustomCategory } = useApp();
+  const scrollRef = useRef<HTMLDivElement>(null);
 
   const [type, setType] = useState<'expense' | 'income'>('expense');
   const [amount, setAmount] = useState<string>('');
@@ -56,6 +59,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       setNewCatIcon('utensils-crossed');
       setIsManagingCategories(false);
       setEditingCatId(null);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
     }
   }, [isOpen, customExpenseCategories]);
 
@@ -127,7 +133,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     };
 
     onSave({
-      id: `tx_${Date.now()}`,
+      id: toUUID(`tx_${Date.now()}_${Math.random()}`),
       amount: numAmount,
       type,
       categoryName: catObj.name,
@@ -142,11 +148,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
-        {/* Header */}
-        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Fixed Non-Scrolling Header */}
+        <div className="shrink-0 p-4 sm:p-5 border-b border-black/5 dark:border-white/5 flex items-center justify-between bg-white dark:bg-calico-darkCard">
           <div className="flex items-center space-x-2">
             <div className="p-2 rounded-2xl bg-calico-orange/15 text-calico-orange">
               <Wallet className="w-5 h-5" />
@@ -168,9 +174,11 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-          {/* Expense / Income Toggle */}
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5">
+        {/* Scrollable Form Body */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-10 sm:pb-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Expense / Income Toggle */}
+            <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5">
             <button
               type="button"
               onClick={() => {
@@ -216,7 +224,6 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
                 type="number"
                 step="any"
                 required
-                autoFocus
                 placeholder="0"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
@@ -637,7 +644,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             儲存收支記錄
           </button>
         </form>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

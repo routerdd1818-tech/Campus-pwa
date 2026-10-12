@@ -1,6 +1,8 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Course, DayOfWeek } from '../types';
 import { useApp } from '../context/AppContext';
+import { toUUID } from '../services/supabase';
 import { X, Trash2, Clock, MapPin, User, BookOpen, Sparkles } from 'lucide-react';
 
 interface CourseModalProps {
@@ -68,6 +70,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     return PERIOD_PRESETS;
   }, [classPeriods]);
 
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [classroom, setClassroom] = useState('');
@@ -97,6 +100,9 @@ export const CourseModal: React.FC<CourseModalProps> = ({
         .filter((p) => p.start >= st && p.end <= et)
         .map((p) => p.label);
       setSelectedPeriodLabels(matched);
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
     }
   }, [isOpen, course, defaultDay, defaultStartTime, defaultEndTime, presets]);
 
@@ -107,7 +113,7 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     if (!name.trim()) return;
 
     onSave({
-      id: course?.id || `course_${Date.now()}`,
+      id: course?.id || toUUID(`course_${Date.now()}_${Math.random()}`),
       name: name.trim(),
       code: code.trim(),
       classroom: classroom.trim(),
@@ -147,11 +153,11 @@ export const CourseModal: React.FC<CourseModalProps> = ({
     setSelectedPeriodLabels([]);
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-5 sm:p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6 overflow-x-hidden">
-        {/* Sticky Header */}
-        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Fixed Non-Scrolling Header */}
+        <div className="shrink-0 p-4 sm:p-5 border-b border-black/5 dark:border-white/5 flex items-center justify-between bg-white dark:bg-calico-darkCard">
           <h3 className="text-lg font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-2">
             <BookOpen className="w-5 h-5 text-calico-orange" />
             <span>{course ? '編輯課程' : '新增課程'}</span>
@@ -164,7 +170,9 @@ export const CourseModal: React.FC<CourseModalProps> = ({
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {/* Scrollable Form Body */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-10 sm:pb-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* Course Name */}
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
@@ -378,7 +386,9 @@ export const CourseModal: React.FC<CourseModalProps> = ({
             </button>
           </div>
         </form>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import {
   Timer,
@@ -85,8 +86,8 @@ export const FocusPomodoroModal: React.FC<FocusPomodoroModalProps> = ({ isOpen, 
   const totalSeconds = mode === 'work' ? 25 * 60 : 5 * 60;
   const progressPercent = Math.round(((totalSeconds - timeLeft) / totalSeconds) * 100);
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6 relative overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
@@ -239,6 +240,7 @@ export const FocusPomodoroModal: React.FC<FocusPomodoroModalProps> = ({ isOpen, 
           </span>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Course, ClassPeriod } from '../types';
 import { callGeminiOcrGateway, getGeminiApiKey, saveGeminiApiKey } from '../services/supabase';
 import { useApp } from '../context/AppContext';
@@ -127,10 +128,11 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
 
   useEffect(() => {
     if (isOpen) {
+      setApiKeyInput('');
       getGeminiApiKey().then((k) => {
-        if (k) {
-          setApiKeyInput(k);
+        if (k && k.trim().length > 0) {
           setHasStoredKey(true);
+          setShowKeyConfig(false);
         } else {
           setHasStoredKey(false);
           setShowKeyConfig(true);
@@ -277,8 +279,8 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-lg bg-white dark:bg-calico-darkCard rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
           <div className="flex items-center space-x-2">
@@ -327,7 +329,11 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
                 type="password"
                 value={apiKeyInput}
                 onChange={(e) => setApiKeyInput(e.target.value)}
-                placeholder="貼上您的 Gemini API Key (AIzaSy...)"
+                placeholder={
+                  hasStoredKey
+                    ? '••••••••••••••••••••（已安全加密隱藏）'
+                    : '貼上您的 Gemini API Key (AIzaSy...)'
+                }
                 className="flex-1 px-3 py-1.5 rounded-xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-xs font-mono"
               />
               <button
@@ -491,6 +497,7 @@ export const OcrModal: React.FC<OcrModalProps> = ({ isOpen, onClose, onImportCou
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

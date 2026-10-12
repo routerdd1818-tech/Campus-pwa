@@ -68,10 +68,13 @@ export const CalendarView: React.FC = () => {
     setEventToEdit,
     savedFriends,
     saveFriendRecord,
+    settings,
+    currentUser,
   } = useApp();
 
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
+  const myShareCode = (currentUser?.shareCode || settings.shareCode || '').toUpperCase();
 
   // Calendar Source Selection (自己行事曆 vs 共同行事曆) & Collapsible State
   const [showMineCalendar, setShowMineCalendar] = useState<boolean>(true);
@@ -83,6 +86,9 @@ export const CalendarView: React.FC = () => {
   // Active friend calculations for shared calendar
   const activeFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
   const friendSchedule = activeFriend?.cachedSchedule;
+  const isViewingSelfAsFriend = Boolean(
+    activeFriend && activeFriend.shareCode && activeFriend.shareCode.toUpperCase() === myShareCode
+  );
 
   const handleRefreshSharedCalendar = async () => {
     if (!activeFriend) return;
@@ -107,15 +113,16 @@ export const CalendarView: React.FC = () => {
     if (showMineCalendar) {
       list = list.concat(calendarEvents);
     }
-    if (showSharedCalendar) {
+    if (showSharedCalendar && !isViewingSelfAsFriend) {
       const friendEvents: CalendarEvent[] = (friendSchedule?.calendarEventsData || []).map((e) => ({
         ...e,
-        notes: e.notes ? `${e.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+        userId: activeFriend?.shareCode,
+        isSharedWithFriends: true,
       }));
       list = list.concat(friendEvents);
     }
     return deduplicateCalendarEvents(list);
-  }, [showMineCalendar, showSharedCalendar, calendarEvents, friendSchedule, activeFriend]);
+  }, [showMineCalendar, showSharedCalendar, isViewingSelfAsFriend, calendarEvents, friendSchedule, activeFriend]);
 
   // Compute displayed todos based on calendar source selection (with deduplication)
   const displayedTodos = useMemo(() => {
@@ -124,17 +131,23 @@ export const CalendarView: React.FC = () => {
       list = list.concat(todos);
     }
     if (showSharedCalendar) {
-      const mySharedTodos = todos.filter((t) => t.isSharedToCalendar);
-      const friendTodos: Todo[] = (friendSchedule?.todosData || [])
-        .filter((t) => t.isSharedToCalendar || (t as any).isSharedWithFriends !== false)
-        .map((t) => ({
-          ...t,
-          notes: t.notes ? `${t.notes} (來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})` : `(來自 ${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
-        }));
-      list = list.concat(mySharedTodos, friendTodos);
+      // If personal calendar is hidden, only show personal shared todos
+      if (!showMineCalendar) {
+        const mySharedTodos = todos.filter((t) => t.isSharedToCalendar);
+        list = list.concat(mySharedTodos);
+      }
+      if (!isViewingSelfAsFriend) {
+        const friendTodos: Todo[] = (friendSchedule?.todosData || [])
+          .filter((t) => t.isSharedToCalendar || (t as any).isSharedWithFriends !== false)
+          .map((t) => ({
+            ...t,
+            userId: activeFriend?.shareCode,
+          }));
+        list = list.concat(friendTodos);
+      }
     }
     return deduplicateTodos(list);
-  }, [showMineCalendar, showSharedCalendar, todos, friendSchedule, activeFriend]);
+  }, [showMineCalendar, showSharedCalendar, isViewingSelfAsFriend, todos, friendSchedule, activeFriend]);
 
   // Compute displayed courses based on calendar source selection (with deduplication)
   const displayedCourses = useMemo(() => {
@@ -142,15 +155,15 @@ export const CalendarView: React.FC = () => {
     if (showMineCalendar) {
       list = list.concat(courses);
     }
-    if (showSharedCalendar) {
+    if (showSharedCalendar && !isViewingSelfAsFriend) {
       const friendCourses = (friendSchedule?.coursesData || []).map((c) => ({
         ...c,
-        name: `${c.name} (${activeFriend?.nickname || activeFriend?.ownerName || '好友'})`,
+        userId: activeFriend?.shareCode,
       }));
       list = list.concat(friendCourses);
     }
     return deduplicateCourses(list);
-  }, [showMineCalendar, showSharedCalendar, courses, friendSchedule, activeFriend]);
+  }, [showMineCalendar, showSharedCalendar, isViewingSelfAsFriend, courses, friendSchedule, activeFriend]);
 
   // Calendar View Mode: Month vs Week
   const [calendarMode, setCalendarMode] = useState<'month' | 'week'>('month');
@@ -477,6 +490,10 @@ export const CalendarView: React.FC = () => {
   const selectedDateSpanItems = useMemo(() => {
     return getAllSpanItemsForDate(selectedDateStr);
   }, [selectedDateStr, displayedCalendarEvents, displayedTodos]);
+
+  const selectedDateEvents = useMemo(() => {
+    return selectedDateSpanItems.filter((item) => item.type === 'event');
+  }, [selectedDateSpanItems]);
 
   const selectedDateCourses = useMemo(() => {
     const sel = new Date(selectedDateStr);
@@ -1347,22 +1364,20 @@ export const CalendarView: React.FC = () => {
         </div>
 
         {/* 4.1 Multi-Day Span Items on Selected Date */}
-        {selectedDateSpanItems.length > 0 && (
+        {selectedDateEvents.length > 0 && (
           <div className="space-y-1.5">
             <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
               <CalendarDays className="w-3.5 h-3.5 text-calico-orange" />
-              <span>進行中的區間行程 ({selectedDateSpanItems.length})</span>
+              <span>進行中的區間行程 ({selectedDateEvents.length})</span>
             </span>
-            {selectedDateSpanItems.map((item) => (
+            {selectedDateEvents.map((item) => (
               <div
                 key={item.id}
                 onClick={() => {
-                  if (item.type === 'event') {
-                    const found = calendarEvents.find((e) => e.id === item.id);
-                    if (found) {
-                      setEventToEdit(found);
-                      setIsEventModalOpen(true);
-                    }
+                  const found = calendarEvents.find((e) => e.id === item.id);
+                  if (found) {
+                    setEventToEdit(found);
+                    setIsEventModalOpen(true);
                   }
                 }}
                 style={{ borderLeftColor: item.colorHex }}
@@ -1370,11 +1385,7 @@ export const CalendarView: React.FC = () => {
               >
                 <div>
                   <div className="flex items-center space-x-2">
-                    {item.type === 'todo' ? (
-                      <CheckSquare className="w-3.5 h-3.5 text-calico-orange" />
-                    ) : (
-                      <Tag className="w-3.5 h-3.5 text-calico-orange" />
-                    )}
+                    <Tag className="w-3.5 h-3.5 text-calico-orange" />
                     <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">{item.title}</span>
                     <span
                       style={{ color: item.colorHex }}

@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Transaction } from '../types';
 import { useApp } from '../context/AppContext';
 import { X, Star, Sparkles, MessageSquareHeart, Check, ThumbsUp } from 'lucide-react';
@@ -87,11 +88,11 @@ export const PeerRatingModal: React.FC<PeerRatingModalProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[120] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Fixed Non-Scrolling Header */}
+        <div className="shrink-0 p-4 sm:p-5 border-b border-black/5 dark:border-white/5 flex items-center justify-between bg-white dark:bg-calico-darkCard">
           <div className="flex items-center space-x-2">
             <div className="p-2 rounded-2xl bg-amber-400/20 text-amber-500">
               <Star className="w-5 h-5 fill-amber-400 stroke-amber-500" />
@@ -112,6 +113,9 @@ export const PeerRatingModal: React.FC<PeerRatingModalProps> = ({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Scrollable Form Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-10 sm:pb-6">
 
         {/* Transaction Info Card */}
         <div className="mt-4 p-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center justify-between">
@@ -259,7 +263,9 @@ export const PeerRatingModal: React.FC<PeerRatingModalProps> = ({
             </div>
           </form>
         )}
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

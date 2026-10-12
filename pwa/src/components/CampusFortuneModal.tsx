@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useApp } from '../context/AppContext';
 import {
   Sparkles,
@@ -138,8 +139,8 @@ export const CampusFortuneModal: React.FC<CampusFortuneModalProps> = ({ isOpen, 
     setTimeout(() => setCopied(false), 2000);
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6 relative overflow-hidden">
         {/* Decorative Top Gradient */}
         <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-amber-400 via-calico-orange to-rose-400" />
@@ -305,6 +306,7 @@ export const CampusFortuneModal: React.FC<CampusFortuneModalProps> = ({ isOpen, 
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };

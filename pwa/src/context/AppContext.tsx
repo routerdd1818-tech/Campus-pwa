@@ -370,22 +370,22 @@ export function deduplicateCourses(list: Course[]): Course[] {
   for (const item of list) {
     if (!item) continue;
     const rawId = String(item.id || '');
-    const uuid = toUUID(rawId);
+    const canonicalId = toUUID(rawId);
     const name = (item.name || '').trim().toLowerCase();
     const fp = `${name}|${item.dayOfWeek}|${item.startTime || ''}`;
 
     if (
       (rawId && seenIds.has(rawId)) ||
-      (uuid && seenIds.has(uuid)) ||
+      (canonicalId && seenIds.has(canonicalId)) ||
       (name && seenFingerprints.has(fp))
     ) {
       continue;
     }
 
     if (rawId) seenIds.add(rawId);
-    if (uuid) seenIds.add(uuid);
+    if (canonicalId) seenIds.add(canonicalId);
     if (name) seenFingerprints.add(fp);
-    result.push(item);
+    result.push({ ...item, id: canonicalId });
   }
   return result;
 }
@@ -399,25 +399,46 @@ export function deduplicateTodos(list: Todo[]): Todo[] {
   for (const item of list) {
     if (!item) continue;
     const rawId = String(item.id || '');
-    const uuid = toUUID(rawId);
+    const canonicalId = toUUID(rawId);
     const title = (item.title || '').trim().toLowerCase();
-    const start = (item.startDate || '').slice(0, 10);
-    const due = (item.dueDate || '').slice(0, 10);
-    const fp = `${title}|${start}|${due}`;
+    let start = '';
+    let due = '';
+    if (item.startDate) {
+      try { start = new Date(item.startDate).toISOString().slice(0, 10); } catch { start = String(item.startDate).slice(0, 10); }
+    }
+    if (item.dueDate) {
+      try { due = new Date(item.dueDate).toISOString().slice(0, 10); } catch { due = String(item.dueDate).slice(0, 10); }
+    }
+
+    const isStarterDemo =
+      rawId === 't_travel' ||
+      rawId === 't1' ||
+      rawId === 't2' ||
+      rawId === 't3' ||
+      rawId.endsWith('_t_travel') ||
+      rawId.endsWith('_t1') ||
+      rawId.endsWith('_t2') ||
+      rawId.endsWith('_t3') ||
+      title.includes('日本東京自由行') ||
+      title.includes('演算法作業二') ||
+      title.includes('作業系統小考範圍') ||
+      title.includes('attention is all you need');
+
+    const fp = isStarterDemo ? `starter_todo|${title}` : `${title}|${start}|${due}`;
 
     const isDuplicate =
       (rawId && seenIds.has(rawId)) ||
-      (uuid && seenIds.has(uuid)) ||
+      (canonicalId && seenIds.has(canonicalId)) ||
       (title && seenFingerprints.has(fp));
 
     if (isDuplicate) {
-      // If duplicate, preserve completion state if one is completed
       if (item.isCompleted) {
         const existing = result.find(
           (r) =>
             r.id === rawId ||
-            toUUID(r.id) === uuid ||
-            (title && `${(r.title || '').trim().toLowerCase()}|${(r.startDate || '').slice(0, 10)}|${(r.dueDate || '').slice(0, 10)}` === fp)
+            r.id === canonicalId ||
+            toUUID(r.id) === canonicalId ||
+            ((r.title || '').trim().toLowerCase() === title)
         );
         if (existing) {
           existing.isCompleted = true;
@@ -427,9 +448,9 @@ export function deduplicateTodos(list: Todo[]): Todo[] {
     }
 
     if (rawId) seenIds.add(rawId);
-    if (uuid) seenIds.add(uuid);
+    if (canonicalId) seenIds.add(canonicalId);
     if (title) seenFingerprints.add(fp);
-    result.push(item);
+    result.push({ ...item, id: canonicalId });
   }
   return result;
 }
@@ -443,17 +464,36 @@ export function deduplicateTransactions(list: Transaction[]): Transaction[] {
   for (const item of list) {
     if (!item) continue;
     const rawId = String(item.id || '');
-    const uuid = toUUID(rawId);
-    const date = (item.date || '').slice(0, 10);
+    const canonicalId = toUUID(rawId);
+    let normDate = '';
+    if (item.date) {
+      try {
+        normDate = new Date(item.date).toISOString().slice(0, 10);
+      } catch {
+        normDate = String(item.date).slice(0, 10);
+      }
+    }
     const amount = Math.round(Number(item.amount) * 100) / 100;
     const notes = (item.notes || '').trim().toLowerCase();
     const cat = (item.categoryName || '').trim().toLowerCase();
     const type = item.type || 'expense';
-    const fp = `${type}|${amount}|${date}|${cat}|${notes}`;
+
+    // Identify starter dummy transactions to prevent duplicates across date shifts
+    const isStarterDemo =
+      notes === '學餐排骨飯 + 綠茶' ||
+      notes === '捷運通學來回' ||
+      rawId === 'tx1' ||
+      rawId === 'tx2' ||
+      rawId.endsWith('_tx1') ||
+      rawId.endsWith('_tx2');
+
+    const fp = isStarterDemo
+      ? `starter_tx|${type}|${amount}|${cat}|${notes}`
+      : `${type}|${amount}|${normDate}|${cat}|${notes}`;
 
     const isDuplicate =
       (rawId && seenIds.has(rawId)) ||
-      (uuid && seenIds.has(uuid)) ||
+      (canonicalId && seenIds.has(canonicalId)) ||
       seenFingerprints.has(fp);
 
     if (isDuplicate) {
@@ -461,8 +501,10 @@ export function deduplicateTransactions(list: Transaction[]): Transaction[] {
         const existing = result.find(
           (r) =>
             r.id === rawId ||
-            toUUID(r.id) === uuid ||
-            `${r.type || 'expense'}|${Math.round(Number(r.amount) * 100) / 100}|${(r.date || '').slice(0, 10)}|${(r.categoryName || '').trim().toLowerCase()}|${(r.notes || '').trim().toLowerCase()}` === fp
+            r.id === canonicalId ||
+            toUUID(r.id) === canonicalId ||
+            (isStarterDemo && `${r.type || 'expense'}|${Math.round(Number(r.amount) * 100) / 100}|${(r.categoryName || '').trim().toLowerCase()}|${(r.notes || '').trim().toLowerCase()}` === `${type}|${amount}|${cat}|${notes}`) ||
+            `${r.type || 'expense'}|${Math.round(Number(r.amount) * 100) / 100}|${(r.categoryName || '').trim().toLowerCase()}|${(r.notes || '').trim().toLowerCase()}` === `${type}|${amount}|${cat}|${notes}`
         );
         if (existing) {
           if (item.peerRating && !existing.peerRating) existing.peerRating = item.peerRating;
@@ -474,9 +516,9 @@ export function deduplicateTransactions(list: Transaction[]): Transaction[] {
     }
 
     if (rawId) seenIds.add(rawId);
-    if (uuid) seenIds.add(uuid);
+    if (canonicalId) seenIds.add(canonicalId);
     seenFingerprints.add(fp);
-    result.push(item);
+    result.push({ ...item, id: canonicalId });
   }
   return result;
 }
@@ -490,24 +532,42 @@ export function deduplicateCalendarEvents(list: CalendarEvent[]): CalendarEvent[
   for (const item of list) {
     if (!item) continue;
     const rawId = String(item.id || '');
-    const uuid = toUUID(rawId);
+    const canonicalId = toUUID(rawId);
     const title = (item.title || '').trim().toLowerCase();
-    const start = (item.startDate || '').slice(0, 10);
-    const end = (item.endDate || '').slice(0, 10);
-    const fp = `${title}|${start}|${end}`;
+    let start = '';
+    let end = '';
+    if (item.startDate) {
+      try { start = new Date(item.startDate).toISOString().slice(0, 10); } catch { start = String(item.startDate).slice(0, 10); }
+    }
+    if (item.endDate) {
+      try { end = new Date(item.endDate).toISOString().slice(0, 10); } catch { end = String(item.endDate).slice(0, 10); }
+    }
+
+    const isStarterDemo =
+      rawId === 'e1' ||
+      rawId === 'e2' ||
+      rawId === 'e3' ||
+      rawId.endsWith('_e1') ||
+      rawId.endsWith('_e2') ||
+      rawId.endsWith('_e3') ||
+      title.includes('期中考週') ||
+      title.includes('秋季露營') ||
+      title.includes('專題期末成果發表');
+
+    const fp = isStarterDemo ? `starter_event|${title}` : `${title}|${start}|${end}`;
 
     if (
       (rawId && seenIds.has(rawId)) ||
-      (uuid && seenIds.has(uuid)) ||
+      (canonicalId && seenIds.has(canonicalId)) ||
       (title && seenFingerprints.has(fp))
     ) {
       continue;
     }
 
     if (rawId) seenIds.add(rawId);
-    if (uuid) seenIds.add(uuid);
+    if (canonicalId) seenIds.add(canonicalId);
     if (title) seenFingerprints.add(fp);
-    result.push(item);
+    result.push({ ...item, id: canonicalId });
   }
   return result;
 }
@@ -812,14 +872,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 2. Switch active ref
     activeUserIdRef.current = newUid;
 
-    // 3. Load next user's data from their scoped storage
+    // 3. Load next user's data from their scoped storage (cloud sync will fetch and merge latest real data)
     const rawCourses = localStorage.getItem(getScopedKey(newUid, 'courses'));
     if (rawCourses) {
       setCourses(deduplicateCourses(JSON.parse(rawCourses)));
-    } else if (newUid) {
-      const starter = deduplicateCourses(INITIAL_COURSES.map((c) => ({ ...c, id: `c_${newUid}_${c.id}`, userId: newUid })));
-      setCourses(starter);
-      localStorage.setItem(getScopedKey(newUid, 'courses'), JSON.stringify(starter));
     } else {
       setCourses([]);
     }
@@ -827,10 +883,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rawTodos = localStorage.getItem(getScopedKey(newUid, 'todos'));
     if (rawTodos) {
       setTodos(deduplicateTodos(JSON.parse(rawTodos)));
-    } else if (newUid) {
-      const starter = deduplicateTodos(INITIAL_TODOS.map((t) => ({ ...t, id: `t_${newUid}_${t.id}`, userId: newUid })));
-      setTodos(starter);
-      localStorage.setItem(getScopedKey(newUid, 'todos'), JSON.stringify(starter));
     } else {
       setTodos([]);
     }
@@ -838,10 +890,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rawTx = localStorage.getItem(getScopedKey(newUid, 'transactions'));
     if (rawTx) {
       setTransactions(deduplicateTransactions(JSON.parse(rawTx)));
-    } else if (newUid) {
-      const starter = deduplicateTransactions(INITIAL_TRANSACTIONS.map((tx) => ({ ...tx, id: `tx_${newUid}_${tx.id}`, userId: newUid })));
-      setTransactions(starter);
-      localStorage.setItem(getScopedKey(newUid, 'transactions'), JSON.stringify(starter));
     } else {
       setTransactions([]);
     }
@@ -849,10 +897,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const rawEvents = localStorage.getItem(getScopedKey(newUid, 'calendar_events'));
     if (rawEvents) {
       setCalendarEvents(deduplicateCalendarEvents(JSON.parse(rawEvents)));
-    } else if (newUid) {
-      const starter = deduplicateCalendarEvents(INITIAL_CALENDAR_EVENTS.map((e) => ({ ...e, id: `e_${newUid}_${e.id}`, userId: newUid })));
-      setCalendarEvents(starter);
-      localStorage.setItem(getScopedKey(newUid, 'calendar_events'), JSON.stringify(starter));
     } else {
       setCalendarEvents([]);
     }
@@ -1287,20 +1331,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Actions
   const addCourse = async (course: Course) => {
-    const enriched = { ...course, userId: currentUser?.id || course.userId };
-    setCourses((prev) => deduplicateCourses([...prev, enriched]));
+    const canonicalId = toUUID(course.id || `course_${Date.now()}_${Math.random()}`);
+    const enriched: Course = { ...course, id: canonicalId, userId: currentUser?.id || course.userId };
+    setCourses((prev) => {
+      const next = deduplicateCourses([...prev, enriched]);
+      coursesRef.current = next;
+      syncScheduleToCloud(next, todosRef.current, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await upsertCourseToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
   const updateCourse = async (course: Course) => {
-    const enriched = { ...course, userId: currentUser?.id || course.userId };
-    setCourses((prev) => prev.map((c) => (c.id === enriched.id ? enriched : c)));
+    const canonicalId = toUUID(course.id);
+    const enriched: Course = { ...course, id: canonicalId, userId: currentUser?.id || course.userId };
+    setCourses((prev) => {
+      const next = prev.map((c) => (toUUID(c.id) === canonicalId ? enriched : c));
+      coursesRef.current = next;
+      syncScheduleToCloud(next, todosRef.current, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await upsertCourseToSupabase(enriched, currentUser?.id);
   };
 
   const deleteCourse = async (id: string) => {
-    setCourses((prev) => prev.filter((c) => c.id !== id));
+    const canonicalId = toUUID(id);
+    setCourses((prev) => {
+      const next = prev.filter((c) => toUUID(c.id) !== canonicalId);
+      coursesRef.current = next;
+      syncScheduleToCloud(next, todosRef.current, transactionsRef.current, calendarEventsRef.current);
+      return next;
+    });
     await deleteCourseFromSupabase(id);
   };
 
@@ -1326,7 +1388,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTodo = async (todo: Todo) => {
-    const enriched = { ...todo, userId: currentUser?.id || todo.userId };
+    const canonicalId = toUUID(todo.id || `todo_${Date.now()}_${Math.random()}`);
+    const enriched: Todo = { ...todo, id: canonicalId, userId: currentUser?.id || todo.userId };
     setTodos((prev) => {
       const next = deduplicateTodos([enriched, ...prev]);
       todosRef.current = next;
@@ -1338,9 +1401,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateTodo = async (todo: Todo) => {
-    const enriched = { ...todo, userId: currentUser?.id || todo.userId };
+    const canonicalId = toUUID(todo.id);
+    const enriched: Todo = { ...todo, id: canonicalId, userId: currentUser?.id || todo.userId };
     setTodos((prev) => {
-      const next = prev.map((t) => (t.id === enriched.id ? enriched : t));
+      const next = prev.map((t) => (toUUID(t.id) === canonicalId ? enriched : t));
       todosRef.current = next;
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
@@ -1349,10 +1413,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const toggleTodo = async (id: string) => {
+    const canonicalId = toUUID(id);
     setTodos((prev) => {
       const next = prev.map((t) => {
-        if (t.id === id) {
-          const updated = { ...t, isCompleted: !t.isCompleted, userId: currentUser?.id || t.userId };
+        if (toUUID(t.id) === canonicalId) {
+          const updated: Todo = { ...t, isCompleted: !t.isCompleted, userId: currentUser?.id || t.userId };
           upsertTodoToSupabase(updated, currentUser?.id);
           if (updated.isCompleted) setCatMood('proud');
           return updated;
@@ -1366,8 +1431,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteTodo = async (id: string) => {
+    const canonicalId = toUUID(id);
     setTodos((prev) => {
-      const next = prev.filter((t) => t.id !== id);
+      const next = prev.filter((t) => toUUID(t.id) !== canonicalId);
       todosRef.current = next;
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
@@ -1376,7 +1442,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTransaction = async (t: Transaction) => {
-    const enriched = { ...t, userId: currentUser?.id || t.userId };
+    const canonicalId = toUUID(t.id || `tx_${Date.now()}_${Math.random()}`);
+    const enriched: Transaction = { ...t, id: canonicalId, userId: currentUser?.id || t.userId };
     setTransactions((prev) => {
       const next = deduplicateTransactions([enriched, ...prev]);
       transactionsRef.current = next;
@@ -1389,8 +1456,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteTransaction = async (id: string) => {
+    const canonicalId = toUUID(id);
     setTransactions((prev) => {
-      const next = prev.filter((t) => t.id !== id);
+      const next = prev.filter((t) => toUUID(t.id) !== canonicalId);
       transactionsRef.current = next;
       syncScheduleToCloud(coursesRef.current, todosRef.current, next, calendarEventsRef.current);
       return next;
@@ -1443,7 +1511,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addCalendarEvent = async (e: CalendarEvent) => {
-    const enriched = { ...e, userId: currentUser?.id || e.userId };
+    const canonicalId = toUUID(e.id || `event_${Date.now()}_${Math.random()}`);
+    const enriched: CalendarEvent = { ...e, id: canonicalId, userId: currentUser?.id || e.userId };
     setCalendarEvents((prev) => {
       const next = deduplicateCalendarEvents([...prev, enriched]);
       calendarEventsRef.current = next;
@@ -1455,9 +1524,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateCalendarEvent = async (e: CalendarEvent) => {
-    const enriched = { ...e, userId: currentUser?.id || e.userId };
+    const canonicalId = toUUID(e.id);
+    const enriched: CalendarEvent = { ...e, id: canonicalId, userId: currentUser?.id || e.userId };
     setCalendarEvents((prev) => {
-      const next = prev.map((item) => (item.id === enriched.id ? enriched : item));
+      const next = prev.map((item) => (toUUID(item.id) === canonicalId ? enriched : item));
       calendarEventsRef.current = next;
       syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
       return next;
@@ -1466,8 +1536,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const deleteCalendarEvent = async (id: string) => {
+    const canonicalId = toUUID(id);
     setCalendarEvents((prev) => {
-      const next = prev.filter((item) => item.id !== id);
+      const next = prev.filter((item) => toUUID(item.id) !== canonicalId);
       calendarEventsRef.current = next;
       syncScheduleToCloud(coursesRef.current, todosRef.current, transactionsRef.current, next);
       return next;

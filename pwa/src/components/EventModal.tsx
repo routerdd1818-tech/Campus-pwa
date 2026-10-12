@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { CalendarEvent } from '../types';
+import { toUUID } from '../services/supabase';
 import { X, Calendar, Clock, Tag, FileText, Trash2, Sparkles, Check, Users } from 'lucide-react';
 
 interface EventModalProps {
@@ -45,6 +47,7 @@ export const EventModal: React.FC<EventModalProps> = ({
   onSave,
   onDelete,
 }) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
   const todayStr = new Date().toISOString().slice(0, 10);
 
   const [title, setTitle] = useState('');
@@ -84,6 +87,9 @@ export const EventModal: React.FC<EventModalProps> = ({
         setNotes('');
         setIsSharedWithFriends(true);
       }
+      if (scrollRef.current) {
+        scrollRef.current.scrollTop = 0;
+      }
     }
   }, [isOpen, event, defaultDate, todayStr]);
 
@@ -97,7 +103,7 @@ export const EventModal: React.FC<EventModalProps> = ({
     const finalEndDate = endDate >= startDate ? endDate : startDate;
 
     onSave({
-      id: event?.id || `event_${Date.now()}`,
+      id: event?.id || toUUID(`event_${Date.now()}_${Math.random()}`),
       title: title.trim(),
       startDate,
       endDate: finalEndDate,
@@ -112,11 +118,11 @@ export const EventModal: React.FC<EventModalProps> = ({
     onClose();
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl p-6 shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[92vh] overflow-y-auto pb-32 sm:pb-6">
-        {/* Sticky Header */}
-        <div className="sticky top-0 bg-white dark:bg-calico-darkCard z-10 flex items-center justify-between pb-3 border-b border-black/5 dark:border-white/5">
+  return createPortal(
+    <div className="fixed inset-0 z-[999] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="w-full sm:max-w-md bg-white dark:bg-calico-darkCard rounded-t-3xl sm:rounded-3xl shadow-ios-lg border border-black/5 dark:border-white/10 max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden">
+        {/* Fixed Non-Scrolling Header */}
+        <div className="shrink-0 p-4 sm:p-5 border-b border-black/5 dark:border-white/5 flex items-center justify-between bg-white dark:bg-calico-darkCard">
           <div className="flex items-center space-x-2">
             <div className="p-2 rounded-xl bg-calico-orange/15 text-calico-orange">
               <Calendar className="w-5 h-5" />
@@ -135,8 +141,9 @@ export const EventModal: React.FC<EventModalProps> = ({
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="mt-4 space-y-4">
+        {/* Scrollable Form Body */}
+        <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-10 sm:pb-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
           {/* Title */}
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
@@ -373,7 +380,9 @@ export const EventModal: React.FC<EventModalProps> = ({
             )}
           </div>
         </form>
+        </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
