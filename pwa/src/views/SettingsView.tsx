@@ -652,7 +652,7 @@ export const SettingsView: React.FC = () => {
                 固定自動上傳與雲端同步
               </h3>
               <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400">
-                {nextSyncDisplay}
+                每打開 PWA 自動同步上傳 · {nextSyncDisplay}
               </p>
             </div>
           </div>

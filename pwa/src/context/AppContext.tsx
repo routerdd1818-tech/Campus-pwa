@@ -377,10 +377,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
   // Load from LocalStorage (Scoped strictly per user account)
+  // Load from LocalStorage (Scoped strictly per user account, with fallback for guest / initial session)
   const [courses, setCourses] = useState<Course[]>(() => {
     const uid = initialUser?.id;
-    if (!uid) return [];
-    const saved = localStorage.getItem(getScopedKey(uid, 'courses'));
+    const saved = localStorage.getItem(getScopedKey(uid, 'courses')) || (!uid ? localStorage.getItem('campus_courses') : null);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -389,8 +389,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [todos, setTodos] = useState<Todo[]>(() => {
     const uid = initialUser?.id;
-    if (!uid) return [];
-    const saved = localStorage.getItem(getScopedKey(uid, 'todos'));
+    const saved = localStorage.getItem(getScopedKey(uid, 'todos')) || (!uid ? localStorage.getItem('campus_todos') : null);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -399,8 +398,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [transactions, setTransactions] = useState<Transaction[]>(() => {
     const uid = initialUser?.id;
-    if (!uid) return [];
-    const saved = localStorage.getItem(getScopedKey(uid, 'transactions'));
+    const saved = localStorage.getItem(getScopedKey(uid, 'transactions')) || (!uid ? localStorage.getItem('campus_transactions') : null);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -409,8 +407,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>(() => {
     const uid = initialUser?.id;
-    if (!uid) return [];
-    const saved = localStorage.getItem(getScopedKey(uid, 'calendar_events'));
+    const saved = localStorage.getItem(getScopedKey(uid, 'calendar_events')) || (!uid ? localStorage.getItem('campus_calendar_events') : null);
     if (saved) {
       try { return JSON.parse(saved); } catch {}
     }
@@ -422,9 +419,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const todosRef = useRef(todos);
   todosRef.current = todos;
   const transactionsRef = useRef(transactions);
-  transactionsRef.current = transactions;
   const calendarEventsRef = useRef(calendarEvents);
   calendarEventsRef.current = calendarEvents;
+  const isSyncingRef = useRef(false);
 
   const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>(() => {
     const uid = initialUser?.id;
@@ -491,6 +488,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return loaded;
   });
+
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
 
   // Custom categories state (scoped per user)
   const [customExpenseCategories, setCustomExpenseCategories] = useState<CustomCategory[]>(() => {
@@ -718,10 +718,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Local-first cloud sync (以本機資料為準同步至雲端，避免清空本機資料)
   const syncWithSupabase = async (targetUser?: UserAccount | null) => {
-    if (!navigator.onLine) return;
+    if (!navigator.onLine || isSyncingRef.current) return;
+    isSyncingRef.current = true;
     setIsSyncing(true);
     const activeUser = targetUser !== undefined ? targetUser : currentUser;
     const userKey = activeUser ? activeUser.id : (currentUser?.id || 'guest');
+    const currentSettings = settingsRef.current;
 
     try {
       // 1. 本機資料優先：先將手機上的所有課程、待辦、收支、行事曆推送到 Supabase
@@ -735,10 +737,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await syncAllLocalDataToSupabase(userKey, currentLocalData);
 
       // 同步更新好友分享排程與推播設定
-      if (settings.shareCode) {
+      if (currentSettings.shareCode) {
         publishSharedSchedule({
-          shareCode: settings.shareCode,
-          ownerName: settings.ownerName || '我的課表',
+          shareCode: currentSettings.shareCode,
+          ownerName: currentSettings.ownerName || '我的課表',
           isSharingEnabled: true,
           coursesData: currentLocalData.courses,
           todosData: currentLocalData.todos,
@@ -749,17 +751,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         saveUserLineBotPushSettings(
           userKey,
-          settings.lineUserId || '',
-          settings.shareCode,
-          settings.ownerName || '我的課表',
-          settings.linePushHour ?? 7,
-          settings.linePushMinute ?? 0,
-          settings.isLinePushEnabled ?? true,
+          currentSettings.lineUserId || '',
+          currentSettings.shareCode,
+          currentSettings.ownerName || '我的課表',
+          currentSettings.linePushHour ?? 7,
+          currentSettings.linePushMinute ?? 0,
+          currentSettings.isLinePushEnabled ?? true,
           currentLocalData.courses,
           currentLocalData.todos,
-          settings.lineEveningPushEnabled ?? true,
-          settings.lineEveningPushHour ?? 18,
-          settings.lineEveningPushMinute ?? 0,
+          currentSettings.lineEveningPushEnabled ?? true,
+          currentSettings.lineEveningPushHour ?? 18,
+          currentSettings.lineEveningPushMinute ?? 0,
           currentLocalData.transactions
         ).catch(() => {});
       }
@@ -810,9 +812,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (e) {
       console.warn('Cloud sync error:', e);
     } finally {
+      isSyncingRef.current = false;
       setIsSyncing(false);
     }
   };
+
+  const syncWithSupabaseRef = useRef(syncWithSupabase);
+  syncWithSupabaseRef.current = syncWithSupabase;
 
   const triggerManualUpload = async () => {
     await syncWithSupabase();
@@ -921,30 +927,63 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCalendarEvents([]);
   };
 
-  // Auto-login on startup
+  // 1. 每打開 PWA (初次啟動 / Cold Start) 自動登入並同步上傳本機資料至雲端
   useEffect(() => {
-    const attemptAutoLogin = async () => {
+    let isMounted = true;
+    const attemptAutoLoginAndSync = async () => {
       try {
         const savedCred = localStorage.getItem('campus_auth_cred');
         if (savedCred && !currentUser) {
           const { u, p } = JSON.parse(savedCred);
           if (u && p) {
             const res = await loginUserAccount(u, p);
-            if (res.ok && res.user) {
+            if (res.ok && res.user && isMounted) {
+              switchUserData(res.user);
               setCurrentUserState(res.user);
               localStorage.setItem('campus_auth_session', JSON.stringify(res.user));
-              syncWithSupabase(res.user);
+              await syncWithSupabase(res.user);
               return;
             }
           }
         }
       } catch (err) {
-        console.warn('Auto login exception:', err);
+        console.warn('Auto login startup exception:', err);
       }
-      syncWithSupabase();
+      if (isMounted) {
+        await syncWithSupabase();
+      }
     };
 
-    attemptAutoLogin();
+    attemptAutoLoginAndSync();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // 2. 每次打開 / 返回 PWA (從背景喚醒、iPhone/Android 切換回 APP、分頁可見) 自動上傳同步至雲端
+  useEffect(() => {
+    let lastResumeSyncTime = Date.now();
+
+    const handleAppOpenOrResume = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        const now = Date.now();
+        // 節流保護：至少間隔 15 秒才重複觸發喚醒同步，避免頻繁切換分頁重複洗板
+        if (now - lastResumeSyncTime > 15000) {
+          lastResumeSyncTime = now;
+          syncWithSupabaseRef.current();
+        }
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleAppOpenOrResume);
+    window.addEventListener('pageshow', handleAppOpenOrResume);
+    window.addEventListener('focus', handleAppOpenOrResume);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleAppOpenOrResume);
+      window.removeEventListener('pageshow', handleAppOpenOrResume);
+      window.removeEventListener('focus', handleAppOpenOrResume);
+    };
   }, []);
 
   // Budget calculation
