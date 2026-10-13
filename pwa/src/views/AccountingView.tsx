@@ -1262,12 +1262,12 @@ export const AccountingView: React.FC = () => {
           </div>
 
           {/* Action Row & Category Filters */}
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
             {/* Filter Segmented Control */}
-            <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+            <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold shrink-0">
               <button
                 onClick={() => setFilterType('all')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${
+                className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all ${
                   filterType === 'all'
                     ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -1277,7 +1277,7 @@ export const AccountingView: React.FC = () => {
               </button>
               <button
                 onClick={() => setFilterType('expense')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${
+                className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all ${
                   filterType === 'expense'
                     ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -1287,7 +1287,7 @@ export const AccountingView: React.FC = () => {
               </button>
               <button
                 onClick={() => setFilterType('income')}
-                className={`px-3 py-1.5 rounded-xl transition-all ${
+                className={`px-2.5 py-1 rounded-lg whitespace-nowrap transition-all ${
                   filterType === 'income'
                     ? 'bg-white dark:bg-zinc-800 text-calico-sage shadow-ios-sm'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -1297,22 +1297,22 @@ export const AccountingView: React.FC = () => {
               </button>
             </div>
 
-            <div className="flex items-center space-x-2">
-              {/* 🤝 Collapsible Social Ledger & Debt Button */}
+            <div className="flex items-center space-x-1.5 shrink-0">
+              {/* 🤝 Collapsible Social Ledger & Debt Button (Compact) */}
               <button
                 onClick={() => setIsSocialDebtOpen((prev) => !prev)}
-                className={`flex items-center space-x-1.5 px-3 py-2 rounded-2xl font-bold text-xs shadow-ios-sm active:scale-95 transition-all border ${
+                className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl font-bold text-xs whitespace-nowrap shadow-ios-sm active:scale-95 transition-all border shrink-0 ${
                   isSocialDebtOpen
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-600 shadow-amber-500/20'
                     : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-200 border-black/5 dark:border-white/10 hover:border-amber-400/50'
                 }`}
-                title="展開/收合分帳與借還債務管理"
+                title="展開/收合分帳與借還"
               >
                 <Users className={`w-3.5 h-3.5 ${isSocialDebtOpen ? 'text-white' : 'text-amber-500'}`} />
-                <span>分帳與借還</span>
+                <span>分帳借還</span>
                 {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0) && (
                   <span
-                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                    className={`text-[10px] px-1 py-0.2 rounded-full font-extrabold ${
                       isSocialDebtOpen
                         ? 'bg-white/25 text-white'
                         : 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
@@ -1322,18 +1322,18 @@ export const AccountingView: React.FC = () => {
                   </span>
                 )}
                 <ChevronDown
-                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                  className={`w-3 h-3 transition-transform duration-200 ${
                     isSocialDebtOpen ? 'rotate-180' : ''
                   }`}
                 />
               </button>
 
-              {/* + 記一筆 */}
+              {/* + 記一筆 (Compact) */}
               <button
                 onClick={() => setIsModalOpen(true)}
-                className="flex items-center space-x-1 px-3.5 py-2 rounded-2xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
+                className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs whitespace-nowrap shadow-ios-sm active:scale-95 transition-all hover:brightness-105 shrink-0"
               >
-                <Plus className="w-4 h-4" />
+                <Plus className="w-3.5 h-3.5" />
                 <span>記一筆</span>
               </button>
             </div>
@@ -1897,7 +1897,7 @@ export const AccountingView: React.FC = () => {
                 尚未新增任何好友 🐾
               </h3>
               <p className="text-xs text-calico-cocoa/60 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
-                輸入好友的課表分享代碼（例如 舒舒、榮豐），即可在此即時查閱好友的帳本開銷，並為每筆消費給予 1~5 星評分與反饋！
+                輸入好友的課表分享代碼（例如 小明、阿豪），即可在此即時查閱好友的帳本開銷，並為每筆消費給予 1~5 星評分與反饋！
               </p>
               <button
                 onClick={() => setIsShareModalOpen(true)}

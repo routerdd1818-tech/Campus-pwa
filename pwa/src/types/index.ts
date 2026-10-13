@@ -90,7 +90,7 @@ export interface DebtRecord {
   userId?: string;
   type: DebtType; // 'i_owe' (我欠別人 / 分期 / 借入) | 'they_owe' (別人欠我 / 借出)
   title: string;
-  counterparty: string; // 對象 (如：舒舒、榮豐、國泰世華銀行)
+  counterparty: string; // 對象 (如：小明、阿豪、玉山信用卡)
   totalAmount: number; // 原始金額 / 總借款
   remainingAmount: number; // 剩餘欠款 (還完剩多少)
   isInstallment?: boolean; // 是否為分期付款
@@ -121,7 +121,7 @@ export interface Installment {
 }
 
 export interface SplitPayer {
-  name: string; // 代墊/付款者名稱 (如：我、舒舒)
+  name: string; // 代墊/付款者名稱 (如：我、小明)
   amount: number; // 代墊金額
   paidAmount?: number; // 相容別名
 }

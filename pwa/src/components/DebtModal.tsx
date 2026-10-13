@@ -88,7 +88,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
       return;
     }
     if (!counterparty.trim()) {
-      setErrorMsg('請填寫借還對象（人名或銀行）');
+      setErrorMsg('請填寫往來對象（人名或機構）');
       return;
     }
     if (numAmount <= 0) {
@@ -158,10 +158,10 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
             </div>
             <div>
               <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
-                {debtToEdit ? '編輯債務與借還' : '記一筆債務與借還'}
+                {debtToEdit ? '編輯借還與分期' : '記一筆借還與分期'}
               </h3>
               <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
-                紀錄誰欠誰、分期付款剩餘與還款日期
+                記錄我欠別人或別人欠我 · 分期與還款時間
               </p>
             </div>
           </div>
@@ -197,7 +197,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
                 }`}
               >
                 <ArrowDownRight className="w-4 h-4" />
-                <span>我欠別人 (應還款/分期)</span>
+                <span>我欠別人</span>
               </button>
               <button
                 type="button"
@@ -209,7 +209,7 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
                 }`}
               >
                 <ArrowUpRight className="w-4 h-4" />
-                <span>別人欠我 (應收款/代墊)</span>
+                <span>別人欠我</span>
               </button>
             </div>
           </div>
@@ -262,10 +262,10 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
             </div>
           </div>
 
-          {/* 4. Counterparty (對象) */}
+          {/* 4. Counterparty (往來對象) */}
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              {type === 'i_owe' ? '債權人 (向誰借 / 哪家銀行)' : '債務人 (借給誰 / 誰該還我)'}
+              往來對象 (人名或銀行機構) *
             </label>
             <div className="relative">
               <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-calico-cocoa/40">
@@ -275,15 +275,25 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
                 type="text"
                 value={counterparty}
                 onChange={(e) => setCounterparty(e.target.value)}
-                placeholder="例如：舒舒、榮豐、國泰世華信用卡..."
+                placeholder="例如：小明、室友阿豪、玉山信用卡、學貸分期..."
                 className="w-full pl-9 pr-4 py-2.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800/80 border border-black/10 dark:border-white/10 text-sm font-bold text-calico-cocoa dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
               />
             </div>
-            {/* Quick Friend Chips */}
-            {savedFriends.length > 0 && (
-              <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                <span className="text-[10px] text-calico-cocoa/40 font-bold">點選好友：</span>
-                {savedFriends.map((f) => {
+            {/* Quick Suggested Names Chips */}
+            <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+              <span className="text-[10px] text-calico-cocoa/40 font-bold">範例快捷：</span>
+              {['小明', '室友阿豪', '玉山信用卡', '銀行分期'].map((suggested) => (
+                <button
+                  key={suggested}
+                  type="button"
+                  onClick={() => setCounterparty(suggested)}
+                  className="px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/10 text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-orange transition-colors"
+                >
+                  {suggested}
+                </button>
+              ))}
+              {savedFriends.length > 0 &&
+                savedFriends.map((f) => {
                   const name = f.nickname || f.ownerName || '好友';
                   return (
                     <button
@@ -292,12 +302,11 @@ export const DebtModal: React.FC<DebtModalProps> = ({ isOpen, onClose, debtToEdi
                       onClick={() => setCounterparty(name)}
                       className="px-2 py-0.5 rounded-lg bg-calico-orange/15 text-calico-orange text-[11px] font-bold hover:bg-calico-orange/25 transition-colors"
                     >
-                      {name}
+                      👤 {name}
                     </button>
                   );
                 })}
-              </div>
-            )}
+            </div>
           </div>
 
           {/* 5. Installment Toggle & Options */}

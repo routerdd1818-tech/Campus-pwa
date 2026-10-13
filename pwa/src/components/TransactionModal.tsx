@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Transaction } from '../types';
 import { useApp } from '../context/AppContext';
 import { toUUID } from '../services/supabase';
-import { X, Wallet, Tag, CreditCard, Sparkles, Plus, Check, Palette, GripVertical, Pencil, Trash2, ArrowUp, ArrowDown, ChevronLeft, Settings2 } from 'lucide-react';
+import { X, Wallet, Tag, CreditCard, Sparkles, Plus, Check, Palette, GripVertical, Pencil, Trash2, ArrowUp, ArrowDown, ChevronLeft, Settings2, Calendar } from 'lucide-react';
 import {
   CategoryIcon,
   AVAILABLE_CATEGORY_ICONS,
@@ -24,6 +24,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const [type, setType] = useState<'expense' | 'income'>('expense');
+  const [txDate, setTxDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState<string>('');
   const [categoryName, setCategoryName] = useState<string>('餐飲');
   const [paymentMethod, setPaymentMethod] = useState<string>('LINE Pay');
@@ -48,6 +49,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
   React.useEffect(() => {
     if (isOpen) {
       setType('expense');
+      setTxDate(new Date().toISOString().slice(0, 10));
       setAmount('');
       setCategoryName(customExpenseCategories[0]?.name || '餐飲');
       setPaymentMethod('LINE Pay');
@@ -132,6 +134,10 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       colorHex: '#E67E22',
     };
 
+    const dateObj = new Date();
+    const isToday = txDate === dateObj.toISOString().slice(0, 10);
+    const finalDate = isToday ? dateObj.toISOString() : `${txDate}T12:00:00.000Z`;
+
     onSave({
       id: toUUID(`tx_${Date.now()}_${Math.random()}`),
       amount: numAmount,
@@ -140,7 +146,7 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
       categoryIcon: catObj.icon || 'tag',
       categoryColorHex: catObj.colorHex,
       paymentMethodName: paymentMethod,
-      date: new Date().toISOString(),
+      date: finalDate,
       notes: notes.trim(),
       valueScore: type === 'expense' ? valueScore : undefined,
       isSharedWithFriends: true,
@@ -209,6 +215,37 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             >
               收入 (Income)
             </button>
+          </div>
+
+          {/* 消費日期 (預設今日，點擊可自由選擇過去日期補記帳) */}
+          <div className="flex items-center justify-between p-2.5 px-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5">
+            <div className="flex items-center space-x-2">
+              <Calendar className="w-4 h-4 text-calico-orange" />
+              <span className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400">
+                消費日期
+              </span>
+            </div>
+            <div className="flex items-center space-x-1.5">
+              <input
+                type="date"
+                value={txDate}
+                onChange={(e) => e.target.value && setTxDate(e.target.value)}
+                className="bg-transparent text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none cursor-pointer"
+              />
+              {txDate === new Date().toISOString().slice(0, 10) ? (
+                <span className="text-[10px] px-2 py-0.5 rounded-md bg-calico-orange/15 text-calico-orange font-black">
+                  今日
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setTxDate(new Date().toISOString().slice(0, 10))}
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400 font-bold hover:text-calico-orange hover:bg-calico-orange/15 transition-all"
+                >
+                  回到今日
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Amount Input */}
