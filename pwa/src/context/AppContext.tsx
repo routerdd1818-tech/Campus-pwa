@@ -5,6 +5,8 @@ import {
   Transaction,
   Installment,
   SplitBill,
+  DebtRecord,
+  DebtRepayment,
   UserSettings,
   UserAccount,
   CalendarEvent,
@@ -315,6 +317,16 @@ interface AppContextType {
   updateClassPeriods: (periods: ClassPeriod[]) => void;
   installments: Installment[];
   splitBills: SplitBill[];
+  debts: DebtRecord[];
+  addDebt: (debt: DebtRecord) => void;
+  updateDebt: (debt: DebtRecord) => void;
+  deleteDebt: (id: string) => void;
+  repayDebt: (debtId: string, amount: number, note?: string, date?: string) => void;
+  addSplitBill: (bill: SplitBill) => void;
+  updateSplitBill: (bill: SplitBill) => void;
+  deleteSplitBill: (id: string) => void;
+  settleSplitParticipant: (billId: string, participantOrIndex: string | number) => void;
+  settleEntireSplitBill: (billId: string) => void;
   savedFriends: SavedFriendRecord[];
   settings: UserSettings;
   isSyncing: boolean;
@@ -688,10 +700,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [splitBills, setSplitBills] = useState<SplitBill[]>(() => {
-    const saved = localStorage.getItem('campus_split_bills');
-    return saved ? JSON.parse(saved) : [];
+  const [debts, setDebts] = useState<DebtRecord[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'debts')) || (!uid ? localStorage.getItem('campus_debts') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
   });
+
+  const [splitBills, setSplitBills] = useState<SplitBill[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'split_bills')) || (!uid ? localStorage.getItem('campus_split_bills') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'debts'), JSON.stringify(debts));
+  }, [debts]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'split_bills'), JSON.stringify(splitBills));
+  }, [splitBills]);
 
   const [settings, setSettings] = useState<UserSettings>(() => {
     const uid = initialUser?.id;
@@ -868,6 +903,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(getScopedKey(oldUid, 'custom_expense_cats'), JSON.stringify(customExpenseCategories));
     localStorage.setItem(getScopedKey(oldUid, 'custom_income_cats'), JSON.stringify(customIncomeCategories));
     localStorage.setItem(getScopedKey(oldUid, 'custom_todo_cats'), JSON.stringify(customTodoCategories));
+    localStorage.setItem(getScopedKey(oldUid, 'debts'), JSON.stringify(debts));
+    localStorage.setItem(getScopedKey(oldUid, 'split_bills'), JSON.stringify(splitBills));
 
     // 2. Switch active ref
     activeUserIdRef.current = newUid;
@@ -927,6 +964,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawTodoCats = localStorage.getItem(getScopedKey(newUid, 'custom_todo_cats'));
     setCustomTodoCategories(rawTodoCats ? JSON.parse(rawTodoCats) : DEFAULT_TODO_CATEGORIES);
+
+    const rawDebts = localStorage.getItem(getScopedKey(newUid, 'debts'));
+    setDebts(rawDebts ? JSON.parse(rawDebts) : []);
+
+    const rawSplitBills = localStorage.getItem(getScopedKey(newUid, 'split_bills'));
+    setSplitBills(rawSplitBills ? JSON.parse(rawSplitBills) : []);
 
     const rawSynced = localStorage.getItem(getScopedKey(newUid, 'last_synced_at'));
     setLastSyncedAt(rawSynced || null);
@@ -1546,6 +1589,133 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteCalendarEventFromSupabase(id);
   };
 
+  // --------------------------------------------------------------------------
+  // 🤝 往來債務 (Debts, Loans & Installments)
+  // --------------------------------------------------------------------------
+  const addDebt = (debt: DebtRecord) => {
+    const canonicalId = toUUID(debt.id || `debt_${Date.now()}_${Math.random()}`);
+    const newDebt: DebtRecord = {
+      ...debt,
+      id: canonicalId,
+      userId: currentUser?.id || debt.userId,
+      remainingAmount: debt.remainingAmount !== undefined ? debt.remainingAmount : debt.totalAmount,
+      isSettled: (debt.remainingAmount !== undefined ? debt.remainingAmount : debt.totalAmount) <= 0,
+      repayments: debt.repayments || [],
+      createdAt: debt.createdAt || new Date().toISOString(),
+    };
+    setDebts((prev) => [newDebt, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateDebt = (debt: DebtRecord) => {
+    setDebts((prev) => prev.map((d) => (d.id === debt.id ? debt : d)));
+  };
+
+  const deleteDebt = (id: string) => {
+    setDebts((prev) => prev.filter((d) => d.id !== id));
+  };
+
+  const repayDebt = (debtId: string, amount: number, note?: string, date?: string) => {
+    setDebts((prev) =>
+      prev.map((d) => {
+        if (d.id !== debtId) return d;
+        const repayAmount = Math.max(0, Number(amount));
+        const newRemaining = Math.max(0, d.remainingAmount - repayAmount);
+        const repayment: DebtRepayment = {
+          id: `repay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          date: date || new Date().toISOString(),
+          amount: repayAmount,
+          remainingAfter: newRemaining,
+          notes: note || '',
+        };
+        const nextPaidPeriods = (d.paidPeriods || 0) + 1;
+        return {
+          ...d,
+          remainingAmount: newRemaining,
+          paidPeriods: nextPaidPeriods,
+          isSettled: newRemaining === 0,
+          repayments: [repayment, ...(d.repayments || [])],
+        };
+      })
+    );
+    setCatMood('proud');
+  };
+
+  // --------------------------------------------------------------------------
+  // 👥 多人分帳與代墊款 (Split Bills)
+  // --------------------------------------------------------------------------
+  const addSplitBill = (bill: SplitBill) => {
+    const canonicalId = toUUID(bill.id || `split_${Date.now()}_${Math.random()}`);
+    const newBill: SplitBill = {
+      ...bill,
+      id: canonicalId,
+      userId: currentUser?.id || bill.userId,
+      createdAt: bill.createdAt || new Date().toISOString(),
+    };
+    setSplitBills((prev) => [newBill, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateSplitBill = (bill: SplitBill) => {
+    setSplitBills((prev) => prev.map((b) => (b.id === bill.id ? bill : b)));
+  };
+
+  const deleteSplitBill = (id: string) => {
+    setSplitBills((prev) => prev.filter((b) => b.id !== id));
+  };
+
+  const settleSplitParticipant = (billId: string, participantOrIndex: string | number) => {
+    setSplitBills((prev) =>
+      prev.map((b) => {
+        if (b.id !== billId) return b;
+        let updatedParticipants = [...(b.participants || [])];
+        let updatedSettlements = [...(b.settlements || [])];
+
+        if (typeof participantOrIndex === 'number') {
+          if (updatedSettlements[participantOrIndex]) {
+            const nextStatus = !updatedSettlements[participantOrIndex].isSettled;
+            updatedSettlements[participantOrIndex] = {
+              ...updatedSettlements[participantOrIndex],
+              isSettled: nextStatus,
+            };
+          }
+        } else {
+          updatedParticipants = updatedParticipants.map((p) =>
+            p.name === participantOrIndex ? { ...p, isSettled: !p.isSettled } : p
+          );
+        }
+
+        const allSettlementsSettled = updatedSettlements.length > 0 && updatedSettlements.every((s) => s.isSettled);
+        const allParticipantsSettled = updatedParticipants.length > 0 && updatedParticipants.every((p) => p.isSettled);
+        const isSettled = allSettlementsSettled || allParticipantsSettled;
+
+        return {
+          ...b,
+          participants: updatedParticipants,
+          settlements: updatedSettlements,
+          isSettled,
+        };
+      })
+    );
+    setCatMood('proud');
+  };
+
+  const settleEntireSplitBill = (billId: string) => {
+    setSplitBills((prev) =>
+      prev.map((b) => {
+        if (b.id !== billId) return b;
+        const nextSettled = !b.isSettled;
+        return {
+          ...b,
+          isSettled: nextSettled,
+          participants: (b.participants || []).map((p) => ({ ...p, isSettled: nextSettled })),
+          settlements: (b.settlements || []).map((s) => ({ ...s, isSettled: nextSettled })),
+        };
+      })
+    );
+    setCatMood('proud');
+  };
+
   const saveFriendRecord = (record: SavedFriendRecord) => {
     // 檢查是否有共享行事曆異動 (新增或刪除行程/待辦)
     const existing = savedFriendsRef.current.find(
@@ -1675,6 +1845,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(getScopedKey(uid, 'custom_expense_cats'));
     localStorage.removeItem(getScopedKey(uid, 'custom_income_cats'));
     localStorage.removeItem(getScopedKey(uid, 'custom_todo_cats'));
+    localStorage.removeItem(getScopedKey(uid, 'debts'));
+    localStorage.removeItem(getScopedKey(uid, 'split_bills'));
+    setDebts([]);
+    setSplitBills([]);
   };
 
   return (
@@ -1714,6 +1888,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateClassPeriods,
         installments,
         splitBills,
+        debts,
+        addDebt,
+        updateDebt,
+        deleteDebt,
+        repayDebt,
+        addSplitBill,
+        updateSplitBill,
+        deleteSplitBill,
+        settleSplitParticipant,
+        settleEntireSplitBill,
         savedFriends,
         settings,
         isSyncing,

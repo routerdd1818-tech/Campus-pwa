@@ -75,6 +75,36 @@ export interface Transaction {
   ratedAt?: string; // 評分時間 ISO
 }
 
+export type DebtType = 'i_owe' | 'they_owe';
+
+export interface DebtRepayment {
+  id: string;
+  date: string;
+  amount: number;
+  remainingAfter: number;
+  notes?: string;
+}
+
+export interface DebtRecord {
+  id: string;
+  userId?: string;
+  type: DebtType; // 'i_owe' (我欠別人 / 分期 / 借入) | 'they_owe' (別人欠我 / 借出)
+  title: string;
+  counterparty: string; // 對象 (如：舒舒、榮豐、國泰世華銀行)
+  totalAmount: number; // 原始金額 / 總借款
+  remainingAmount: number; // 剩餘欠款 (還完剩多少)
+  isInstallment?: boolean; // 是否為分期付款
+  totalPeriods?: number; // 總期數 (如 12 期，或單次 1)
+  paidPeriods?: number; // 已繳期數
+  periodAmount?: number; // 每期金額
+  startDate: string; // 借款/分期開始日期
+  dueDate?: string; // 預計還款日期 (什麼時候還)
+  notes?: string;
+  isSettled: boolean; // 是否已結清
+  repayments: DebtRepayment[]; // 還款記錄歷史
+  createdAt?: string;
+}
+
 export interface Installment {
   id: string;
   userId?: string;
@@ -90,16 +120,41 @@ export interface Installment {
   isCompleted: boolean;
 }
 
+export interface SplitPayer {
+  name: string; // 代墊/付款者名稱 (如：我、舒舒)
+  amount: number; // 代墊金額
+  paidAmount?: number; // 相容別名
+}
+
+export interface SplitParticipant {
+  name: string; // 參與分攤者
+  shareAmount: number; // 應付金額
+  owedAmount?: number; // 相容別名
+  isSettled: boolean; // 是否已付清
+}
+
+export interface SplitSettlement {
+  from: string; // 應轉出人 (如：榮豐)
+  to: string; // 應收進人 (如：我)
+  amount: number; // 金額
+  isSettled: boolean; // 是否已結清
+}
+
 export interface SplitBill {
   id: string;
   userId?: string;
-  title: string;
+  title: string; // 活動名稱 (如：火鍋聚餐、宜蘭包棟)
   totalAmount: number;
-  myAmount: number;
-  members: string[];
+  myAmount?: number;
+  members?: string[];
+  payers: SplitPayer[]; // 多人先墊錢
+  participants: SplitParticipant[]; // 多人分錢
+  settlements: SplitSettlement[]; // 智慧計算結算流向
+  splitMode: 'equal' | 'custom'; // 均分 或 自訂金額
   date: string;
   notes?: string;
   isSettled: boolean;
+  createdAt?: string;
 }
 
 export interface UserAccount {

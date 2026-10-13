@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Transaction } from '../types';
+import { Transaction, DebtRecord, SplitBill } from '../types';
 import { TransactionModal } from '../components/TransactionModal';
 import { PeerRatingModal } from '../components/PeerRatingModal';
+import { DebtModal } from '../components/DebtModal';
+import { RepayDebtModal } from '../components/RepayDebtModal';
+import { SplitBillModal } from '../components/SplitBillModal';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Plus,
@@ -11,6 +14,7 @@ import {
   PieChart,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   ArrowUpRight,
   ArrowDownRight,
   BarChart3,
@@ -20,6 +24,14 @@ import {
   Star,
   RefreshCw,
   UserPlus,
+  CheckCircle2,
+  Clock,
+  ArrowRight,
+  DollarSign,
+  Calculator,
+  Receipt,
+  Edit2,
+  CalendarDays,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -221,6 +233,8 @@ export const CategoryPieChart: React.FC<CategoryPieChartProps> = ({
 // ============================================================================
 export const AccountingView: React.FC = () => {
   const {
+    currentUser,
+    settings,
     transactions,
     budgetInfo,
     addTransaction,
@@ -228,6 +242,12 @@ export const AccountingView: React.FC = () => {
     savedFriends,
     saveFriendRecord,
     setIsShareModalOpen,
+    debts,
+    splitBills,
+    deleteDebt,
+    deleteSplitBill,
+    settleSplitParticipant,
+    settleEntireSplitBill,
   } = useApp();
 
   // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
@@ -236,6 +256,71 @@ export const AccountingView: React.FC = () => {
   const [isRefreshingFriend, setIsRefreshingFriend] = useState<boolean>(false);
   const [ratingModalTx, setRatingModalTx] = useState<Transaction | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
+
+  // 🤝 往來帳務 (多人分帳 · 借還 · 分期)
+  const [isSocialDebtOpen, setIsSocialDebtOpen] = useState(false);
+  const [socialDebtTab, setSocialDebtTab] = useState<'splits' | 'debts'>('splits');
+  const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+  const [splitToEdit, setSplitToEdit] = useState<SplitBill | null>(null);
+  const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
+  const [debtToEdit, setDebtToEdit] = useState<DebtRecord | null>(null);
+  const [repayDebtTarget, setRepayDebtTarget] = useState<DebtRecord | null>(null);
+  const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
+  const [expandedDebtHistoryId, setExpandedDebtHistoryId] = useState<string | null>(null);
+
+  // 📅 好友帳本當日消費日期導航
+  const [friendSelectedDate, setFriendSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [friendViewListMode, setFriendViewListMode] = useState<'daily' | 'all'>('daily');
+
+  const handleFriendPrevDay = () => {
+    const d = new Date(friendSelectedDate);
+    d.setDate(d.getDate() - 1);
+    setFriendSelectedDate(d.toISOString().slice(0, 10));
+  };
+
+  const handleFriendNextDay = () => {
+    const d = new Date(friendSelectedDate);
+    d.setDate(d.getDate() + 1);
+    setFriendSelectedDate(d.toISOString().slice(0, 10));
+  };
+
+  const handleFriendToday = () => {
+    setFriendSelectedDate(new Date().toISOString().slice(0, 10));
+  };
+
+  // 🧮 債務與分帳統計 (Debt Stats)
+  const debtStats = useMemo(() => {
+    const activeDebts = (debts || []).filter((d) => !d.isSettled);
+    const iOweDebts = activeDebts.filter((d) => d.type === 'i_owe');
+    const theyOweDebts = activeDebts.filter((d) => d.type === 'they_owe');
+
+    const totalIOwe = iOweDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
+    const totalTheyOwe = theyOweDebts.reduce((sum, d) => sum + d.remainingAmount, 0);
+
+    const activeSplits = (splitBills || []).filter((b) => !b.isSettled);
+    let splitToReceive = 0;
+    let splitToPay = 0;
+    const myName = currentUser?.displayName || settings.ownerName || '我';
+
+    activeSplits.forEach((sb) => {
+      (sb.settlements || []).forEach((st) => {
+        if (!st.isSettled) {
+          if (st.to === myName) splitToReceive += st.amount;
+          if (st.from === myName) splitToPay += st.amount;
+        }
+      });
+    });
+
+    return {
+      totalIOwe,
+      totalTheyOwe,
+      splitToReceive,
+      splitToPay,
+      activeDebtsCount: activeDebts.length,
+      activeSplitsCount: activeSplits.length,
+      netDebt: totalIOwe + splitToPay - (totalTheyOwe + splitToReceive),
+    };
+  }, [debts, splitBills, currentUser, settings.ownerName]);
 
   // Active friend calculations
   const currentFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
@@ -273,12 +358,41 @@ export const AccountingView: React.FC = () => {
     );
   }, [friendSchedule]);
 
+  // 🌟 好友記帳：聚焦於「當日消費」而非總花費
   const friendStats = useMemo(() => {
+    let todayExpense = 0;
+    let todayIncome = 0;
+    let todayRatedCount = 0;
+    let todayTotalRating = 0;
+    const todayCatMap: Record<string, { amount: number; colorHex: string; count: number }> = {};
+
     let totalExpense = 0;
     let totalIncome = 0;
     const catMap: Record<string, { amount: number; colorHex: string; count: number }> = {};
     let ratedCount = 0;
     let totalRating = 0;
+
+    const todayTxs = friendTransactions.filter(
+      (t) => t.date && t.date.slice(0, 10) === friendSelectedDate
+    );
+
+    todayTxs.forEach((t) => {
+      if (t.type === 'expense' || !t.type) {
+        todayExpense += t.amount;
+        if (!todayCatMap[t.categoryName]) {
+          todayCatMap[t.categoryName] = { amount: 0, colorHex: t.categoryColorHex || '#E67E22', count: 0 };
+        }
+        todayCatMap[t.categoryName].amount += t.amount;
+        todayCatMap[t.categoryName].count += 1;
+      } else {
+        todayIncome += t.amount;
+      }
+
+      if (t.peerRating) {
+        todayTotalRating += t.peerRating;
+        todayRatedCount += 1;
+      }
+    });
 
     friendTransactions.forEach((t) => {
       if (t.type === 'expense' || !t.type) {
@@ -298,6 +412,16 @@ export const AccountingView: React.FC = () => {
       }
     });
 
+    const todayCategories = Object.entries(todayCatMap)
+      .map(([name, data]) => ({
+        name,
+        amount: data.amount,
+        colorHex: data.colorHex,
+        count: data.count,
+        percent: todayExpense > 0 ? Math.round((data.amount / todayExpense) * 100) : 0,
+      }))
+      .sort((a, b) => b.amount - a.amount);
+
     const categories = Object.entries(catMap)
       .map(([name, data]) => ({
         name,
@@ -309,6 +433,13 @@ export const AccountingView: React.FC = () => {
       .sort((a, b) => b.amount - a.amount);
 
     return {
+      todayExpense,
+      todayIncome,
+      todayTxCount: todayTxs.length,
+      todayCategories,
+      todayAvgRating: todayRatedCount > 0 ? (todayTotalRating / todayRatedCount).toFixed(1) : null,
+      todayRatedCount,
+      todayTransactions: todayTxs,
       totalExpense,
       totalIncome,
       categories,
@@ -316,7 +447,7 @@ export const AccountingView: React.FC = () => {
       avgRating: ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : null,
       ratedCount,
     };
-  }, [friendTransactions]);
+  }, [friendTransactions, friendSelectedDate]);
 
   const renderPeerRatingBadge = (tx: Transaction) => {
     if (!tx.peerRating) return null;
@@ -886,6 +1017,7 @@ export const AccountingView: React.FC = () => {
           </div>
 
           {/* Monthly KPI Dashboard Cards */}
+          {/* Monthly KPI Dashboard 4 Cards (支出、收入、結餘、債務) */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-4 rounded-3xl bg-gradient-to-br from-rose-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-rose-200/50 dark:border-zinc-700/40 shadow-ios">
               <div className="flex items-center space-x-1.5 text-rose-600 dark:text-rose-400 text-xs font-bold mb-1">
@@ -912,16 +1044,14 @@ export const AccountingView: React.FC = () => {
                 {monthlyStats.income > 0 ? '薪資/生活費已入帳' : '尚未記錄本月收入'}
               </p>
             </div>
-          </div>
 
-          {/* Net Savings & Value Score Summary */}
-          <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex items-center justify-between">
-            <div>
-              <span className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
-                本月淨結餘 (收支差額)
-              </span>
+            <div className="p-4 rounded-3xl bg-gradient-to-br from-sky-50 to-indigo-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-sky-200/50 dark:border-zinc-700/40 shadow-ios">
+              <div className="flex items-center space-x-1.5 text-sky-600 dark:text-sky-400 text-xs font-bold mb-1">
+                <BarChart3 className="w-4 h-4" />
+                <span>本月淨結餘</span>
+              </div>
               <p
-                className={`text-xl font-black mt-0.5 ${
+                className={`text-2xl font-black tracking-tight ${
                   monthlyStats.net >= 0
                     ? 'text-emerald-600 dark:text-emerald-400'
                     : 'text-rose-600 dark:text-rose-400'
@@ -929,19 +1059,42 @@ export const AccountingView: React.FC = () => {
               >
                 {monthlyStats.net >= 0 ? `+$${monthlyStats.net}` : `-$${Math.abs(monthlyStats.net)}`}
               </p>
+              <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
+                {monthlyStats.avgScore ? `理財滿意度 ★ ${monthlyStats.avgScore}分` : '本月儲蓄結餘'}
+              </p>
             </div>
 
-            {monthlyStats.avgScore && (
-              <div className="text-right">
-                <span className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400 block">
-                  支出價值感均分
-                </span>
-                <span className="inline-flex items-center space-x-1 mt-0.5 px-2.5 py-1 rounded-xl bg-calico-orange/15 text-calico-orange font-black text-xs">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>★ {monthlyStats.avgScore} / 10 分</span>
+            {/* Box 4: 往來債務 (待還 / 待收) */}
+            <div
+              onClick={() => {
+                setViewMode('ledger');
+                setIsSocialDebtOpen(true);
+              }}
+              className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios cursor-pointer hover:border-amber-400 transition-all group"
+              title="點擊展開往來分帳與借還債務中心"
+            >
+              <div className="flex items-center justify-between text-amber-700 dark:text-amber-400 text-xs font-bold mb-1">
+                <div className="flex items-center space-x-1.5">
+                  <CreditCard className="w-4 h-4" />
+                  <span>往來債務</span>
+                </div>
+                <span className="text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-extrabold group-hover:scale-105 transition-transform">
+                  {debtStats.activeDebtsCount + debtStats.activeSplitsCount} 筆 ➔
                 </span>
               </div>
-            )}
+              <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
+                {debtStats.totalIOwe > 0 ? `待還 $${debtStats.totalIOwe}` : debtStats.totalTheyOwe > 0 ? `待收 $${debtStats.totalTheyOwe}` : '$0'}
+              </p>
+              <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1 truncate">
+                {debtStats.totalTheyOwe > 0 && debtStats.totalIOwe > 0
+                  ? `待收 $${debtStats.totalTheyOwe} · 待還 $${debtStats.totalIOwe}`
+                  : debtStats.totalIOwe > 0
+                  ? '包含分期與借款剩餘'
+                  : debtStats.totalTheyOwe > 0
+                  ? '包含代墊與借出款項'
+                  : '無未結清借還款項 🍃'}
+              </p>
+            </div>
           </div>
 
           {/* 🌟 Category Pie Chart (月支出圓餅圖) */}
@@ -1144,14 +1297,510 @@ export const AccountingView: React.FC = () => {
               </button>
             </div>
 
-            <button
-              onClick={() => setIsModalOpen(true)}
-              className="flex items-center space-x-1 px-4 py-2 rounded-2xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
-            >
-              <Plus className="w-4 h-4" />
-              <span>記一筆</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              {/* 🤝 Collapsible Social Ledger & Debt Button */}
+              <button
+                onClick={() => setIsSocialDebtOpen((prev) => !prev)}
+                className={`flex items-center space-x-1.5 px-3 py-2 rounded-2xl font-bold text-xs shadow-ios-sm active:scale-95 transition-all border ${
+                  isSocialDebtOpen
+                    ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-600 shadow-amber-500/20'
+                    : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-200 border-black/5 dark:border-white/10 hover:border-amber-400/50'
+                }`}
+                title="展開/收合分帳與借還債務管理"
+              >
+                <Users className={`w-3.5 h-3.5 ${isSocialDebtOpen ? 'text-white' : 'text-amber-500'}`} />
+                <span>分帳與借還</span>
+                {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0) && (
+                  <span
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
+                      isSocialDebtOpen
+                        ? 'bg-white/25 text-white'
+                        : 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
+                    }`}
+                  >
+                    {debtStats.activeDebtsCount + debtStats.activeSplitsCount}
+                  </span>
+                )}
+                <ChevronDown
+                  className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                    isSocialDebtOpen ? 'rotate-180' : ''
+                  }`}
+                />
+              </button>
+
+              {/* + 記一筆 */}
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="flex items-center space-x-1 px-3.5 py-2 rounded-2xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
+              >
+                <Plus className="w-4 h-4" />
+                <span>記一筆</span>
+              </button>
+            </div>
           </div>
+
+          {/* ========================================================================= */}
+          {/* 🤝 Collapsible Panel: 分帳與借還 (Multi-person Bill Splitting & Debts) */}
+          {/* ========================================================================= */}
+          {isSocialDebtOpen && (
+            <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/5 via-orange-500/5 to-amber-500/10 dark:from-zinc-900 dark:to-calico-darkCard border border-amber-500/20 dark:border-amber-500/30 shadow-ios space-y-4 animate-fade-in">
+              {/* Header with Switcher Tabs */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 dark:border-white/10 pb-3">
+                <div className="flex items-center space-x-2">
+                  <div className="p-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                    <Calculator className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                      往來分帳與借還
+                    </h3>
+                    <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                      多人聚餐先墊錢分帳 · 借款分期與還款進度
+                    </p>
+                  </div>
+                </div>
+
+                {/* Sub Tab Switcher */}
+                <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+                  <button
+                    onClick={() => setSocialDebtTab('splits')}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                      socialDebtTab === 'splits'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>多人分帳</span>
+                    {debtStats.activeSplitsCount > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        {debtStats.activeSplitsCount}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setSocialDebtTab('debts')}
+                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                      socialDebtTab === 'debts'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>借還與分期</span>
+                    {debtStats.activeDebtsCount > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                        {debtStats.activeDebtsCount}
+                      </span>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* TAB 1: 多人分帳 (Multi-Person Bill Splitting) */}
+              {socialDebtTab === 'splits' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-4 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">
+                          待收分攤款
+                        </span>
+                        <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                          +${debtStats.splitToReceive}
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">
+                          待付分攤款
+                        </span>
+                        <span className="text-sm font-black text-red-500 dark:text-red-400">
+                          -${debtStats.splitToPay}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setSplitToEdit(null);
+                        setIsSplitModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>發起多人分帳</span>
+                    </button>
+                  </div>
+
+                  {/* List of Split Bills */}
+                  {splitBills.length === 0 ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        尚無分帳記錄。出去吃飯、買禮物，支援多人先墊錢與多人分攤結算！
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {splitBills.map((sb) => {
+                        const allSettled = sb.isSettled || (sb.settlements && sb.settlements.every((s) => s.isSettled));
+                        return (
+                          <div
+                            key={sb.id}
+                            className={`p-3.5 rounded-2xl bg-white dark:bg-zinc-800/80 border transition-all ${
+                              allSettled
+                                ? 'border-black/5 dark:border-white/5 opacity-70'
+                                : 'border-amber-500/20 dark:border-amber-500/30 shadow-ios-sm'
+                            }`}
+                          >
+                            {/* Bill Header */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2">
+                                <span className={`text-[10px] px-2 py-0.5 rounded-md font-black ${
+                                  allSettled
+                                    ? 'bg-zinc-100 dark:bg-zinc-700 text-zinc-500'
+                                    : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                }`}>
+                                  {allSettled ? '✓ 已全數結清' : '進行中'}
+                                </span>
+                                <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100">
+                                  {sb.title}
+                                </h4>
+                              </div>
+
+                              <div className="flex items-center space-x-2">
+                                <span className="text-base font-black text-calico-cocoa dark:text-zinc-100">
+                                  ${sb.totalAmount}
+                                </span>
+                                <button
+                                  onClick={() => {
+                                    setSplitToEdit(sb);
+                                    setIsSplitModalOpen(true);
+                                  }}
+                                  className="p-1 text-calico-cocoa/40 hover:text-amber-500 transition-colors"
+                                  title="編輯"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => deleteSplitBill(sb.id)}
+                                  className="p-1 text-calico-cocoa/40 hover:text-red-500 transition-colors"
+                                  title="刪除"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Payers & Participants Summary */}
+                            <div className="mt-2 text-xs text-calico-cocoa/70 dark:text-zinc-300 space-y-1 bg-black/2 dark:bg-white/5 p-2.5 rounded-xl">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-calico-cocoa/50 dark:text-zinc-400 font-bold">
+                                  💳 先墊錢：
+                                </span>
+                                <span className="font-semibold text-calico-cocoa dark:text-zinc-200">
+                                  {(sb.payers || []).map((p) => `${p.name} $${p.paidAmount}`).join('、') || '無'}
+                                </span>
+                              </div>
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-calico-cocoa/50 dark:text-zinc-400 font-bold">
+                                  👥 分攤人：
+                                </span>
+                                <span className="font-semibold text-calico-cocoa dark:text-zinc-200">
+                                  {(sb.participants || []).map((p) => `${p.name} ($${p.owedAmount})`).join('、') || '無'}
+                                </span>
+                              </div>
+                              {sb.notes && (
+                                <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 pt-1 border-t border-black/5 dark:border-white/5">
+                                  備註：{sb.notes}
+                                </p>
+                              )}
+                            </div>
+
+                            {/* Settlement Transfer Paths (誰該給誰多少) */}
+                            {sb.settlements && sb.settlements.length > 0 && (
+                              <div className="mt-2.5 space-y-1.5">
+                                <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block">
+                                  轉帳結算指引：
+                                </span>
+                                {sb.settlements.map((st, sIdx) => (
+                                  <div
+                                    key={sIdx}
+                                    className="flex items-center justify-between p-2 rounded-xl bg-amber-500/5 dark:bg-amber-500/10 border border-amber-500/10 text-xs"
+                                  >
+                                    <div className="flex items-center space-x-1.5 min-w-0">
+                                      <span className="font-extrabold text-calico-cocoa dark:text-zinc-200 truncate">
+                                        {st.from}
+                                      </span>
+                                      <ArrowRight className="w-3 h-3 text-amber-500 shrink-0" />
+                                      <span className="font-extrabold text-calico-cocoa dark:text-zinc-200 truncate">
+                                        {st.to}
+                                      </span>
+                                      <span className="font-black text-amber-600 dark:text-amber-400 ml-1">
+                                        ${st.amount}
+                                      </span>
+                                    </div>
+
+                                    <button
+                                      onClick={() => settleSplitParticipant(sb.id, sIdx)}
+                                      className={`px-2.5 py-1 rounded-lg text-[10px] font-bold transition-all shrink-0 ml-2 ${
+                                        st.isSettled
+                                          ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                          : 'bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 border border-amber-500/30 hover:bg-amber-500 hover:text-white'
+                                      }`}
+                                    >
+                                      {st.isSettled ? '✓ 已清' : '標記結清'}
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 2: 借還與分期 (Debts & Loans Tracker) */}
+              {socialDebtTab === 'debts' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-4 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">
+                          我欠別人 (待還)
+                        </span>
+                        <span className="text-sm font-black text-red-500 dark:text-red-400">
+                          ${debtStats.totalIOwe}
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">
+                          別人欠我 (待收)
+                        </span>
+                        <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                          ${debtStats.totalTheyOwe}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        setDebtToEdit(null);
+                        setIsDebtModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>新增借還/分期</span>
+                    </button>
+                  </div>
+
+                  {/* List of Debts */}
+                  {debts.length === 0 ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        尚無債務或分期記錄。紀錄朋友借款、信用卡分期剩餘、精確追蹤每次還款剩多少！
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {debts.map((d) => {
+                        const progressPercent =
+                          d.totalAmount > 0
+                            ? Math.min(100, Math.round(((d.totalAmount - d.remainingAmount) / d.totalAmount) * 100))
+                            : 100;
+                        const isExpanded = expandedDebtHistoryId === d.id;
+
+                        return (
+                          <div
+                            key={d.id}
+                            className={`p-3.5 rounded-2xl bg-white dark:bg-zinc-800/80 border transition-all ${
+                              d.isSettled
+                                ? 'border-black/5 dark:border-white/5 opacity-70'
+                                : 'border-amber-500/20 dark:border-amber-500/30 shadow-ios-sm'
+                            }`}
+                          >
+                            {/* Debt Header */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center space-x-2 min-w-0">
+                                <span
+                                  className={`text-[10px] px-2 py-0.5 rounded-md font-black shrink-0 ${
+                                    d.type === 'i_owe'
+                                      ? 'bg-red-500/15 text-red-600 dark:text-red-400'
+                                      : 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  }`}
+                                >
+                                  {d.type === 'i_owe' ? '我欠對方' : '對方欠我'}
+                                </span>
+                                <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                                  {d.title}
+                                </h4>
+                                <span className="text-xs text-calico-cocoa/50 dark:text-zinc-400 font-bold truncate">
+                                  ({d.counterparty})
+                                </span>
+                              </div>
+
+                              <div className="flex items-center space-x-2 shrink-0">
+                                {d.isSettled ? (
+                                  <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                                    ✓ 已全額還清
+                                  </span>
+                                ) : (
+                                  <div className="text-right">
+                                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">
+                                      尚餘欠款
+                                    </span>
+                                    <span className="text-base font-black text-red-600 dark:text-red-400">
+                                      ${d.remainingAmount}
+                                    </span>
+                                  </div>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setDebtToEdit(d);
+                                    setIsDebtModalOpen(true);
+                                  }}
+                                  className="p-1 text-calico-cocoa/40 hover:text-amber-500 transition-colors"
+                                  title="編輯"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => deleteDebt(d.id)}
+                                  className="p-1 text-calico-cocoa/40 hover:text-red-500 transition-colors"
+                                  title="刪除"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Details: Total, Installment, Dates */}
+                            <div className="mt-2 text-xs space-y-1.5 bg-black/2 dark:bg-white/5 p-2.5 rounded-xl">
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-calico-cocoa/60 dark:text-zinc-400">原始總額</span>
+                                <span className="font-bold text-calico-cocoa dark:text-zinc-200">
+                                  ${d.totalAmount}
+                                </span>
+                              </div>
+
+                              {d.isInstallment && (
+                                <div className="flex items-center justify-between text-[11px]">
+                                  <span className="text-calico-cocoa/60 dark:text-zinc-400">分期進度</span>
+                                  <span className="font-bold text-amber-600 dark:text-amber-400">
+                                    第 {d.paidPeriods || 0} / {d.totalPeriods || 1} 期
+                                    {d.periodAmount ? ` (每期 $${d.periodAmount})` : ''}
+                                  </span>
+                                </div>
+                              )}
+
+                              <div className="flex items-center justify-between text-[11px]">
+                                <span className="text-calico-cocoa/60 dark:text-zinc-400">起始/到期</span>
+                                <span className="font-semibold text-calico-cocoa/70 dark:text-zinc-300">
+                                  {d.startDate} ~ {d.dueDate ? d.dueDate : '無特定到期'}
+                                </span>
+                              </div>
+
+                              {/* Repayment Progress Bar */}
+                              <div className="pt-1">
+                                <div className="flex items-center justify-between text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-bold mb-1">
+                                  <span>還款進度</span>
+                                  <span>{progressPercent}% (已還 ${d.totalAmount - d.remainingAmount})</span>
+                                </div>
+                                <div className="w-full h-2 rounded-full bg-black/10 dark:bg-white/10 overflow-hidden">
+                                  <div
+                                    style={{ width: `${progressPercent}%` }}
+                                    className="h-full rounded-full bg-gradient-to-r from-amber-500 to-emerald-500 transition-all duration-300"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Action Buttons: Log Repayment & History Toggle */}
+                            <div className="mt-2.5 flex items-center justify-between pt-1">
+                              <button
+                                onClick={() => setExpandedDebtHistoryId(isExpanded ? null : d.id)}
+                                className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 hover:text-amber-500 flex items-center space-x-1"
+                              >
+                                <span>📜 還款紀錄 ({d.repayments?.length || 0})</span>
+                                <ChevronDown
+                                  className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                />
+                              </button>
+
+                              {!d.isSettled && (
+                                <button
+                                  onClick={() => {
+                                    setRepayDebtTarget(d);
+                                    setIsRepayModalOpen(true);
+                                  }}
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                                >
+                                  <DollarSign className="w-3.5 h-3.5" />
+                                  <span>記一次還款</span>
+                                </button>
+                              )}
+                            </div>
+
+                            {/* Repayment History Expansion */}
+                            {isExpanded && (
+                              <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/5 space-y-1.5 animate-fade-in">
+                                <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block">
+                                  歷次還款明細：
+                                </span>
+                                {d.repayments && d.repayments.length > 0 ? (
+                                  d.repayments.map((rp) => (
+                                    <div
+                                      key={rp.id}
+                                      className="p-2 rounded-xl bg-black/3 dark:bg-white/5 flex items-center justify-between text-xs"
+                                    >
+                                      <div>
+                                        <div className="flex items-center space-x-2">
+                                          <span className="font-mono text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
+                                            {rp.date}
+                                          </span>
+                                          <span className="font-black text-emerald-600 dark:text-emerald-400">
+                                            已還 ${rp.amount}
+                                          </span>
+                                        </div>
+                                        {rp.notes && (
+                                          <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">
+                                            {rp.notes}
+                                          </p>
+                                        )}
+                                      </div>
+                                      <div className="text-right">
+                                        <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 block">
+                                          還完後剩餘
+                                        </span>
+                                        <span className="font-extrabold text-calico-cocoa dark:text-zinc-200">
+                                          ${rp.remainingAfter}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <p className="text-[11px] text-calico-cocoa/40 dark:text-zinc-500 italic py-1">
+                                    尚無還款紀錄
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Transaction List */}
           <div className="space-y-2.5">
@@ -1305,18 +1954,63 @@ export const AccountingView: React.FC = () => {
                 </button>
               </div>
 
-              {/* Friend Summary KPI Cards */}
+              {/* 📅 Friend Date Navigation Toolbar */}
+              <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex items-center justify-between">
+                <button
+                  onClick={handleFriendPrevDay}
+                  className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors"
+                  title="前一天"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+
+                <div className="flex items-center space-x-2">
+                  <CalendarDays className="w-4 h-4 text-calico-orange" />
+                  <input
+                    type="date"
+                    value={friendSelectedDate}
+                    onChange={(e) => e.target.value && setFriendSelectedDate(e.target.value)}
+                    className="bg-transparent text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none cursor-pointer"
+                  />
+                  {friendSelectedDate === new Date().toISOString().slice(0, 10) && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-calico-orange/15 text-calico-orange font-black">
+                      今日
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center space-x-1">
+                  {friendSelectedDate !== new Date().toISOString().slice(0, 10) && (
+                    <button
+                      onClick={handleFriendToday}
+                      className="px-2 py-1 rounded-xl text-[10px] font-bold bg-calico-orange/15 text-calico-orange hover:bg-calico-orange hover:text-white transition-all"
+                    >
+                      回到今日
+                    </button>
+                  )}
+                  <button
+                    onClick={handleFriendNextDay}
+                    className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors"
+                    title="後一天"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Friend Summary KPI Cards (聚焦「當日消費」) */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios">
                   <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block mb-1">
-                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的總開銷
+                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的當日消費
                   </span>
                   <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
-                    ${friendStats.totalExpense}
+                    ${friendStats.todayExpense}
                   </p>
-                  <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
-                    共 {friendStats.txCount} 筆收支記錄
-                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
+                    <span>共 {friendStats.todayTxCount} 筆當日消費</span>
+                    <span>(歷史累計 ${friendStats.totalExpense})</span>
+                  </div>
                 </div>
 
                 <div className="p-4 rounded-3xl bg-gradient-to-br from-orange-50 to-amber-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-orange-200/50 dark:border-zinc-700/40 shadow-ios">
@@ -1325,11 +2019,11 @@ export const AccountingView: React.FC = () => {
                   </span>
                   <div className="flex items-baseline space-x-1.5">
                     <span className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
-                      {friendStats.avgRating ? `★ ${friendStats.avgRating}` : '尚無評分'}
+                      {friendStats.todayAvgRating ? `★ ${friendStats.todayAvgRating}` : (friendStats.avgRating ? `★ ${friendStats.avgRating}` : '尚無評分')}
                     </span>
                   </div>
                   <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
-                    已評分 {friendStats.ratedCount} / {friendStats.txCount} 筆
+                    今日評分 {friendStats.todayRatedCount} 筆 · 歷史累計 {friendStats.ratedCount} 筆
                   </p>
                 </div>
               </div>
@@ -1346,30 +2040,53 @@ export const AccountingView: React.FC = () => {
                     </h4>
                   </div>
                   <span className="text-xs font-bold text-calico-cocoa/40 dark:text-zinc-400">
-                    共 {friendStats.categories.length} 個類別
+                    {friendStats.todayCategories.length > 0
+                      ? `當日 ${friendStats.todayCategories.length} 個類別`
+                      : `歷史 ${friendStats.categories.length} 個類別`}
                   </span>
                 </div>
 
                 <CategoryPieChart
-                  categories={friendStats.categories}
-                  totalExpense={friendStats.totalExpense}
-                  emptyText="好友目前尚無支出記錄"
+                  categories={friendStats.todayCategories.length > 0 ? friendStats.todayCategories : friendStats.categories}
+                  totalExpense={friendStats.todayCategories.length > 0 ? friendStats.todayExpense : friendStats.totalExpense}
+                  emptyText={friendStats.todayCategories.length > 0 ? '當日尚無支出記錄' : '好友目前尚無支出記錄'}
                 />
               </div>
 
-              {/* Friend Transactions List with Peer Rating Button */}
+              {/* Friend Transactions List with Peer Rating Button & Mode Toggle */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between px-1">
+                <div className="flex flex-wrap items-center justify-between gap-2 px-1">
                   <h4 className="text-xs font-black text-calico-cocoa/60 dark:text-zinc-400 uppercase tracking-wider">
                     {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的收支明細與評分
                   </h4>
-                  <span className="text-[11px] text-calico-orange font-bold">
-                    點擊評分即可給好友星級與留言 ⭐️
-                  </span>
+                  
+                  {/* View Mode Toggle: Daily vs All */}
+                  <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-bold">
+                    <button
+                      onClick={() => setFriendViewListMode('daily')}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        friendViewListMode === 'daily'
+                          ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                          : 'text-calico-cocoa/60 dark:text-zinc-400'
+                      }`}
+                    >
+                      當日明細 ({friendStats.todayTxCount})
+                    </button>
+                    <button
+                      onClick={() => setFriendViewListMode('all')}
+                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                        friendViewListMode === 'all'
+                          ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                          : 'text-calico-cocoa/60 dark:text-zinc-400'
+                      }`}
+                    >
+                      全部歷史 ({friendTransactions.length})
+                    </button>
+                  </div>
                 </div>
 
-                {friendTransactions.length > 0 ? (
-                  friendTransactions.map((tx) => (
+                {(friendViewListMode === 'daily' ? friendStats.todayTransactions : friendTransactions).length > 0 ? (
+                  (friendViewListMode === 'daily' ? friendStats.todayTransactions : friendTransactions).map((tx) => (
                     <div
                       key={tx.id}
                       className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-2.5 transition-all"
@@ -1507,6 +2224,36 @@ export const AccountingView: React.FC = () => {
         friendName={currentFriend ? (currentFriend.nickname || currentFriend.ownerName) : '好友'}
         friendShareCode={currentFriend ? currentFriend.shareCode : ''}
         transaction={ratingModalTx}
+      />
+
+      {/* 🤝 Multi-Person Bill Splitting Modal */}
+      <SplitBillModal
+        isOpen={isSplitModalOpen}
+        onClose={() => {
+          setIsSplitModalOpen(false);
+          setSplitToEdit(null);
+        }}
+        billToEdit={splitToEdit}
+      />
+
+      {/* 💳 Debt & Loan Tracker Modal */}
+      <DebtModal
+        isOpen={isDebtModalOpen}
+        onClose={() => {
+          setIsDebtModalOpen(false);
+          setDebtToEdit(null);
+        }}
+        debtToEdit={debtToEdit}
+      />
+
+      {/* 💰 Repay Debt Modal */}
+      <RepayDebtModal
+        isOpen={isRepayModalOpen}
+        onClose={() => {
+          setIsRepayModalOpen(false);
+          setRepayDebtTarget(null);
+        }}
+        debt={repayDebtTarget}
       />
     </div>
   );

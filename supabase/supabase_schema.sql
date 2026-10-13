@@ -178,18 +178,49 @@ CREATE TABLE IF NOT EXISTS public.accounting_installments (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 6. 墊錢分帳資料表 (accounting_split_bills)
+-- 6. 多人分帳與代墊資料表 (accounting_split_bills)
 CREATE TABLE IF NOT EXISTS public.accounting_split_bills (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     title TEXT NOT NULL,
     total_amount NUMERIC(12, 2) NOT NULL,
     my_amount NUMERIC(12, 2) NOT NULL,
     members JSONB NOT NULL DEFAULT '[]'::jsonb,
+    payers JSONB NOT NULL DEFAULT '[]'::jsonb,
+    participants JSONB NOT NULL DEFAULT '[]'::jsonb,
+    settlements JSONB NOT NULL DEFAULT '[]'::jsonb,
+    split_mode TEXT DEFAULT 'equal',
     date TIMESTAMPTZ NOT NULL DEFAULT now(),
     notes TEXT DEFAULT '',
     is_settled BOOLEAN DEFAULT false,
     created_at TIMESTAMPTZ DEFAULT now()
 );
+ALTER TABLE public.accounting_split_bills ADD COLUMN IF NOT EXISTS payers JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.accounting_split_bills ADD COLUMN IF NOT EXISTS participants JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.accounting_split_bills ADD COLUMN IF NOT EXISTS settlements JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE public.accounting_split_bills ADD COLUMN IF NOT EXISTS split_mode TEXT DEFAULT 'equal';
+
+-- 6.5 債務與借還資料表 (accounting_debts)
+CREATE TABLE IF NOT EXISTS public.accounting_debts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    device_id TEXT DEFAULT '',
+    type TEXT NOT NULL CHECK (type IN ('i_owe', 'they_owe')),
+    title TEXT NOT NULL,
+    counterparty TEXT NOT NULL,
+    total_amount NUMERIC(12, 2) NOT NULL,
+    remaining_amount NUMERIC(12, 2) NOT NULL,
+    is_installment BOOLEAN DEFAULT false,
+    total_periods INT DEFAULT 1,
+    paid_periods INT DEFAULT 0,
+    period_amount NUMERIC(12, 2),
+    start_date TEXT NOT NULL,
+    due_date TEXT,
+    notes TEXT DEFAULT '',
+    is_settled BOOLEAN DEFAULT false,
+    repayments JSONB NOT NULL DEFAULT '[]'::jsonb,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+ALTER TABLE public.accounting_debts ADD COLUMN IF NOT EXISTS is_installment BOOLEAN DEFAULT false;
+ALTER TABLE public.accounting_debts ADD COLUMN IF NOT EXISTS repayments JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 -- 7. 每月固定收支資料表 (accounting_recurring_items)
 CREATE TABLE IF NOT EXISTS public.accounting_recurring_items (
@@ -214,6 +245,7 @@ CREATE INDEX IF NOT EXISTS idx_shared_code ON public.shared_schedules(share_code
 CREATE INDEX IF NOT EXISTS idx_transactions_date ON public.accounting_transactions(date);
 CREATE INDEX IF NOT EXISTS idx_transactions_type ON public.accounting_transactions(type);
 CREATE INDEX IF NOT EXISTS idx_recurring_active ON public.accounting_recurring_items(is_active);
+CREATE INDEX IF NOT EXISTS idx_debts_settled ON public.accounting_debts(is_settled);
 
 -- 開放 RLS 讀寫權限
 ALTER TABLE public.courses ENABLE ROW LEVEL SECURITY;
@@ -222,6 +254,7 @@ ALTER TABLE public.shared_schedules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounting_transactions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounting_installments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounting_split_bills ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.accounting_debts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.accounting_recurring_items ENABLE ROW LEVEL SECURITY;
 
 DO $$
@@ -232,6 +265,7 @@ BEGIN
     DROP POLICY IF EXISTS "Allow all operations on accounting_transactions for anon" ON public.accounting_transactions;
     DROP POLICY IF EXISTS "Allow all operations on accounting_installments for anon" ON public.accounting_installments;
     DROP POLICY IF EXISTS "Allow all operations on accounting_split_bills for anon" ON public.accounting_split_bills;
+    DROP POLICY IF EXISTS "Allow all operations on accounting_debts for anon" ON public.accounting_debts;
     DROP POLICY IF EXISTS "Allow all operations on accounting_recurring_items for anon" ON public.accounting_recurring_items;
 END $$;
 
@@ -241,6 +275,7 @@ CREATE POLICY "Allow all operations on shared_schedules for anon" ON public.shar
 CREATE POLICY "Allow all operations on accounting_transactions for anon" ON public.accounting_transactions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on accounting_installments for anon" ON public.accounting_installments FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on accounting_split_bills for anon" ON public.accounting_split_bills FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow all operations on accounting_debts for anon" ON public.accounting_debts FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow all operations on accounting_recurring_items for anon" ON public.accounting_recurring_items FOR ALL USING (true) WITH CHECK (true);
 
 
