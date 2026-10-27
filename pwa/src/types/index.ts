@@ -426,5 +426,22 @@ export interface CourseWishlistItem {
   createdAt: string;
 }
 
+// 🌟 首頁「當日」板塊定義與自由排版設定
+export type TodaySectionId =
+  | 'status'       // 即時上課狀態
+  | 'pomodoro'     // 伴讀番茄鐘專注捷徑
+  | 'countdowns'   // 重要日子
+  | 'courses'      // 今日排定課表
+  | 'todos'        // 今日焦點待辦
+  | 'events'       // 今日進行中活動
+  | 'accounting';  // 今日記帳與花費
+
+export interface TodayLayoutSettings {
+  sectionOrder: TodaySectionId[];
+  collapsedSections: Record<string, boolean>;
+  hiddenSections: Record<string, boolean>;
+}
+
+
 
 

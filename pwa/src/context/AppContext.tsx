@@ -27,6 +27,7 @@ import {
   BalanceAdjustmentRecord,
   SurvivalBudgetSettings,
   CourseWishlistItem,
+  TodaySectionId,
 } from '../types';
 import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import { batchFetchStockPrices, fetchStockPrice } from '../services/stockService';
@@ -704,6 +705,15 @@ interface AppContextType {
   refreshStockPrices: () => Promise<void>;
   survivalSettings: SurvivalBudgetSettings;
   updateSurvivalSettings: (settings: SurvivalBudgetSettings) => void;
+  // 🌟 首頁排版與重要日子通知
+  todaySectionsOrder: TodaySectionId[];
+  todaySectionsCollapsed: Record<string, boolean>;
+  todaySectionsHidden: Record<string, boolean>;
+  setTodaySectionsOrder: (order: TodaySectionId[]) => void;
+  toggleTodaySectionCollapsed: (sectionId: string) => void;
+  toggleTodaySectionHidden: (sectionId: string) => void;
+  resetTodayLayout: () => void;
+  upcomingCountdownsCount: number;
   // 🎓 GPA 制度與待選課程心願單 (GPA Scale & Wishlist Courses)
   gpaScale: GpaScale;
   setGpaScale: (scale: GpaScale) => void;
@@ -1215,6 +1225,100 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = activeUserIdRef.current;
     localStorage.setItem(getScopedKey(uid, 'gpa_scale'), scale);
   };
+
+  // 🌟 首頁板塊順序與折疊/隱藏狀態
+  const DEFAULT_TODAY_SECTIONS_ORDER: TodaySectionId[] = [
+    'status',
+    'pomodoro',
+    'countdowns',
+    'courses',
+    'todos',
+    'events',
+    'accounting',
+  ];
+
+  const [todaySectionsOrder, setTodaySectionsOrderState] = useState<TodaySectionId[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'today_sections_order')) || localStorage.getItem('campus_today_sections_order');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const validSet = new Set(DEFAULT_TODAY_SECTIONS_ORDER);
+          const filtered = parsed.filter((id) => validSet.has(id));
+          DEFAULT_TODAY_SECTIONS_ORDER.forEach((id) => {
+            if (!filtered.includes(id)) filtered.push(id);
+          });
+          return filtered;
+        }
+      } catch {}
+    }
+    return DEFAULT_TODAY_SECTIONS_ORDER;
+  });
+
+  const [todaySectionsCollapsed, setTodaySectionsCollapsed] = useState<Record<string, boolean>>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'today_sections_collapsed')) || localStorage.getItem('campus_today_sections_collapsed');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {};
+  });
+
+  const [todaySectionsHidden, setTodaySectionsHidden] = useState<Record<string, boolean>>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'today_sections_hidden')) || localStorage.getItem('campus_today_sections_hidden');
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return {};
+  });
+
+  const setTodaySectionsOrder = (newOrder: TodaySectionId[]) => {
+    setTodaySectionsOrderState(newOrder);
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'today_sections_order'), JSON.stringify(newOrder));
+  };
+
+  const toggleTodaySectionCollapsed = (sectionId: string) => {
+    setTodaySectionsCollapsed((prev) => {
+      const updated = { ...prev, [sectionId]: !prev[sectionId] };
+      const uid = activeUserIdRef.current;
+      localStorage.setItem(getScopedKey(uid, 'today_sections_collapsed'), JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const toggleTodaySectionHidden = (sectionId: string) => {
+    setTodaySectionsHidden((prev) => {
+      const updated = { ...prev, [sectionId]: !prev[sectionId] };
+      const uid = activeUserIdRef.current;
+      localStorage.setItem(getScopedKey(uid, 'today_sections_hidden'), JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+  const resetTodayLayout = () => {
+    setTodaySectionsOrderState(DEFAULT_TODAY_SECTIONS_ORDER);
+    setTodaySectionsCollapsed({});
+    setTodaySectionsHidden({});
+    const uid = activeUserIdRef.current;
+    localStorage.removeItem(getScopedKey(uid, 'today_sections_order'));
+    localStorage.removeItem(getScopedKey(uid, 'today_sections_collapsed'));
+    localStorage.removeItem(getScopedKey(uid, 'today_sections_hidden'));
+  };
+
+  // 🔔 計算 3 天內到期或當日 D-Day 之重要日子 (倒數日)
+  const upcomingCountdownsCount = useMemo(() => {
+    if (!countdowns || countdowns.length === 0) return 0;
+    const today = new Date(new Date().toISOString().slice(0, 10));
+    return countdowns.filter((item) => {
+      if (item.mode === 'countup') return false;
+      const target = new Date(item.targetDate);
+      const diffDays = Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      return diffDays >= 0 && diffDays <= 3;
+    }).length;
+  }, [countdowns]);
 
   useEffect(() => {
     const uid = activeUserIdRef.current;
@@ -3111,6 +3215,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshStockPrices,
         survivalSettings,
         updateSurvivalSettings,
+        todaySectionsOrder,
+        todaySectionsCollapsed,
+        todaySectionsHidden,
+        setTodaySectionsOrder,
+        toggleTodaySectionCollapsed,
+        toggleTodaySectionHidden,
+        resetTodayLayout,
+        upcomingCountdownsCount,
         gpaScale,
         setGpaScale,
         courseWishlist,

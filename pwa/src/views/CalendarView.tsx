@@ -77,6 +77,7 @@ export const CalendarView: React.FC = () => {
     updateCountdown,
     deleteCountdown,
     togglePinCountdown,
+    upcomingCountdownsCount,
   } = useApp();
 
   const now = new Date();
@@ -198,9 +199,6 @@ export const CalendarView: React.FC = () => {
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   // Selected date (defaults to today)
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
-
-  // Today Summary Collapsible State (default open)
-  const [isTodaySummaryOpen, setIsTodaySummaryOpen] = useState(true);
 
   // Todo modal state for quick add
   const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
@@ -802,11 +800,11 @@ export const CalendarView: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 text-indigo-600 dark:text-indigo-400 font-bold text-xs hover:bg-indigo-100 active:scale-95 transition-all shadow-2xs border border-indigo-200 dark:border-indigo-800/40"
-            title="行事曆、課表與記帳好友共享"
+            onClick={() => setIsTodoModalOpen(true)}
+            className="flex items-center space-x-1 px-2.5 py-1.5 rounded-xl bg-calico-sage text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105 shrink-0"
           >
-            <Share2 className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>加待辦</span>
           </button>
 
           <button
@@ -814,198 +812,12 @@ export const CalendarView: React.FC = () => {
               setEventToEdit(null);
               setIsEventModalOpen(true);
             }}
-            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105"
+            className="flex items-center space-x-1 px-3 py-1.5 rounded-xl bg-calico-orange text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all hover:brightness-105 shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>新行程</span>
           </button>
         </div>
-      </div>
-
-      {/* ======================================================== */}
-      {/* 🌟 1. 當日的折疊 (Today's Collapsible Summary) */}
-      {/* ======================================================== */}
-      <div className="rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios overflow-hidden transition-all">
-        {/* Collapsible Header */}
-        <button
-          onClick={() => setIsTodaySummaryOpen(!isTodaySummaryOpen)}
-          className="w-full p-4 flex items-center justify-between text-left hover:bg-black/2 dark:hover:bg-white/2 transition-colors"
-        >
-          <div className="flex items-center space-x-3">
-            <div className="w-9 h-9 rounded-2xl bg-calico-orange/15 text-calico-orange flex items-center justify-center font-black shadow-2xs">
-              <Sparkles className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center space-x-2">
-                <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                  今日總覽折疊卡
-                </h3>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-calico-orange text-white">
-                  今天 {now.getMonth() + 1}/{now.getDate()}
-                </span>
-              </div>
-              <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">
-                {todayCourses.length} 門課 · {todayTodos.length} 項待辦 · 已支出 ${budgetInfo.todaySpent}
-              </p>
-            </div>
-          </div>
-
-          <div className="p-1 rounded-full text-calico-cocoa/40">
-            {isTodaySummaryOpen ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-          </div>
-        </button>
-
-        {/* Collapsible Content */}
-        {isTodaySummaryOpen && (
-          <div className="px-4 pb-4 pt-1 border-t border-black/5 dark:border-white/5 space-y-3.5 animate-fade-in">
-            {/* 1.0 進行中的跨日行程與出國週期 */}
-            {todaySpanItems.length > 0 && (
-              <div className="space-y-1.5">
-                <span className="text-xs font-black text-calico-orange flex items-center space-x-1">
-                  <CalendarDays className="w-3.5 h-3.5" />
-                  <span>進行中的跨日/區間行程 ({todaySpanItems.length})</span>
-                </span>
-                <div className="flex flex-wrap gap-1.5">
-                  {todaySpanItems.map((item) => (
-                    <div
-                      key={item.id}
-                      style={{
-                        backgroundColor: `${item.colorHex}18`,
-                        borderColor: `${item.colorHex}40`,
-                        color: item.colorHex,
-                      }}
-                      className="px-2.5 py-1 rounded-xl text-xs font-black border flex items-center space-x-1.5 shadow-2xs"
-                    >
-                      <span>{item.title}</span>
-                      <span className="text-[10px] opacity-75">
-                        ({item.startDate.slice(5)} ~ {item.endDate.slice(5)})
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* 1.1 今日課表 (Today Courses) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
-                  <BookOpen className="w-3.5 h-3.5 text-calico-orange" />
-                  <span>今日課表 ({todayCourses.length})</span>
-                </span>
-              </div>
-
-              {todayCourses.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {todayCourses.map((c) => (
-                    <div
-                      key={c.id}
-                      style={{ borderLeftColor: c.colorHex }}
-                      className="p-2.5 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 border-l-4 flex items-center justify-between text-xs"
-                    >
-                      <div className="truncate">
-                        <p className="font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">{c.name}</p>
-                        <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 truncate">
-                          {c.classroom || '未定教室'} · {c.instructor || '講師'}
-                        </p>
-                      </div>
-                      <span className="text-[11px] font-mono font-bold text-calico-cocoa/80 dark:text-zinc-300 shrink-0 ml-2">
-                        {c.startTime}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
-                  今天沒有排定課堂，自習或休息時光！☕️
-                </p>
-              )}
-            </div>
-
-            {/* 1.2 今日待辦 (Today Todos) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
-                  <CheckSquare className="w-3.5 h-3.5 text-calico-sage" />
-                  <span>今日待辦 ({todayTodos.length})</span>
-                </span>
-                <button
-                  onClick={() => setIsTodoModalOpen(true)}
-                  className="text-[11px] font-bold text-calico-orange hover:underline"
-                >
-                  ＋ 加待辦
-                </button>
-              </div>
-
-              {todayTodos.length > 0 ? (
-                <div className="space-y-1.5">
-                  {todayTodos.map((t) => (
-                    <div
-                      key={t.id}
-                      onClick={() => toggleTodo(t.id)}
-                      className="p-2 rounded-xl bg-calico-cream/50 dark:bg-zinc-800/50 border border-black/5 dark:border-white/5 flex items-center justify-between text-xs cursor-pointer hover:bg-calico-orange/5 transition-colors"
-                    >
-                      <div className="flex items-center space-x-2 truncate">
-                        {t.isCompleted ? (
-                          <CheckCircle2 className="w-4 h-4 text-calico-sage shrink-0" />
-                        ) : (
-                          <Circle className="w-4 h-4 text-calico-cocoa/30 shrink-0" />
-                        )}
-                        <span
-                          className={`truncate font-semibold ${
-                            t.isCompleted ? 'line-through text-calico-cocoa/40' : 'text-calico-cocoa dark:text-zinc-100'
-                          }`}
-                        >
-                          {t.title}
-                        </span>
-                      </div>
-                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/10 shrink-0 ml-2 font-bold">
-                        {t.category}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
-                  今天沒有待辦事項，輕鬆度過！✨
-                </p>
-              )}
-            </div>
-
-            {/* 1.3 今日記帳與花費 (Today Spending & Budget) */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
-                  <Wallet className="w-3.5 h-3.5 text-calico-orange" />
-                  <span>今日記帳花費 (${budgetInfo.todaySpent})</span>
-                </span>
-                <span className="text-[11px] text-calico-cocoa/60 font-bold">
-                  剩餘預算: ${Math.max(0, budgetInfo.remaining)}
-                </span>
-              </div>
-
-              {transactions.filter((t) => t.date.slice(0, 10) === todayStr).length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {transactions
-                    .filter((t) => t.date.slice(0, 10) === todayStr)
-                    .map((tx) => (
-                      <div
-                        key={tx.id}
-                        className="px-2.5 py-1 rounded-xl bg-calico-cream/70 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-1.5 text-xs"
-                      >
-                        <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
-                        <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
-                      </div>
-                    ))}
-                </div>
-              ) : (
-                <p className="text-xs text-calico-cocoa/40 py-1.5 px-2 rounded-xl bg-calico-cream/30 dark:bg-zinc-800/30">
-                  今天尚無記帳支出，善用預算聰明理財！🌱
-                </p>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
       {/* ======================================================== */}
@@ -1355,7 +1167,7 @@ export const CalendarView: React.FC = () => {
           <div>
             <div className="flex items-center space-x-2">
               <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 flex items-center space-x-1.5">
-                <span>{selectedDateStr} 行程手帳</span>
+                <span>{selectedDateStr} 行程安排</span>
               </h4>
               {selectedDateStr === todayStr && (
                 <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500 to-calico-orange text-white shadow-2xs">
@@ -1364,18 +1176,11 @@ export const CalendarView: React.FC = () => {
               )}
             </div>
             <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5">
-              包含當日課表、跨天活動、待辦作業與收支
+              當日排程活動與待辦項目
             </p>
           </div>
 
           <div className="flex items-center space-x-1.5">
-            <button
-              onClick={() => setIsTodoModalOpen(true)}
-              className="px-2.5 py-1.5 rounded-xl bg-calico-sage/15 text-calico-sage text-xs font-black flex items-center space-x-1 hover:bg-calico-sage/25 active:scale-95 transition-all shadow-2xs"
-            >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>加待辦</span>
-            </button>
             <button
               onClick={() => {
                 setEventToEdit(null);
@@ -1501,33 +1306,10 @@ export const CalendarView: React.FC = () => {
           </div>
         )}
 
-        {/* 4.4 Expenses on Selected Date */}
-        {selectedDateTransactions.length > 0 && (
-          <div className="space-y-1.5 pt-1">
-            <span className="text-xs font-black text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
-              <Wallet className="w-3.5 h-3.5 text-amber-500" />
-              <span>當日收支 ({selectedDateTransactions.length})</span>
-            </span>
-            <div className="flex flex-wrap gap-2">
-              {selectedDateTransactions.map((tx) => (
-                <div
-                  key={tx.id}
-                  className="px-2.5 py-1 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5 flex items-center space-x-2 text-xs"
-                >
-                  <span className="font-bold text-calico-cocoa dark:text-zinc-200">{tx.categoryName}</span>
-                  <span className="text-[10px] text-calico-cocoa/60">{tx.notes}</span>
-                  <span className="font-mono font-black text-calico-orange">${tx.amount}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Empty state for selected date */}
-        {selectedDateSpanItems.length === 0 &&
+        {selectedDateEvents.length === 0 &&
           selectedDateCourses.length === 0 &&
-          selectedDateTodos.length === 0 &&
-          selectedDateTransactions.length === 0 && (
+          selectedDateTodos.length === 0 && (
             <div className="text-center py-10 rounded-2xl bg-calico-cream/30 dark:bg-zinc-800/20 border border-dashed border-amber-900/15 dark:border-white/10 space-y-2">
               <div className="text-2xl select-none">☕️🐾</div>
               <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
@@ -1547,6 +1329,12 @@ export const CalendarView: React.FC = () => {
             <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
               {filteredCountdowns.length} 個事件
             </span>
+            {upcomingCountdownsCount > 0 && (
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-rose-500/15 text-rose-600 dark:text-rose-400 flex items-center space-x-1 whitespace-nowrap shrink-0 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                <span>{upcomingCountdownsCount} 個即將到期</span>
+              </span>
+            )}
           </div>
 
           <div className="flex items-center space-x-1.5 shrink-0">

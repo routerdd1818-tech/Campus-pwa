@@ -10,14 +10,14 @@ interface TabItem {
 }
 
 export const TabBar: React.FC = () => {
-  const { activeTab, setActiveTab, todos } = useApp();
+  const { activeTab, setActiveTab, todos, upcomingCountdownsCount } = useApp();
 
   const uncompletedTodosCount = todos.filter((t) => !t.isCompleted).length;
 
   const tabs: TabItem[] = [
     { id: 'today', label: '當日', icon: Sun },
     { id: 'schedule', label: '課表', icon: CalendarDays },
-    { id: 'calendar', label: '行事曆', icon: Calendar },
+    { id: 'calendar', label: '行事曆', icon: Calendar, badge: upcomingCountdownsCount },
     { id: 'todos', label: '待辦', icon: CheckSquare, badge: uncompletedTodosCount },
     { id: 'accounting', label: '記帳', icon: Wallet },
     { id: 'settings', label: '設定', icon: Settings },
