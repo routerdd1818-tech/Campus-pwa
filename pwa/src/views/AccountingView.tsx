@@ -17,6 +17,7 @@ import { SplitBillModal } from '../components/SplitBillModal';
 import { RecurringModal } from '../components/RecurringModal';
 import { InstallmentModal } from '../components/InstallmentModal';
 import { SavingsJarModal } from '../components/SavingsJarModal';
+import { AssetReconciliationModal } from '../components/AssetReconciliationModal';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Plus,
@@ -273,7 +274,12 @@ export const AccountingView: React.FC = () => {
     updateSavingsJar,
     deleteSavingsJar,
     depositToSavingsJar,
+    assetAccounts,
+    survivalSettings,
   } = useApp();
+
+  // 💰 資產盤點與對帳銷帳 Modal
+  const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
 
   // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
   const [ledgerScope, setLedgerScope] = useState<'mine' | 'friends'>('mine');
@@ -457,9 +463,21 @@ export const AccountingView: React.FC = () => {
       .filter((t) => t.type === 'income' && t.date.slice(0, 7) === currentMonthStr)
       .reduce((sum, t) => sum + t.amount, 0);
 
-    const monthlyTotalBudget = settings.isIncomeBasedDailyLimit && currentMonthIncome > 0
-      ? currentMonthIncome
-      : (settings.customDailyLimit || 300) * daysInCurrentMonth;
+    const cashTotal = (assetAccounts || []).filter((a) => a.type === 'cash').reduce((sum, a) => sum + a.balance, 0);
+    const bankTotal = (assetAccounts || []).filter((a) => a.type === 'bank').reduce((sum, a) => sum + a.balance, 0);
+    const stockTotal = (assetAccounts || []).find((a) => a.type === 'stock')?.stocks?.reduce((sum, s) => sum + s.shares * s.currentPrice, 0) || 0;
+    const receivablesTotal = (debts || [])
+      .filter((d) => d.type === 'they_owe' && !d.isSettled)
+      .reduce((sum, d) => sum + (d.remainingAmount ?? 0), 0);
+
+    const totalNetWorth = cashTotal + bankTotal + stockTotal + receivablesTotal;
+
+    const baseBudget = survivalSettings?.monthlyBudget || (
+      settings.isIncomeBasedDailyLimit && currentMonthIncome > 0
+        ? currentMonthIncome
+        : (settings.customDailyLimit || 300) * daysInCurrentMonth
+    );
+    const monthlyTotalBudget = baseBudget;
 
     // 尚未扣除之固定支出
     const pendingRecurring = (recurringItems || [])
@@ -500,10 +518,15 @@ export const AccountingView: React.FC = () => {
       freeBalance,
       remainingDays,
       dailySafetyBudget,
+      totalNetWorth,
+      cashTotal,
+      bankTotal,
+      stockTotal,
+      receivablesTotal,
       status,
       catComment,
     };
-  }, [transactions, settings, recurringItems, installments, budgetInfo.daysUntilReset]);
+  }, [transactions, settings, recurringItems, installments, budgetInfo.daysUntilReset, assetAccounts, debts, survivalSettings]);
 
   // Active friend calculations
   const currentFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
@@ -1515,13 +1538,23 @@ export const AccountingView: React.FC = () => {
               </div>
             </div>
 
-            <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px] font-medium text-calico-cocoa/70 dark:text-zinc-300">
-              <span className="whitespace-nowrap shrink-0">
-                自由支配剩餘: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100">${survivalBudget.freeBalance}</strong>
-              </span>
-              <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 whitespace-nowrap shrink-0">
-                (已預留固定與分期 ${survivalBudget.totalReservedFixed} · 剩 {survivalBudget.remainingDays} 天)
-              </span>
+            <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px] font-medium text-calico-cocoa/70 dark:text-zinc-300 flex-wrap gap-1.5">
+              <div className="flex items-center space-x-2 flex-wrap">
+                <span>
+                  身家總值: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100 font-mono">${Math.round(survivalBudget.totalNetWorth).toLocaleString()}</strong>
+                </span>
+                <span className="text-calico-cocoa/30 dark:text-zinc-600">·</span>
+                <span>
+                  支配剩餘: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100 font-mono">${survivalBudget.freeBalance}</strong>
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAssetModalOpen(true)}
+                className="px-2.5 py-1 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-amber-500/15 text-calico-cocoa dark:text-zinc-200 hover:text-amber-600 dark:hover:text-amber-400 font-bold text-[10px] transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+              >
+                <span>⚙️ 資產盤點與對帳銷帳</span>
+              </button>
             </div>
           </div>
 
@@ -3220,6 +3253,12 @@ export const AccountingView: React.FC = () => {
           }
         }}
         initialData={savingsToEdit}
+      />
+
+      {/* 💼 資產盤點、股票基金與對帳銷帳 Modal */}
+      <AssetReconciliationModal
+        isOpen={isAssetModalOpen}
+        onClose={() => setIsAssetModalOpen(false)}
       />
     </div>
   );

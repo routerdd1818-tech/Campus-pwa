@@ -1,8 +1,9 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Course, DayOfWeek, ClassPeriod, SavedFriendRecord } from '../types';
+import { Course, DayOfWeek, ClassPeriod, SavedFriendRecord, CourseWishlistItem } from '../types';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import { CourseModal } from '../components/CourseModal';
+import { CourseWishlistModal } from '../components/CourseWishlistModal';
 import { OcrModal } from '../components/OcrModal';
 import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import { GradeCalculatorView } from '../components/GradeCalculatorView';
@@ -83,11 +84,56 @@ export const ScheduleView: React.FC = () => {
     savedFriends,
     saveFriendRecord,
     setIsShareModalOpen,
+    courseWishlist,
+    deleteWishlistCourse,
+    convertWishlistToCourse,
   } = useApp();
 
-  const [viewMode, setViewMode] = useState<'week' | 'day' | 'grades'>('week');
+  const [viewMode, setViewMode] = useState<'week' | 'day' | 'grades' | 'wishlist'>('week');
   const [includeWeekend, setIncludeWeekend] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
+
+  // 📋 待選心願單 / 模擬排課狀態
+  const [isWishlistModalOpen, setIsWishlistModalOpen] = useState(false);
+  const [wishlistToEdit, setWishlistToEdit] = useState<CourseWishlistItem | null>(null);
+  const [selectedSemester, setSelectedSemester] = useState('115-2');
+  const [wishlistViewType, setWishlistViewType] = useState<'cards' | 'grid'>('cards');
+
+  const filteredWishlist = useMemo(() => {
+    if (selectedSemester === '全部') return courseWishlist || [];
+    return (courseWishlist || []).filter((w) => w.targetSemester === selectedSemester);
+  }, [courseWishlist, selectedSemester]);
+
+  // 衝堂偵測 (Time Conflicts Check)
+  const conflictsList = useMemo(() => {
+    const conflicts: { dayName: string; courseA: string; courseB: string; timeA: string; timeB: string }[] = [];
+    const list = filteredWishlist;
+
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const a = list[i];
+        const b = list[j];
+        if (a.dayOfWeek === b.dayOfWeek) {
+          const aStart = timeToMinutes(a.startTime);
+          const aEnd = timeToMinutes(a.endTime);
+          const bStart = timeToMinutes(b.startTime);
+          const bEnd = timeToMinutes(b.endTime);
+
+          if (Math.max(aStart, bStart) < Math.min(aEnd, bEnd)) {
+            const dayName = ALL_WEEKDAYS.find((d) => d.val === a.dayOfWeek)?.name || '週一';
+            conflicts.push({
+              dayName,
+              courseA: a.name,
+              courseB: b.name,
+              timeA: `${a.startTime}-${a.endTime}`,
+              timeB: `${b.startTime}-${b.endTime}`,
+            });
+          }
+        }
+      }
+    }
+    return conflicts;
+  }, [filteredWishlist]);
 
   // Friend schedule viewing state
   const [viewingFriend, setViewingFriend] = useState<SavedFriendRecord | null>(null);
@@ -325,8 +371,8 @@ export const ScheduleView: React.FC = () => {
 
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {/* 週課表 vs 本日行程 vs 學分與成績 */}
-        <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+        {/* 週課表 vs 本日行程 vs 待選心願單 vs 學分與成績 */}
+        <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold overflow-x-auto scrollbar-none">
           <button
             onClick={() => setViewMode('week')}
             className={`px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
@@ -346,6 +392,17 @@ export const ScheduleView: React.FC = () => {
             }`}
           >
             本日行程
+          </button>
+          <button
+            onClick={() => setViewMode('wishlist')}
+            className={`px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1 ${
+              viewMode === 'wishlist'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            <span>📋</span>
+            <span>待選心願單</span>
           </button>
           <button
             onClick={() => setViewMode('grades')}
@@ -703,6 +760,291 @@ export const ScheduleView: React.FC = () => {
       {viewMode === 'grades' && <GradeCalculatorView />}
 
       {/* ======================================================== */}
+      {/* 2.6 待選心願單 / 未來模擬排課 (Course Wishlist Planner) */}
+      {/* ======================================================== */}
+      {viewMode === 'wishlist' && (
+        <div className="space-y-3.5 animate-fade-in">
+          {/* 頂部操作：學期篩選、檢視切換與新增 */}
+          <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center space-x-2 min-w-0">
+                <span className="text-xl shrink-0">📋</span>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 truncate">
+                    下學期待選心願單 & 模擬排課
+                  </h3>
+                  <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
+                    預先安排修課時間與教室地點 · 衝堂自動偵測 · 一鍵轉正式課表
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center space-x-2 shrink-0">
+                {/* 檢視切換 */}
+                <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => setWishlistViewType('cards')}
+                    className={`px-2.5 py-1 rounded-lg transition-all ${
+                      wishlistViewType === 'cards'
+                        ? 'bg-white dark:bg-zinc-700 text-calico-orange shadow-2xs font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    清單卡片
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setWishlistViewType('grid')}
+                    className={`px-2.5 py-1 rounded-lg transition-all ${
+                      wishlistViewType === 'grid'
+                        ? 'bg-white dark:bg-zinc-700 text-calico-orange shadow-2xs font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    模擬課表
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWishlistToEdit(null);
+                    setIsWishlistModalOpen(true);
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black shadow-xs transition-all flex items-center space-x-1 whitespace-nowrap"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>新增待選課</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 學期過濾標籤列 & 學分統計 */}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-black/5 dark:border-white/5 text-xs">
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                <span className="text-[11px] font-bold text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap">
+                  目標學期：
+                </span>
+                {['115-2', '116-1', '全部'].map((sem) => (
+                  <button
+                    key={sem}
+                    type="button"
+                    onClick={() => setSelectedSemester(sem)}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black transition-all whitespace-nowrap shrink-0 ${
+                      selectedSemester === sem
+                        ? 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30'
+                        : 'bg-black/5 dark:bg-white/5 text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    {sem === '全部' ? '全部學期' : `${sem} 學期`}
+                  </button>
+                ))}
+              </div>
+
+              {/* 統計學分 */}
+              <div className="flex items-center space-x-2 font-mono text-[11px] font-black text-calico-cocoa/80 dark:text-zinc-300">
+                <span className="text-indigo-600 dark:text-indigo-400">
+                  預選 {filteredWishlist.reduce((sum, w) => sum + w.credits, 0)} 學分
+                </span>
+                <span>(必 {filteredWishlist.filter((w) => w.category === 'required').reduce((sum, w) => sum + w.credits, 0)} / 選 {filteredWishlist.filter((w) => w.category === 'elective').reduce((sum, w) => sum + w.credits, 0)} / 通 {filteredWishlist.filter((w) => w.category === 'general').reduce((sum, w) => sum + w.credits, 0)})</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 衝堂檢查警示 */}
+          {conflictsList.length > 0 && (
+            <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 space-y-1">
+              <span className="font-black flex items-center space-x-1">
+                <span>⚠️ 發現 {conflictsList.length} 組預選時段衝堂衝突：</span>
+              </span>
+              <ul className="list-disc list-inside space-y-0.5 text-[11px] font-medium">
+                {conflictsList.map((c, i) => (
+                  <li key={i}>
+                    {c.dayName}：<strong>{c.courseA}</strong> ({c.timeA}) 與 <strong>{c.courseB}</strong> ({c.timeB}) 時間重疊！
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* 卡片檢視 */}
+          {wishlistViewType === 'cards' && (
+            <div className="space-y-2.5">
+              {filteredWishlist.length === 0 ? (
+                <div className="py-8 text-center text-xs text-calico-cocoa/40 border border-dashed border-black/10 dark:border-white/10 rounded-3xl">
+                  {selectedSemester} 尚無待選課程，點擊上方「新增待選課」規劃下學期修課吧！
+                </div>
+              ) : (
+                filteredWishlist.map((w) => (
+                  <div
+                    key={w.id}
+                    className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios hover:border-black/10 transition-all space-y-2.5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center space-x-2 flex-wrap gap-y-1">
+                          <span className="text-lg">{w.emoji || '💻'}</span>
+                          <h4 className="text-base font-black text-calico-cocoa dark:text-zinc-100 truncate">
+                            {w.name}
+                          </h4>
+                          <span className="text-[11px] px-2 py-0.5 rounded-lg font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 whitespace-nowrap">
+                            {w.credits} 學分 · {w.category === 'required' ? '必修' : w.category === 'elective' ? '選修' : '通識'}
+                          </span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400 whitespace-nowrap">
+                            {w.targetSemester}
+                          </span>
+                          <span
+                            className={`text-[10px] px-1.5 py-0.5 rounded-md font-bold whitespace-nowrap ${
+                              w.priority === 'must'
+                                ? 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
+                                : w.priority === 'high'
+                                ? 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                                : 'bg-black/5 text-calico-cocoa/50'
+                            }`}
+                          >
+                            {w.priority === 'must' ? '🔥 必搶 / 第一志願' : w.priority === 'high' ? '⭐ 高優先' : w.priority === 'medium' ? '👍 一般' : '備選'}
+                          </span>
+                        </div>
+
+                        {w.notes && (
+                          <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 mt-1 font-medium">
+                            {w.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* 狀態標籤 */}
+                      {w.status === 'enrolled' ? (
+                        <span className="px-2 py-0.5 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-xs font-black whitespace-nowrap shrink-0">
+                          已選上課表 ✓
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => convertWishlistToCourse(w.id)}
+                          className="px-2.5 py-1 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-black shadow-2xs transition-all whitespace-nowrap shrink-0 flex items-center space-x-1"
+                        >
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>正式選上轉入</span>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* 下排資訊：星期幾、時間、地點教室、授課老師與操作 */}
+                    <div className="pt-2.5 border-t border-black/5 dark:border-white/5 flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center space-x-3 text-calico-cocoa/70 dark:text-zinc-300 flex-wrap gap-y-1">
+                        <div className="flex items-center space-x-1">
+                          <Calendar className="w-3.5 h-3.5 text-calico-cocoa/40" />
+                          <span className="font-bold">
+                            {ALL_WEEKDAYS.find((d) => d.val === w.dayOfWeek)?.name || '週一'} {w.startTime}-{w.endTime}
+                          </span>
+                        </div>
+                        {w.classroom && (
+                          <div className="flex items-center space-x-1">
+                            <MapPin className="w-3.5 h-3.5 text-calico-cocoa/40" />
+                            <span className="font-medium">{w.classroom}</span>
+                          </div>
+                        )}
+                        {w.instructor && (
+                          <div className="flex items-center space-x-1">
+                            <User className="w-3.5 h-3.5 text-calico-cocoa/40" />
+                            <span className="font-medium">{w.instructor}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center space-x-2 text-calico-cocoa/40">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setWishlistToEdit(w);
+                            setIsWishlistModalOpen(true);
+                          }}
+                          className="hover:text-amber-600 font-bold text-xs"
+                        >
+                          編輯
+                        </button>
+                        <span>·</span>
+                        <button
+                          type="button"
+                          onClick={() => deleteWishlistCourse(w.id)}
+                          className="hover:text-rose-500 font-bold text-xs"
+                        >
+                          刪除
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
+
+          {/* 模擬排課視覺課表 */}
+          {wishlistViewType === 'grid' && (
+            <div className="rounded-3xl bg-white dark:bg-calico-darkCard p-3 border border-black/5 dark:border-white/10 shadow-ios overflow-hidden">
+              <div className="w-full">
+                {/* 星期標題 */}
+                <div className="grid grid-cols-6 gap-1 border-b border-black/5 pb-2 text-center text-xs font-black text-calico-cocoa/70 dark:text-zinc-300">
+                  <div className="w-10">節次</div>
+                  {ALL_WEEKDAYS.slice(0, 5).map((w) => (
+                    <div key={w.val}>{w.name}</div>
+                  ))}
+                </div>
+
+                {/* 節次行 */}
+                <div className="space-y-1 pt-1.5">
+                  {PERIOD_SCHEDULE.filter((p) => !p.isNoon).map((period) => (
+                    <div key={period.id} className="grid grid-cols-6 gap-1 min-h-[50px] items-stretch">
+                      <div className="text-[10px] font-bold text-calico-cocoa/40 text-center flex flex-col justify-center">
+                        <span>{period.code}</span>
+                        <span className="text-[8px] opacity-75">{period.start}</span>
+                      </div>
+
+                      {ALL_WEEKDAYS.slice(0, 5).map((day) => {
+                        const matched = filteredWishlist.filter((w) => {
+                          if (w.dayOfWeek !== day.val) return false;
+                          const wStart = timeToMinutes(w.startTime);
+                          const wEnd = timeToMinutes(w.endTime);
+                          const pStart = timeToMinutes(period.start);
+                          const pEnd = timeToMinutes(period.end);
+                          return Math.max(wStart, pStart) < Math.min(wEnd, pEnd);
+                        });
+
+                        return (
+                          <div
+                            key={day.val}
+                            className={`p-1 rounded-xl text-left border text-[10px] flex flex-col justify-between transition-all ${
+                              matched.length > 1
+                                ? 'bg-rose-500/20 border-rose-500 text-rose-900 dark:text-rose-200'
+                                : matched.length === 1
+                                ? 'bg-indigo-500/15 border-indigo-500/30 text-indigo-950 dark:text-indigo-200'
+                                : 'bg-black/[0.02] dark:bg-white/[0.02] border-transparent'
+                            }`}
+                          >
+                            {matched.map((m) => (
+                              <div key={m.id} className="truncate">
+                                <span className="font-black truncate block">{m.name}</span>
+                                {m.classroom && <span className="text-[8px] opacity-75 block truncate">{m.classroom}</span>}
+                              </div>
+                            ))}
+                            {matched.length > 1 && (
+                              <span className="text-[8px] font-black text-rose-600 block">衝堂!</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ======================================================== */}
       {/* 3. 課程新增 / 編輯 Modal */}
       {/* ======================================================== */}
       <CourseModal
@@ -727,6 +1069,16 @@ export const ScheduleView: React.FC = () => {
         isOpen={isOcrModalOpen}
         onClose={() => setIsOcrModalOpen(false)}
         onImportCourses={handleImportOcrCourses}
+      />
+
+      {/* 📋 待選課程心願單 Modal */}
+      <CourseWishlistModal
+        isOpen={isWishlistModalOpen}
+        onClose={() => {
+          setIsWishlistModalOpen(false);
+          setWishlistToEdit(null);
+        }}
+        wishlistToEdit={wishlistToEdit}
       />
     </div>
   );

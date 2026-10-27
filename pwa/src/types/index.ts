@@ -22,6 +22,9 @@ export interface Course {
   colorHex: string;
   periodId?: number;
   isSharedWithFriends?: boolean;
+  credits?: number;
+  category?: CreditCategory;
+  semester?: string;
 }
 
 export type TodoPriority = 'low' | 'medium' | 'high';
@@ -347,5 +350,80 @@ export interface GraduationTarget {
   electiveTarget: number;       // 選修門檻 (預設 36)
   generalTarget: number;        // 通識門檻 (預設 20)
 }
+
+// 🎓 GPA 制度
+export type GpaScale = '4.3' | '4.0';
+
+// 📈 股票與基金持股結構
+export interface StockHoldingItem {
+  id: string;
+  symbol: string;             // 例: '2330.TW', '0050.TW', 'VOO', '00878.TW'
+  name: string;               // 例: '台積電', '元大台灣50', '國泰永續高股息'
+  shares: number;             // 持有股數 (例: 200, 1000)
+  currentPrice: number;       // 當前每股價格 (TWD)
+  currency?: 'TWD' | 'USD';
+  costBasis?: number;         // 買進平均成本價
+  lastPriceUpdated?: string;  // 最後更新時間 ISO
+  isAutoQuote?: boolean;      // 是否支援報價系統連線
+}
+
+// 💰 資產帳戶 (現金、銀行、證券投資、其他)
+export type AssetAccountType = 'cash' | 'bank' | 'stock' | 'other';
+
+export interface AssetAccount {
+  id: string;
+  name: string;               // 帳戶名稱 (例: '錢包現金', '國泰世華存款', '台新Richart', '永豐證券戶')
+  type: AssetAccountType;
+  balance: number;            // 現金/存款目前餘額 (證券戶則為所有持股總市值)
+  stocks?: StockHoldingItem[];// 股票基金明細 (僅 type === 'stock')
+  colorHex?: string;
+  emoji?: string;
+  accountNumber?: string;     // 銀行後四碼等備註
+  updatedAt: string;
+}
+
+// ⚖️ 銷帳與對帳平帳紀錄
+export interface BalanceAdjustmentRecord {
+  id: string;
+  date: string;               // YYYY-MM-DD
+  accountId: string;
+  accountName: string;
+  beforeBalance: number;
+  afterBalance: number;
+  diffAmount: number;         // 差額 (正為盤盈/多出，負為盤虧/少記)
+  reason: string;             // 銷帳原因 (例: '錢包零錢誤差', '發票漏記', '手動校準')
+  createdAt: string;          // ISO
+}
+
+// 🐾 月底吃土生存試算設定
+export interface SurvivalBudgetSettings {
+  monthlyBudget: number;      // 每月預算基準 (預設 12000)
+  emergencyReserve: number;   // 緊急預備金保留不可動用 (預設 3000)
+  includeCash: boolean;       // 生存金計算是否納入現金 (預設 true)
+  includeBank: boolean;       // 生存金計算是否納入銀行存款 (預設 true)
+  includeReceivables: boolean;// 生存金計算是否納入別人欠款 (預設 false)
+  includeStocks: boolean;     // 生存金計算是否納入股票基金市值 (預設 false)
+}
+
+// 📋 待選課程／未來排課心願單結構
+export interface CourseWishlistItem {
+  id: string;
+  targetSemester: string;     // 預計修課學期 (例: '115-2', '116-1')
+  name: string;               // 課程名稱
+  credits: number;            // 學分數
+  category: CreditCategory;   // 必修 / 選修 / 通識
+  dayOfWeek: DayOfWeek;       // 1 = Mon ... 7 = Sun
+  startTime: string;          // HH:mm
+  endTime: string;            // HH:mm
+  classroom?: string;         // 教室 / 地點
+  instructor?: string;        // 授課教師
+  colorHex: string;
+  emoji: string;
+  priority: 'must' | 'high' | 'medium' | 'low'; // 志願序 (第一志願/必搶/備選)
+  status: 'wishlist' | 'enrolled' | 'dropped';   // 心願待選中 / 已選上轉正式 / 已放棄
+  notes?: string;
+  createdAt: string;
+}
+
 
 

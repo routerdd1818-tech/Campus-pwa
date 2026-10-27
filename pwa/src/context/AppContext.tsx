@@ -21,8 +21,15 @@ import {
   SharedScheduleData,
   CustomCategory,
   ClassPeriod,
+  GpaScale,
+  StockHoldingItem,
+  AssetAccount,
+  BalanceAdjustmentRecord,
+  SurvivalBudgetSettings,
+  CourseWishlistItem,
 } from '../types';
 import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
+import { batchFetchStockPrices, fetchStockPrice } from '../services/stockService';
 
 import {
   fetchCoursesFromSupabase,
@@ -442,6 +449,133 @@ export const DEFAULT_COURSE_GRADES: CourseGradeItem[] = [
   },
 ];
 
+export const DEFAULT_ASSET_ACCOUNTS: AssetAccount[] = [
+  {
+    id: 'acc_cash',
+    name: '錢包現金',
+    type: 'cash',
+    balance: 3850,
+    emoji: '💵',
+    colorHex: '#10B981',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'acc_bank_richart',
+    name: '台新Richart存款',
+    type: 'bank',
+    balance: 26500,
+    emoji: '🏦',
+    colorHex: '#3B82F6',
+    accountNumber: '8812',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'acc_bank_esun',
+    name: '玉山銀行存款',
+    type: 'bank',
+    balance: 14200,
+    emoji: '💳',
+    colorHex: '#14B8A6',
+    accountNumber: '3351',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'acc_stock',
+    name: '台美股投資證券戶',
+    type: 'stock',
+    balance: 50500,
+    emoji: '📈',
+    colorHex: '#F59E0B',
+    stocks: [
+      {
+        id: 'stk_0050',
+        symbol: '0050.TW',
+        name: '元大台灣50',
+        shares: 200,
+        currentPrice: 195.5,
+        currency: 'TWD',
+        lastPriceUpdated: new Date().toISOString(),
+      },
+      {
+        id: 'stk_00878',
+        symbol: '00878.TW',
+        name: '國泰永續高股息',
+        shares: 500,
+        currentPrice: 22.8,
+        currency: 'TWD',
+        lastPriceUpdated: new Date().toISOString(),
+      },
+    ],
+    updatedAt: new Date().toISOString(),
+  },
+];
+
+export const DEFAULT_SURVIVAL_SETTINGS: SurvivalBudgetSettings = {
+  monthlyBudget: 12000,
+  emergencyReserve: 3000,
+  includeCash: true,
+  includeBank: true,
+  includeReceivables: false,
+  includeStocks: false,
+};
+
+export const DEFAULT_COURSE_WISHLIST: CourseWishlistItem[] = [
+  {
+    id: 'cw_algo',
+    targetSemester: '115-2',
+    name: '演算法與資料結構進階',
+    credits: 3,
+    category: 'required',
+    dayOfWeek: 2,
+    startTime: '09:10',
+    endTime: '12:00',
+    classroom: '資工館201',
+    instructor: '陳教授',
+    colorHex: '#3B82F6',
+    emoji: '💻',
+    priority: 'must',
+    status: 'wishlist',
+    notes: '大二必修，第一志願搶課',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cw_phil',
+    targetSemester: '115-2',
+    name: '現代哲學與批判思辨',
+    credits: 2,
+    category: 'general',
+    dayOfWeek: 4,
+    startTime: '13:20',
+    endTime: '15:10',
+    classroom: '文學院105',
+    instructor: '林教授',
+    colorHex: '#10B981',
+    emoji: '📖',
+    priority: 'high',
+    status: 'wishlist',
+    notes: '熱門通識人文向度',
+    createdAt: new Date().toISOString(),
+  },
+  {
+    id: 'cw_dl',
+    targetSemester: '115-2',
+    name: '深度學習與神經網路實務',
+    credits: 3,
+    category: 'elective',
+    dayOfWeek: 5,
+    startTime: '10:10',
+    endTime: '12:00',
+    classroom: '電資大樓304',
+    instructor: '張教授',
+    colorHex: '#8B5CF6',
+    emoji: '🤖',
+    priority: 'high',
+    status: 'wishlist',
+    notes: '熱門選修，需自備筆電',
+    createdAt: new Date().toISOString(),
+  },
+];
+
 const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: DEFAULT_SUPABASE_URL,
   supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -548,6 +682,27 @@ interface AppContextType {
   importCoursesToGrades: () => number;
   graduationTarget: GraduationTarget;
   updateGraduationTarget: (target: GraduationTarget) => void;
+  // 💰 資產盤點、股票基金與銷帳對帳 (Assets, Stocks & Reconciliation)
+  assetAccounts: AssetAccount[];
+  addAssetAccount: (account: AssetAccount) => void;
+  updateAssetAccount: (account: AssetAccount) => void;
+  deleteAssetAccount: (id: string) => void;
+  adjustAccountBalance: (accountId: string, newBalance: number, reason: string) => void;
+  balanceAdjustments: BalanceAdjustmentRecord[];
+  addStockHolding: (accountId: string, stock: StockHoldingItem) => void;
+  updateStockHolding: (accountId: string, stock: StockHoldingItem) => void;
+  deleteStockHolding: (accountId: string, stockId: string) => void;
+  refreshStockPrices: () => Promise<void>;
+  survivalSettings: SurvivalBudgetSettings;
+  updateSurvivalSettings: (settings: SurvivalBudgetSettings) => void;
+  // 🎓 GPA 制度與待選課程心願單 (GPA Scale & Wishlist Courses)
+  gpaScale: GpaScale;
+  setGpaScale: (scale: GpaScale) => void;
+  courseWishlist: CourseWishlistItem[];
+  addWishlistCourse: (item: CourseWishlistItem) => void;
+  updateWishlistCourse: (item: CourseWishlistItem) => void;
+  deleteWishlistCourse: (id: string) => void;
+  convertWishlistToCourse: (wishlistId: string) => void;
   splitBills: SplitBill[];
   debts: DebtRecord[];
   addDebt: (debt: DebtRecord) => void;
@@ -999,6 +1154,59 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return [];
   });
 
+  // 💰 資產帳戶 (現金、銀行存款、股票基金投資)
+  const [assetAccounts, setAssetAccounts] = useState<AssetAccount[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'asset_accounts')) || (!uid ? localStorage.getItem('campus_asset_accounts') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_ASSET_ACCOUNTS;
+  });
+
+  // ⚖️ 銷帳與對帳平帳紀錄
+  const [balanceAdjustments, setBalanceAdjustments] = useState<BalanceAdjustmentRecord[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'balance_adjustments')) || (!uid ? localStorage.getItem('campus_balance_adjustments') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return [];
+  });
+
+  // 🐾 月底吃土生存試算設定
+  const [survivalSettings, setSurvivalSettings] = useState<SurvivalBudgetSettings>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'survival_settings')) || (!uid ? localStorage.getItem('campus_survival_settings') : null);
+    if (saved) {
+      try { return { ...DEFAULT_SURVIVAL_SETTINGS, ...JSON.parse(saved) }; } catch {}
+    }
+    return DEFAULT_SURVIVAL_SETTINGS;
+  });
+
+  // 📋 未來排課與待選課程心願單
+  const [courseWishlist, setCourseWishlist] = useState<CourseWishlistItem[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'course_wishlist')) || (!uid ? localStorage.getItem('campus_course_wishlist') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_COURSE_WISHLIST;
+  });
+
+  // 🎓 GPA 制度 (4.3 vs 4.0)
+  const [gpaScale, setGpaScaleState] = useState<GpaScale>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'gpa_scale'));
+    return (saved === '4.0' ? '4.0' : '4.3') as GpaScale;
+  });
+
+  const setGpaScale = (scale: GpaScale) => {
+    setGpaScaleState(scale);
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'gpa_scale'), scale);
+  };
+
   useEffect(() => {
     const uid = activeUserIdRef.current;
     localStorage.setItem(getScopedKey(uid, 'installments'), JSON.stringify(installments));
@@ -1038,6 +1246,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = activeUserIdRef.current;
     localStorage.setItem(getScopedKey(uid, 'split_bills'), JSON.stringify(splitBills));
   }, [splitBills]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'asset_accounts'), JSON.stringify(assetAccounts));
+  }, [assetAccounts]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'balance_adjustments'), JSON.stringify(balanceAdjustments));
+  }, [balanceAdjustments]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'survival_settings'), JSON.stringify(survivalSettings));
+  }, [survivalSettings]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'course_wishlist'), JSON.stringify(courseWishlist));
+  }, [courseWishlist]);
 
   const [settings, setSettings] = useState<UserSettings>(() => {
     const uid = initialUser?.id;
@@ -1219,6 +1447,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(getScopedKey(oldUid, 'installments'), JSON.stringify(installments));
     localStorage.setItem(getScopedKey(oldUid, 'recurring_items'), JSON.stringify(recurringItems));
     localStorage.setItem(getScopedKey(oldUid, 'countdowns'), JSON.stringify(countdowns));
+    localStorage.setItem(getScopedKey(oldUid, 'asset_accounts'), JSON.stringify(assetAccounts));
+    localStorage.setItem(getScopedKey(oldUid, 'balance_adjustments'), JSON.stringify(balanceAdjustments));
+    localStorage.setItem(getScopedKey(oldUid, 'survival_settings'), JSON.stringify(survivalSettings));
+    localStorage.setItem(getScopedKey(oldUid, 'course_wishlist'), JSON.stringify(courseWishlist));
 
     // 2. Switch active ref
     activeUserIdRef.current = newUid;
@@ -1293,6 +1525,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawCds = localStorage.getItem(getScopedKey(newUid, 'countdowns'));
     setCountdowns(rawCds ? JSON.parse(rawCds) : DEFAULT_COUNTDOWNS);
+
+    const rawAssets = localStorage.getItem(getScopedKey(newUid, 'asset_accounts'));
+    setAssetAccounts(rawAssets ? JSON.parse(rawAssets) : DEFAULT_ASSET_ACCOUNTS);
+
+    const rawAdj = localStorage.getItem(getScopedKey(newUid, 'balance_adjustments'));
+    setBalanceAdjustments(rawAdj ? JSON.parse(rawAdj) : []);
+
+    const rawSurv = localStorage.getItem(getScopedKey(newUid, 'survival_settings'));
+    setSurvivalSettings(rawSurv ? JSON.parse(rawSurv) : DEFAULT_SURVIVAL_SETTINGS);
+
+    const rawWish = localStorage.getItem(getScopedKey(newUid, 'course_wishlist'));
+    setCourseWishlist(rawWish ? JSON.parse(rawWish) : DEFAULT_COURSE_WISHLIST);
+
+    const rawGpa = localStorage.getItem(getScopedKey(newUid, 'gpa_scale'));
+    setGpaScaleState((rawGpa === '4.0' ? '4.0' : '4.3') as GpaScale);
 
     const rawSynced = localStorage.getItem(getScopedKey(newUid, 'last_synced_at'));
     setLastSyncedAt(rawSynced || null);
@@ -1868,12 +2115,60 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncScheduleToCloud(coursesRef.current, todosRef.current, next, calendarEventsRef.current);
       return next;
     });
+
+    // 💰 連動資產帳戶餘額 (Asset Account Balance Linkage)
+    setAssetAccounts((prev) => {
+      const pm = (t.paymentMethodName || '').toLowerCase();
+      const isCash = pm.includes('現') || pm.includes('cash');
+      const targetType = isCash ? 'cash' : 'bank';
+      const delta = t.type === 'expense' ? -t.amount : t.amount;
+
+      let matchedIndex = prev.findIndex((acc) => pm.includes(acc.name.toLowerCase()));
+      if (matchedIndex === -1) {
+        matchedIndex = prev.findIndex((acc) => acc.type === targetType);
+      }
+      if (matchedIndex === -1 && prev.length > 0) {
+        matchedIndex = 0;
+      }
+      if (matchedIndex !== -1) {
+        return prev.map((acc, idx) =>
+          idx === matchedIndex
+            ? { ...acc, balance: Math.round((acc.balance + delta) * 10) / 10, updatedAt: new Date().toISOString() }
+            : acc
+        );
+      }
+      return prev;
+    });
+
     await upsertTransactionToSupabase(enriched, currentUser?.id);
     setCatMood('happy');
   };
 
   const deleteTransaction = async (id: string) => {
     const canonicalId = toUUID(id);
+    const targetTx = transactions.find((t) => toUUID(t.id) === canonicalId);
+    if (targetTx) {
+      setAssetAccounts((prev) => {
+        const pm = (targetTx.paymentMethodName || '').toLowerCase();
+        const isCash = pm.includes('現') || pm.includes('cash');
+        const targetType = isCash ? 'cash' : 'bank';
+        const reverseDelta = targetTx.type === 'expense' ? targetTx.amount : -targetTx.amount;
+
+        let matchedIndex = prev.findIndex((acc) => pm.includes(acc.name.toLowerCase()));
+        if (matchedIndex === -1) matchedIndex = prev.findIndex((acc) => acc.type === targetType);
+        if (matchedIndex === -1 && prev.length > 0) matchedIndex = 0;
+
+        if (matchedIndex !== -1) {
+          return prev.map((acc, idx) =>
+            idx === matchedIndex
+              ? { ...acc, balance: Math.round((acc.balance + reverseDelta) * 10) / 10, updatedAt: new Date().toISOString() }
+              : acc
+          );
+        }
+        return prev;
+      });
+    }
+
     setTransactions((prev) => {
       const next = prev.filter((t) => toUUID(t.id) !== canonicalId);
       transactionsRef.current = next;
@@ -2408,6 +2703,179 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCatMood('happy');
   };
 
+  // --------------------------------------------------------------------------
+  // 💰 資產帳戶、股票基金投資與銷帳對帳平帳
+  // --------------------------------------------------------------------------
+  const addAssetAccount = (account: AssetAccount) => {
+    const canonicalId = account.id || `acc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    setAssetAccounts((prev) => [...prev, { ...account, id: canonicalId, updatedAt: new Date().toISOString() }]);
+    setCatMood('happy');
+  };
+
+  const updateAssetAccount = (account: AssetAccount) => {
+    setAssetAccounts((prev) =>
+      prev.map((acc) => (acc.id === account.id ? { ...account, updatedAt: new Date().toISOString() } : acc))
+    );
+  };
+
+  const deleteAssetAccount = (id: string) => {
+    setAssetAccounts((prev) => prev.filter((acc) => acc.id !== id));
+  };
+
+  const adjustAccountBalance = (accountId: string, newBalance: number, reason: string) => {
+    setAssetAccounts((prev) => {
+      const target = prev.find((a) => a.id === accountId);
+      if (!target) return prev;
+      const diff = Math.round((newBalance - target.balance) * 10) / 10;
+
+      const adjRecord: BalanceAdjustmentRecord = {
+        id: `adj_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        date: new Date().toISOString().slice(0, 10),
+        accountId: target.id,
+        accountName: target.name,
+        beforeBalance: target.balance,
+        afterBalance: newBalance,
+        diffAmount: diff,
+        reason: reason.trim() || '日常零錢對帳平帳',
+        createdAt: new Date().toISOString(),
+      };
+      setBalanceAdjustments((rec) => [adjRecord, ...rec]);
+
+      return prev.map((a) =>
+        a.id === accountId
+          ? { ...a, balance: newBalance, updatedAt: new Date().toISOString() }
+          : a
+      );
+    });
+    setCatMood('happy');
+  };
+
+  const addStockHolding = (accountId: string, stock: StockHoldingItem) => {
+    const canonicalId = stock.id || `stk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const newStock: StockHoldingItem = { ...stock, id: canonicalId, lastPriceUpdated: new Date().toISOString() };
+
+    setAssetAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === accountId) {
+          const nextStocks = [...(acc.stocks || []), newStock];
+          const totalVal = nextStocks.reduce((sum, s) => sum + s.shares * s.currentPrice, 0);
+          return { ...acc, stocks: nextStocks, balance: Math.round(totalVal), updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      })
+    );
+    setCatMood('happy');
+  };
+
+  const updateStockHolding = (accountId: string, stock: StockHoldingItem) => {
+    setAssetAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === accountId) {
+          const nextStocks = (acc.stocks || []).map((s) => (s.id === stock.id ? stock : s));
+          const totalVal = nextStocks.reduce((sum, s) => sum + s.shares * s.currentPrice, 0);
+          return { ...acc, stocks: nextStocks, balance: Math.round(totalVal), updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      })
+    );
+  };
+
+  const deleteStockHolding = (accountId: string, stockId: string) => {
+    setAssetAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === accountId) {
+          const nextStocks = (acc.stocks || []).filter((s) => s.id !== stockId);
+          const totalVal = nextStocks.reduce((sum, s) => sum + s.shares * s.currentPrice, 0);
+          return { ...acc, stocks: nextStocks, balance: Math.round(totalVal), updatedAt: new Date().toISOString() };
+        }
+        return acc;
+      })
+    );
+  };
+
+  const refreshStockPrices = async () => {
+    const allSymbols = new Set<string>();
+    assetAccounts.forEach((acc) => {
+      acc.stocks?.forEach((s) => allSymbols.add(s.symbol));
+    });
+    if (allSymbols.size === 0) return;
+
+    try {
+      const quotes = await batchFetchStockPrices(Array.from(allSymbols));
+      setAssetAccounts((prev) =>
+        prev.map((acc) => {
+          if (acc.type === 'stock' && acc.stocks && acc.stocks.length > 0) {
+            const updatedStocks = acc.stocks.map((s) => {
+              const q = quotes[s.symbol];
+              if (q && q.price > 0) {
+                return {
+                  ...s,
+                  currentPrice: q.price,
+                  name: q.name || s.name,
+                  lastPriceUpdated: new Date().toISOString(),
+                };
+              }
+              return s;
+            });
+            const totalVal = updatedStocks.reduce((sum, s) => sum + s.shares * s.currentPrice, 0);
+            return { ...acc, stocks: updatedStocks, balance: Math.round(totalVal), updatedAt: new Date().toISOString() };
+          }
+          return acc;
+        })
+      );
+      setCatMood('happy');
+    } catch (err) {
+      console.warn('Failed to refresh stock quotes:', err);
+    }
+  };
+
+  const updateSurvivalSettings = (settings: SurvivalBudgetSettings) => {
+    setSurvivalSettings(settings);
+    setCatMood('happy');
+  };
+
+  // --------------------------------------------------------------------------
+  // 📋 待選課程／未來排課心願單
+  // --------------------------------------------------------------------------
+  const addWishlistCourse = (item: CourseWishlistItem) => {
+    const canonicalId = item.id || `cw_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    setCourseWishlist((prev) => [{ ...item, id: canonicalId, createdAt: new Date().toISOString() }, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateWishlistCourse = (item: CourseWishlistItem) => {
+    setCourseWishlist((prev) => prev.map((w) => (w.id === item.id ? item : w)));
+  };
+
+  const deleteWishlistCourse = (id: string) => {
+    setCourseWishlist((prev) => prev.filter((w) => w.id !== id));
+  };
+
+  const convertWishlistToCourse = (wishlistId: string) => {
+    const item = courseWishlist.find((w) => w.id === wishlistId);
+    if (!item) return;
+
+    const newCourse: Course = {
+      id: `c_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      name: item.name,
+      dayOfWeek: item.dayOfWeek,
+      startTime: item.startTime,
+      endTime: item.endTime,
+      classroom: item.classroom || '',
+      instructor: item.instructor || '',
+      colorHex: item.colorHex || '#3B82F6',
+      credits: item.credits,
+      category: item.category,
+      semester: item.targetSemester,
+    };
+    addCourse(newCourse);
+
+    setCourseWishlist((prev) =>
+      prev.map((w) => (w.id === wishlistId ? { ...w, status: 'enrolled' } : w))
+    );
+    setCatMood('happy');
+  };
+
   const saveFriendRecord = (record: SavedFriendRecord) => {
     // 檢查是否有共享行事曆異動 (新增或刪除行程/待辦)
     const existing = savedFriendsRef.current.find(
@@ -2614,6 +3082,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         importCoursesToGrades,
         graduationTarget,
         updateGraduationTarget,
+        assetAccounts,
+        addAssetAccount,
+        updateAssetAccount,
+        deleteAssetAccount,
+        adjustAccountBalance,
+        balanceAdjustments,
+        addStockHolding,
+        updateStockHolding,
+        deleteStockHolding,
+        refreshStockPrices,
+        survivalSettings,
+        updateSurvivalSettings,
+        gpaScale,
+        setGpaScale,
+        courseWishlist,
+        addWishlistCourse,
+        updateWishlistCourse,
+        deleteWishlistCourse,
+        convertWishlistToCourse,
         splitBills,
         debts,
         addDebt,

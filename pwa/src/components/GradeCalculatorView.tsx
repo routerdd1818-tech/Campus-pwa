@@ -1,9 +1,23 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { CourseGradeItem, CreditCategory } from '../types';
+import { CourseGradeItem, CreditCategory, GpaScale } from '../types';
 import { CourseGradeModal } from './CourseGradeModal';
 
-function scoreToGpa43(score: number): { gpa: number; letter: string } {
+function scoreToGpa(score: number, scale: GpaScale = '4.3'): { gpa: number; letter: string } {
+  if (scale === '4.0') {
+    if (score >= 90) return { gpa: 4.0, letter: 'A+' };
+    if (score >= 85) return { gpa: 4.0, letter: 'A' };
+    if (score >= 80) return { gpa: 3.7, letter: 'A-' };
+    if (score >= 77) return { gpa: 3.3, letter: 'B+' };
+    if (score >= 73) return { gpa: 3.0, letter: 'B' };
+    if (score >= 70) return { gpa: 2.7, letter: 'B-' };
+    if (score >= 67) return { gpa: 2.3, letter: 'C+' };
+    if (score >= 63) return { gpa: 2.0, letter: 'C' };
+    if (score >= 60) return { gpa: 1.7, letter: 'C-' };
+    return { gpa: 0.0, letter: 'F' };
+  }
+
+  // 4.3 制 (台大/多數國內大學標準)
   if (score >= 90) return { gpa: 4.3, letter: 'A+' };
   if (score >= 85) return { gpa: 4.0, letter: 'A' };
   if (score >= 80) return { gpa: 3.7, letter: 'A-' };
@@ -40,6 +54,8 @@ export const GradeCalculatorView: React.FC = () => {
     importCoursesToGrades,
     graduationTarget,
     updateGraduationTarget,
+    gpaScale,
+    setGpaScale,
   } = useApp();
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -63,7 +79,7 @@ export const GradeCalculatorView: React.FC = () => {
 
     if (fin !== null && fin !== undefined) {
       const totalScore = Math.round((currentAccumulated + (fin * item.finalWeight) / 100) * 10) / 10;
-      const { gpa, letter } = scoreToGpa43(totalScore);
+      const { gpa, letter } = scoreToGpa(totalScore, gpaScale);
       return {
         isFinalEntered: true,
         totalScore,
@@ -85,7 +101,7 @@ export const GradeCalculatorView: React.FC = () => {
       (item.midtermScore !== null ? item.midtermWeight : 0);
     const projectedScore =
       enteredWeight > 0 ? Math.round((currentAccumulated / enteredWeight) * 100) : 0;
-    const { gpa, letter } = scoreToGpa43(projectedScore);
+    const { gpa, letter } = scoreToGpa(projectedScore, gpaScale);
 
     return {
       isFinalEntered: false,
@@ -175,7 +191,7 @@ export const GradeCalculatorView: React.FC = () => {
     <div className="space-y-4">
       {/* 🎓 畢業學分進度與 GPA 總覽卡片 */}
       <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3.5">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
           <div className="flex items-center space-x-2 min-w-0">
             <span className="text-xl shrink-0">🎓</span>
             <div className="min-w-0">
@@ -183,23 +199,51 @@ export const GradeCalculatorView: React.FC = () => {
                 畢業學分進度 & 學期 GPA 試算
               </h3>
               <p className="text-[11px] font-semibold text-calico-cocoa/50 dark:text-zinc-400">
-                自動逆推期末及格分數 · 支援一鍵匯入課表
+                自動逆推期末及格分數 · 支援 4.3 / 4.0 制切換
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={() => {
-              setReqTargetInput(String(graduationTarget.requiredTarget));
-              setElecTargetInput(String(graduationTarget.electiveTarget));
-              setGenTargetInput(String(graduationTarget.generalTarget));
-              setIsTargetConfigOpen(!isTargetConfigOpen);
-            }}
-            className="px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-black text-calico-cocoa/70 dark:text-zinc-300 hover:bg-black/10 transition-all whitespace-nowrap shrink-0"
-          >
-            ⚙️ 門檻設定
-          </button>
+          <div className="flex items-center space-x-1.5 shrink-0">
+            {/* 4.3 vs 4.0 切換開關 */}
+            <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-[10px] font-black">
+              <button
+                type="button"
+                onClick={() => setGpaScale('4.3')}
+                className={`px-2 py-1 rounded-lg transition-all ${
+                  gpaScale === '4.3'
+                    ? 'bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 shadow-2xs'
+                    : 'text-calico-cocoa/50 dark:text-zinc-400'
+                }`}
+              >
+                4.3 制
+              </button>
+              <button
+                type="button"
+                onClick={() => setGpaScale('4.0')}
+                className={`px-2 py-1 rounded-lg transition-all ${
+                  gpaScale === '4.0'
+                    ? 'bg-white dark:bg-zinc-700 text-amber-600 dark:text-amber-300 shadow-2xs'
+                    : 'text-calico-cocoa/50 dark:text-zinc-400'
+                }`}
+              >
+                4.0 制
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setReqTargetInput(String(graduationTarget.requiredTarget));
+                setElecTargetInput(String(graduationTarget.electiveTarget));
+                setGenTargetInput(String(graduationTarget.generalTarget));
+                setIsTargetConfigOpen(!isTargetConfigOpen);
+              }}
+              className="px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-black text-calico-cocoa/70 dark:text-zinc-300 hover:bg-black/10 transition-all whitespace-nowrap"
+            >
+              ⚙️ 門檻設定
+            </button>
+          </div>
         </div>
 
         {/* 畢業門檻快速設定折疊區 */}
@@ -285,14 +329,14 @@ export const GradeCalculatorView: React.FC = () => {
 
           <div className="p-3 rounded-2xl bg-indigo-500/10 border border-indigo-500/20">
             <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 block whitespace-nowrap">
-              預估 GPA (4.3)
+              預估 GPA ({gpaScale})
             </span>
             <div className="flex items-baseline space-x-1 mt-0.5">
               <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">
                 {summary.avgGpa}
               </span>
               <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400">
-                / 4.3
+                / {gpaScale}
               </span>
             </div>
           </div>
