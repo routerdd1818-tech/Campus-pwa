@@ -147,48 +147,48 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({
           {isCountUp ? (
             <div>
               <div className="flex items-baseline justify-end space-x-1">
-                <span className="text-xs font-bold text-pink-600/70 dark:text-pink-400">第</span>
-                <span className="text-2xl sm:text-3xl font-black text-pink-600 dark:text-pink-400 tracking-tight leading-none">
+                <span className="text-sm font-extrabold text-pink-600/75 dark:text-pink-400">第</span>
+                <span className="text-4xl sm:text-5xl font-black text-pink-600 dark:text-pink-400 tracking-tighter leading-none font-mono">
                   {dayNumber}
                 </span>
-                <span className="text-xs font-bold text-pink-600/70 dark:text-pink-400">天</span>
+                <span className="text-sm font-extrabold text-pink-600/75 dark:text-pink-400">天</span>
               </div>
-              <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1 whitespace-nowrap">
+              <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 font-bold mt-1.5 whitespace-nowrap">
                 {subText}
               </p>
             </div>
           ) : diffDays === 0 ? (
             <div>
-              <span className="text-2xl sm:text-3xl font-black text-rose-500 tracking-tight leading-none animate-pulse">
+              <span className="text-3xl sm:text-4xl font-black text-rose-500 tracking-tight leading-none animate-pulse">
                 D-Day
               </span>
-              <p className="text-[11px] text-rose-500/80 font-bold mt-1 whitespace-nowrap">
+              <p className="text-xs text-rose-500/80 font-bold mt-1.5 whitespace-nowrap">
                 今天就是目標日！
               </p>
             </div>
           ) : diffDays < 0 ? (
             <div>
               <div className="flex items-baseline justify-end space-x-1">
-                <span className="text-2xl sm:text-3xl font-black text-calico-cocoa/50 dark:text-zinc-400 tracking-tight leading-none">
+                <span className="text-3xl sm:text-4xl font-black text-calico-cocoa/50 dark:text-zinc-400 tracking-tighter leading-none font-mono">
                   D+{Math.abs(diffDays)}
                 </span>
-                <span className="text-xs font-bold text-calico-cocoa/50">天</span>
+                <span className="text-sm font-extrabold text-calico-cocoa/50">天</span>
               </div>
-              <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1 whitespace-nowrap">
+              <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 font-bold mt-1.5 whitespace-nowrap">
                 {subText}
               </p>
             </div>
           ) : (
             <div>
               <div className="flex items-baseline justify-end space-x-1">
-                <span className="text-xs font-bold text-amber-600/70 dark:text-amber-400">還有</span>
-                <span className="text-2xl sm:text-3xl font-black text-amber-600 dark:text-amber-400 tracking-tight leading-none">
+                <span className="text-sm font-extrabold text-amber-600/75 dark:text-amber-400">還有</span>
+                <span className="text-4xl sm:text-5xl font-black text-amber-600 dark:text-amber-400 tracking-tighter leading-none font-mono">
                   {diffDays}
                 </span>
-                <span className="text-xs font-bold text-amber-600/70 dark:text-amber-400">天</span>
+                <span className="text-sm font-extrabold text-amber-600/75 dark:text-amber-400">天</span>
               </div>
-              <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1 whitespace-nowrap">
-                目標倒數中 (D-{diffDays})
+              <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 font-bold mt-1.5 whitespace-nowrap">
+                目標倒數中 · D-{diffDays}
               </p>
             </div>
           )}
