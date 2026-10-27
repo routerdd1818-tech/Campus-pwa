@@ -766,92 +766,6 @@ export const CalendarView: React.FC = () => {
         )}
       </div>
 
-      {/* ⏳ 重要日子（倒數日 & 持續紀念日）專區 */}
-      <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-2">
-            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
-              重要日子
-            </h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
-              {filteredCountdowns.length} 個事件
-            </span>
-          </div>
-
-          <div className="flex items-center space-x-1.5 shrink-0">
-            {/* 篩選切換: 全部 / 倒數日 / 持續日 */}
-            <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-bold">
-              <button
-                type="button"
-                onClick={() => setCountdownFilter('all')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
-                  countdownFilter === 'all'
-                    ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
-                    : 'text-calico-cocoa/60 dark:text-zinc-400'
-                }`}
-              >
-                全部
-              </button>
-              <button
-                type="button"
-                onClick={() => setCountdownFilter('countdown')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
-                  countdownFilter === 'countdown'
-                    ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
-                    : 'text-calico-cocoa/60 dark:text-zinc-400'
-                }`}
-              >
-                倒數日
-              </button>
-              <button
-                type="button"
-                onClick={() => setCountdownFilter('countup')}
-                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
-                  countdownFilter === 'countup'
-                    ? 'bg-white dark:bg-zinc-800 text-pink-600 dark:text-pink-400 shadow-2xs font-black'
-                    : 'text-calico-cocoa/60 dark:text-zinc-400'
-                }`}
-              >
-                持續日
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                setCountdownToEdit(null);
-                setIsCountdownModalOpen(true);
-              }}
-              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>新增日子</span>
-            </button>
-          </div>
-        </div>
-
-        {/* 倒數日清單 */}
-        {filteredCountdowns.length === 0 ? (
-          <div className="py-6 text-center text-xs text-calico-cocoa/40 dark:text-zinc-500 font-bold border border-dashed border-black/10 dark:border-white/10 rounded-2xl">
-            目前無符合條件的重要日子，點擊上方「新增日子」建立倒數或持續紀念！
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {filteredCountdowns.map((cd) => (
-              <CountdownCard
-                key={cd.id}
-                item={cd}
-                onEdit={(item) => {
-                  setCountdownToEdit(item);
-                  setIsCountdownModalOpen(true);
-                }}
-                onDelete={(id) => deleteCountdown(id)}
-              />
-            ))}
-          </div>
-        )}
-      </div>
-
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* 月曆 vs 週曆 切換 */}
@@ -1621,6 +1535,92 @@ export const CalendarView: React.FC = () => {
               </p>
             </div>
           )}
+      </div>
+
+      {/* ⏳ 重要日子（倒數日 & 持續紀念日）專區 - 移至頁面底部 */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center space-x-2">
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+              重要日子
+            </h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
+              {filteredCountdowns.length} 個事件
+            </span>
+          </div>
+
+          <div className="flex items-center space-x-1.5 shrink-0">
+            {/* 篩選切換: 全部 / 倒數日 / 持續日 */}
+            <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setCountdownFilter('all')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                  countdownFilter === 'all'
+                    ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                全部
+              </button>
+              <button
+                type="button"
+                onClick={() => setCountdownFilter('countdown')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                  countdownFilter === 'countdown'
+                    ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                倒數日
+              </button>
+              <button
+                type="button"
+                onClick={() => setCountdownFilter('countup')}
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
+                  countdownFilter === 'countup'
+                    ? 'bg-white dark:bg-zinc-800 text-pink-600 dark:text-pink-400 shadow-2xs font-black'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400'
+                }`}
+              >
+                持續日
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setCountdownToEdit(null);
+                setIsCountdownModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>新增日子</span>
+            </button>
+          </div>
+        </div>
+
+        {/* 倒數日清單 */}
+        {filteredCountdowns.length === 0 ? (
+          <div className="py-6 text-center text-xs text-calico-cocoa/40 dark:text-zinc-500 font-bold border border-dashed border-black/10 dark:border-white/10 rounded-2xl">
+            目前無符合條件的重要日子，點擊上方「新增日子」建立倒數或持續紀念！
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {filteredCountdowns.map((cd) => (
+              <CountdownCard
+                key={cd.id}
+                item={cd}
+                onEdit={(item) => {
+                  setCountdownToEdit(item);
+                  setIsCountdownModalOpen(true);
+                }}
+                onDelete={(id) => deleteCountdown(id)}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ======================================================== */}
