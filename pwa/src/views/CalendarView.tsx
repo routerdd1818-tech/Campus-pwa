@@ -33,7 +33,6 @@ import {
   Users,
   RefreshCw,
   UserPlus,
-  Hourglass,
 } from 'lucide-react';
 
 const WEEKDAYS_HEADER = ['週日', '週一', '週二', '週三', '週四', '週五', '週六'];
@@ -90,14 +89,17 @@ export const CalendarView: React.FC = () => {
   const [countdownFilter, setCountdownFilter] = useState<'all' | 'countdown' | 'countup'>('all');
 
   const filteredCountdowns = useMemo(() => {
-    const list = countdowns || [];
+    let list = [...(countdowns || [])];
     if (countdownFilter === 'countdown') {
-      return list.filter((c) => (c.mode || 'countdown') === 'countdown');
+      list = list.filter((c) => (c.mode || 'countdown') === 'countdown');
+    } else if (countdownFilter === 'countup') {
+      list = list.filter((c) => c.mode === 'countup');
     }
-    if (countdownFilter === 'countup') {
-      return list.filter((c) => c.mode === 'countup');
-    }
-    return list;
+    return list.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime();
+    });
   }, [countdowns, countdownFilter]);
 
   // Calendar Source Selection (自己行事曆 vs 共同行事曆) & Collapsible State
@@ -767,23 +769,13 @@ export const CalendarView: React.FC = () => {
       {/* ⏳ 重要日子（倒數日 & 持續紀念日）專區 */}
       <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center space-x-2.5 min-w-0">
-            <div className="p-2 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
-              <Hourglass className="w-4 h-4" />
-            </div>
-            <div className="min-w-0">
-              <div className="flex items-center space-x-2">
-                <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                  重要日子
-                </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
-                  {filteredCountdowns.length} 個事件
-                </span>
-              </div>
-              <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold truncate">
-                考試檢定倒數 · 戀愛交往與習慣持續天數 · 首頁連動
-              </p>
-            </div>
+          <div className="flex items-center space-x-2">
+            <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+              重要日子
+            </h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
+              {filteredCountdowns.length} 個事件
+            </span>
           </div>
 
           <div className="flex items-center space-x-1.5 shrink-0">
@@ -792,7 +784,7 @@ export const CalendarView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCountdownFilter('all')}
-                className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   countdownFilter === 'all'
                     ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -803,7 +795,7 @@ export const CalendarView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCountdownFilter('countdown')}
-                className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   countdownFilter === 'countdown'
                     ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-2xs font-black'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -814,7 +806,7 @@ export const CalendarView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCountdownFilter('countup')}
-                className={`px-2 py-1 rounded-lg transition-all whitespace-nowrap ${
+                className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap ${
                   countdownFilter === 'countup'
                     ? 'bg-white dark:bg-zinc-800 text-pink-600 dark:text-pink-400 shadow-2xs font-black'
                     : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -854,7 +846,6 @@ export const CalendarView: React.FC = () => {
                   setIsCountdownModalOpen(true);
                 }}
                 onDelete={(id) => deleteCountdown(id)}
-                onTogglePin={(id) => togglePinCountdown(id)}
               />
             ))}
           </div>
