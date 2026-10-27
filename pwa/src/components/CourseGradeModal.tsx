@@ -74,6 +74,25 @@ export const CourseGradeModal: React.FC<CourseGradeModalProps> = ({
     return Math.min(100, Math.max(0, n));
   };
 
+  const sAtt = parseScore(attendanceScore);
+  const sMid = parseScore(midtermScore);
+  const sFin = parseScore(finalScore);
+
+  const currentAccumulated =
+    (sAtt !== null ? (sAtt * wAtt) / 100 : 0) +
+    (sMid !== null ? (sMid * wMid) / 100 : 0);
+
+  const neededFor60 = wFin > 0 ? Math.ceil(((60 - currentAccumulated) * 100) / wFin) : 0;
+  const neededFor80 = wFin > 0 ? Math.ceil(((80 - currentAccumulated) * 100) / wFin) : 0;
+
+  const PRESET_WEIGHTS = [
+    { label: '30 / 30 / 40 (標準)', att: 30, mid: 30, fin: 40 },
+    { label: '20 / 40 / 40 (重考)', att: 20, mid: 40, fin: 40 },
+    { label: '40 / 0 / 60 (無期中)', att: 40, mid: 0, fin: 60 },
+    { label: '50 / 0 / 50 (各半)', att: 50, mid: 0, fin: 50 },
+    { label: '20 / 30 / 50 (重期末)', att: 20, mid: 30, fin: 50 },
+  ];
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!courseName.trim()) return;
@@ -193,108 +212,304 @@ export const CourseGradeModal: React.FC<CourseGradeModalProps> = ({
             </div>
           </div>
 
-          {/* 配分權重設定 */}
+          {/* 配分權重設定與即時成績試算 */}
           <div className="p-3.5 rounded-2xl bg-black/[0.03] dark:bg-white/[0.03] border border-black/5 dark:border-white/10 space-y-3">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200">
-                📊 配分權重與目前成績（未考可留空）
+            {/* 標題與總和狀態 */}
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200 whitespace-nowrap">
+                📊 配分權重與成績試算
               </span>
               <span
                 className={`text-[11px] font-bold px-2 py-0.5 rounded-lg whitespace-nowrap shrink-0 ${
                   weightSum === 100
                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
-                    : 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : weightSum < 100
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                    : 'bg-rose-500/15 text-rose-600 dark:text-rose-400'
                 }`}
               >
-                權重總和: {weightSum}%
+                {weightSum === 100
+                  ? '權重總和: 100% ✓'
+                  : weightSum < 100
+                  ? `權重總和: ${weightSum}% (差 ${100 - weightSum}%)`
+                  : `權重總和: ${weightSum}% (超 ${weightSum - 100}%)`}
               </span>
             </div>
 
-            <div className="grid grid-cols-3 gap-2">
-              {/* 平時 */}
-              <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
-                  <span>平時</span>
-                  <div className="flex items-center">
+            {/* 常用配分比例快速套用 */}
+            <div>
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                <span className="text-[10px] font-bold text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                  常用配分：
+                </span>
+                {PRESET_WEIGHTS.map((preset) => {
+                  const isCurrent =
+                    wAtt === preset.att && wMid === preset.mid && wFin === preset.fin;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setAttendanceWeight(String(preset.att));
+                        setMidtermWeight(String(preset.mid));
+                        setFinalWeight(String(preset.fin));
+                      }}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-bold transition-all whitespace-nowrap shrink-0 ${
+                        isCurrent
+                          ? 'bg-calico-orange text-white shadow-2xs'
+                          : 'bg-black/5 dark:bg-white/5 hover:bg-black/10 text-calico-cocoa/70 dark:text-zinc-300'
+                      }`}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 三項獨立評分列 */}
+            <div className="space-y-2.5">
+              {/* 平時成績 */}
+              <div className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap shrink-0">
+                      平時成績
+                    </span>
+                    <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 font-medium truncate">
+                      出席、小考、日常作業
+                    </span>
+                  </div>
+                  <div className="text-right text-[11px] font-black shrink-0 whitespace-nowrap">
+                    {sAtt !== null ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        進帳 +{((sAtt * wAtt) / 100).toFixed(1)} 分
+                      </span>
+                    ) : (
+                      <span className="text-calico-cocoa/40 dark:text-zinc-500 font-medium">
+                        尚未填寫
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      配分權重
+                    </span>
                     <input
                       type="number"
                       min={0}
                       max={100}
                       value={attendanceWeight}
                       onChange={(e) => setAttendanceWeight(e.target.value)}
-                      className="w-9 text-right bg-transparent font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 outline-none"
                     />
-                    <span>%</span>
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      目前分數
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={attendanceScore}
+                      onChange={(e) => setAttendanceScore(e.target.value)}
+                      placeholder="例: 85"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 placeholder:text-calico-cocoa/30 dark:placeholder:text-zinc-600 outline-none"
+                    />
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      分
+                    </span>
                   </div>
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={attendanceScore}
-                  onChange={(e) => setAttendanceScore(e.target.value)}
-                  placeholder="平時分"
-                  className="w-full px-2 py-1.5 rounded-lg bg-black/5 dark:bg-zinc-900 text-center text-sm font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:ring-1 focus:ring-calico-orange"
-                />
               </div>
 
-              {/* 期中 */}
-              <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
-                  <span>期中考</span>
-                  <div className="flex items-center">
+              {/* 期中考 */}
+              <div className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap shrink-0">
+                      期中考試
+                    </span>
+                    <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 font-medium truncate">
+                      期中測驗或期中專題
+                    </span>
+                  </div>
+                  <div className="text-right text-[11px] font-black shrink-0 whitespace-nowrap">
+                    {sMid !== null ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        進帳 +{((sMid * wMid) / 100).toFixed(1)} 分
+                      </span>
+                    ) : (
+                      <span className="text-calico-cocoa/40 dark:text-zinc-500 font-medium">
+                        未考可留空
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      配分權重
+                    </span>
                     <input
                       type="number"
                       min={0}
                       max={100}
                       value={midtermWeight}
                       onChange={(e) => setMidtermWeight(e.target.value)}
-                      className="w-9 text-right bg-transparent font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 outline-none"
                     />
-                    <span>%</span>
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      目前分數
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={midtermScore}
+                      onChange={(e) => setMidtermScore(e.target.value)}
+                      placeholder="未考可留空"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 placeholder:text-calico-cocoa/30 dark:placeholder:text-zinc-600 outline-none"
+                    />
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      分
+                    </span>
                   </div>
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={midtermScore}
-                  onChange={(e) => setMidtermScore(e.target.value)}
-                  placeholder="期中分"
-                  className="w-full px-2 py-1.5 rounded-lg bg-black/5 dark:bg-zinc-900 text-center text-sm font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:ring-1 focus:ring-calico-orange"
-                />
               </div>
 
-              {/* 期末 */}
-              <div className="p-2.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 space-y-2">
-                <div className="flex items-center justify-between text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-400">
-                  <span>期末考</span>
-                  <div className="flex items-center">
+              {/* 期末考 */}
+              <div className="p-3 rounded-2xl bg-white dark:bg-zinc-800 border border-black/5 dark:border-white/5 shadow-2xs space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center space-x-1.5 min-w-0">
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap shrink-0">
+                      期末考試
+                    </span>
+                    <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 font-medium truncate">
+                      期末考或成果發表
+                    </span>
+                  </div>
+                  <div className="text-right text-[11px] font-black shrink-0 whitespace-nowrap">
+                    {sFin !== null ? (
+                      <span className="text-emerald-600 dark:text-emerald-400">
+                        進帳 +{((sFin * wFin) / 100).toFixed(1)} 分
+                      </span>
+                    ) : (
+                      <span className="text-amber-600 dark:text-amber-400 font-bold">
+                        留空自動逆推
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      配分權重
+                    </span>
                     <input
                       type="number"
                       min={0}
                       max={100}
                       value={finalWeight}
                       onChange={(e) => setFinalWeight(e.target.value)}
-                      className="w-9 text-right bg-transparent font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 outline-none"
                     />
-                    <span>%</span>
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      %
+                    </span>
+                  </div>
+
+                  <div className="flex items-center space-x-1.5 px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/5 dark:border-white/5">
+                    <span className="text-[11px] font-bold text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                      目前分數
+                    </span>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      value={finalScore}
+                      onChange={(e) => setFinalScore(e.target.value)}
+                      placeholder="留空逆推門檻"
+                      className="w-full text-right text-xs font-black bg-transparent text-calico-cocoa dark:text-zinc-100 placeholder:text-calico-cocoa/30 dark:placeholder:text-zinc-600 outline-none"
+                    />
+                    <span className="text-xs font-black text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap shrink-0">
+                      分
+                    </span>
                   </div>
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={finalScore}
-                  onChange={(e) => setFinalScore(e.target.value)}
-                  placeholder="留空逆推"
-                  className="w-full px-2 py-1.5 rounded-lg bg-black/5 dark:bg-zinc-900 text-center text-sm font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:ring-1 focus:ring-calico-orange"
-                />
               </div>
             </div>
-            <p className="text-[10px] font-semibold text-calico-cocoa/50 dark:text-zinc-400">
-              💡 期末考欄位留空時，系統將自動為你逆推「期末考至少要考幾分才能 60 分及格與拿 A (80分)」。
-            </p>
+
+            {/* 即時智慧逆推預覽卡片 */}
+            <div className="p-3 rounded-2xl bg-amber-500/10 dark:bg-amber-500/15 border border-amber-500/20 text-xs space-y-1.5">
+              <div className="flex items-center justify-between font-black text-amber-900 dark:text-amber-200">
+                <span className="flex items-center space-x-1">
+                  <span>🎯 目前累計實得：</span>
+                  <span className="text-sm font-black text-amber-600 dark:text-amber-300">
+                    {currentAccumulated.toFixed(1)}
+                  </span>
+                  <span>分</span>
+                </span>
+                {wFin > 0 && finalScore.trim() === '' && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-200 whitespace-nowrap shrink-0">
+                    期末佔 {wFin}%
+                  </span>
+                )}
+              </div>
+
+              {wFin > 0 && finalScore.trim() === '' ? (
+                <div className="text-[11px] text-amber-800 dark:text-amber-200 space-y-1 pt-0.5 border-t border-amber-500/15">
+                  <div className="flex items-center justify-between">
+                    <span>• 達 60 及格門檻需考：</span>
+                    <span className="font-black text-xs">
+                      {neededFor60 <= 0 ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">已過關 (0分即可) 🎉</span>
+                      ) : neededFor60 > 100 ? (
+                        <span className="text-rose-600 dark:text-rose-400">{neededFor60} 分 (需加分救火 ⚠️)</span>
+                      ) : (
+                        <span className="text-amber-900 dark:text-amber-100 underline decoration-amber-500">{neededFor60} 分</span>
+                      )}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span>• 達 A 等級 (80分) 需考：</span>
+                    <span className="font-black text-xs">
+                      {neededFor80 <= 0 ? (
+                        <span className="text-emerald-600 dark:text-emerald-400">已達標 (0分即可) 🌟</span>
+                      ) : neededFor80 > 100 ? (
+                        <span className="text-calico-cocoa/60 dark:text-zinc-400">超過 100 分</span>
+                      ) : (
+                        <span className="text-amber-900 dark:text-amber-100 underline decoration-amber-500">{neededFor80} 分</span>
+                      )}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[11px] text-amber-800 dark:text-amber-200 pt-0.5 border-t border-amber-500/15">
+                  <span>總試算成績：</span>
+                  <strong className="text-sm font-black text-amber-900 dark:text-amber-100 ml-1">
+                    {Math.round((currentAccumulated + ((sFin || 0) * wFin) / 100) * 10) / 10}
+                  </strong>
+                  <span className="ml-0.5">分</span>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* 純自訂 Emoji 與色票 */}
