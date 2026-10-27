@@ -6,6 +6,10 @@ import {
   Installment,
   RecurringItem,
   CountdownItem,
+  SavingsJar,
+  SavingsDeposit,
+  CourseGradeItem,
+  GraduationTarget,
   SplitBill,
   DebtRecord,
   DebtRepayment,
@@ -329,6 +333,96 @@ export const DEFAULT_COUNTDOWNS: CountdownItem[] = [
   },
 ];
 
+export const DEFAULT_SAVINGS_JARS: SavingsJar[] = [
+  {
+    id: 'jar_japan',
+    title: '日本畢業旅行基金',
+    emoji: '✈️',
+    colorHex: '#3B82F6',
+    targetAmount: 25000,
+    currentAmount: 12400,
+    targetDate: '2027-06-01',
+    deposits: [
+      { id: 'dep_1', amount: 10000, date: '2026-09-10', note: '暑假打工存款' },
+      { id: 'dep_2', amount: 2400, date: '2026-10-05', note: '家教獎金投入' },
+    ],
+    isCompleted: false,
+    notes: '東京五天四夜自由行！',
+  },
+  {
+    id: 'jar_ipad',
+    title: 'iPad Air 筆記平板',
+    emoji: '💻',
+    colorHex: '#8B5CF6',
+    targetAmount: 18900,
+    currentAmount: 6500,
+    targetDate: '2027-02-15',
+    deposits: [
+      { id: 'dep_3', amount: 6500, date: '2026-10-01', note: '初始儲蓄金' },
+    ],
+    isCompleted: false,
+    notes: '上課無紙化筆記用',
+  },
+];
+
+export const DEFAULT_GRADUATION_TARGET: GraduationTarget = {
+  totalTarget: 128,
+  requiredTarget: 72,
+  electiveTarget: 36,
+  generalTarget: 20,
+};
+
+export const DEFAULT_COURSE_GRADES: CourseGradeItem[] = [
+  {
+    id: 'cg_algo',
+    semester: '115-1',
+    courseName: '資料結構與演算法',
+    emoji: '💻',
+    colorHex: '#3B82F6',
+    credits: 3,
+    category: 'required',
+    attendanceWeight: 30,
+    midtermWeight: 30,
+    finalWeight: 40,
+    attendanceScore: 88,
+    midtermScore: 56,
+    finalScore: null,
+    isPassed: true,
+  },
+  {
+    id: 'cg_os',
+    semester: '115-1',
+    courseName: '作業系統概論',
+    emoji: '⚙️',
+    colorHex: '#8B5CF6',
+    credits: 3,
+    category: 'required',
+    attendanceWeight: 25,
+    midtermWeight: 35,
+    finalWeight: 40,
+    attendanceScore: 92,
+    midtermScore: 74,
+    finalScore: null,
+    isPassed: true,
+  },
+  {
+    id: 'cg_ai',
+    semester: '115-1',
+    courseName: '生成式 AI 實務專題',
+    emoji: '🤖',
+    colorHex: '#10B981',
+    credits: 3,
+    category: 'elective',
+    attendanceWeight: 40,
+    midtermWeight: 30,
+    finalWeight: 30,
+    attendanceScore: 95,
+    midtermScore: 88,
+    finalScore: 90,
+    isPassed: true,
+  },
+];
+
 const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: DEFAULT_SUPABASE_URL,
   supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -418,6 +512,20 @@ interface AppContextType {
   updateCountdown: (item: CountdownItem) => void;
   deleteCountdown: (id: string) => void;
   togglePinCountdown: (id: string) => void;
+  // 🏺 夢想存錢筒 (Savings Jars)
+  savingsJars: SavingsJar[];
+  addSavingsJar: (jar: SavingsJar) => void;
+  updateSavingsJar: (jar: SavingsJar) => void;
+  deleteSavingsJar: (id: string) => void;
+  depositToSavingsJar: (jarId: string, amount: number, note?: string, syncToExpense?: boolean) => Promise<void>;
+  // 🎓 學分進度與成績試算 (GPA & Credit Tracker)
+  courseGrades: CourseGradeItem[];
+  addCourseGrade: (item: CourseGradeItem) => void;
+  updateCourseGrade: (item: CourseGradeItem) => void;
+  deleteCourseGrade: (id: string) => void;
+  importCoursesToGrades: () => number;
+  graduationTarget: GraduationTarget;
+  updateGraduationTarget: (target: GraduationTarget) => void;
   splitBills: SplitBill[];
   debts: DebtRecord[];
   addDebt: (debt: DebtRecord) => void;
@@ -824,6 +932,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_COUNTDOWNS;
   });
 
+  const [savingsJars, setSavingsJars] = useState<SavingsJar[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'savings_jars')) || (!uid ? localStorage.getItem('campus_savings_jars') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_SAVINGS_JARS;
+  });
+
+  const [courseGrades, setCourseGrades] = useState<CourseGradeItem[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'course_grades')) || (!uid ? localStorage.getItem('campus_course_grades') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_COURSE_GRADES;
+  });
+
+  const [graduationTarget, setGraduationTarget] = useState<GraduationTarget>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'graduation_target')) || (!uid ? localStorage.getItem('campus_graduation_target') : null);
+    if (saved) {
+      try { return { ...DEFAULT_GRADUATION_TARGET, ...JSON.parse(saved) }; } catch {}
+    }
+    return DEFAULT_GRADUATION_TARGET;
+  });
+
   const [debts, setDebts] = useState<DebtRecord[]>(() => {
     const uid = initialUser?.id;
     const saved = localStorage.getItem(getScopedKey(uid, 'debts')) || (!uid ? localStorage.getItem('campus_debts') : null);
@@ -856,6 +991,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const uid = activeUserIdRef.current;
     localStorage.setItem(getScopedKey(uid, 'countdowns'), JSON.stringify(countdowns));
   }, [countdowns]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'savings_jars'), JSON.stringify(savingsJars));
+  }, [savingsJars]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'course_grades'), JSON.stringify(courseGrades));
+  }, [courseGrades]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'graduation_target'), JSON.stringify(graduationTarget));
+  }, [graduationTarget]);
 
   useEffect(() => {
     const uid = activeUserIdRef.current;
@@ -2005,6 +2155,144 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  // --------------------------------------------------------------------------
+  // 🏺 夢想存錢筒 (Savings Jars / Wish List)
+  // --------------------------------------------------------------------------
+  const addSavingsJar = (jar: SavingsJar) => {
+    const canonicalId = toUUID(jar.id || `jar_${Date.now()}_${Math.random()}`);
+    const newJar: SavingsJar = {
+      ...jar,
+      id: canonicalId,
+      deposits: jar.deposits || [],
+      isCompleted: jar.currentAmount >= jar.targetAmount,
+    };
+    setSavingsJars((prev) => [newJar, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateSavingsJar = (jar: SavingsJar) => {
+    setSavingsJars((prev) =>
+      prev.map((j) =>
+        j.id === jar.id
+          ? { ...jar, isCompleted: jar.currentAmount >= jar.targetAmount }
+          : j
+      )
+    );
+  };
+
+  const deleteSavingsJar = (id: string) => {
+    setSavingsJars((prev) => prev.filter((j) => j.id !== id));
+  };
+
+  const depositToSavingsJar = async (
+    jarId: string,
+    amount: number,
+    note?: string,
+    syncToExpense?: boolean
+  ) => {
+    const targetJar = savingsJars.find((j) => j.id === jarId);
+    if (!targetJar || amount <= 0) return;
+
+    const depositRecord: SavingsDeposit = {
+      id: `dep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount: Math.round(amount),
+      date: new Date().toISOString().slice(0, 10),
+      note: note || '夢想儲蓄存入',
+    };
+
+    setSavingsJars((prev) =>
+      prev.map((j) => {
+        if (j.id !== jarId) return j;
+        const nextAmount = j.currentAmount + Math.round(amount);
+        return {
+          ...j,
+          currentAmount: nextAmount,
+          isCompleted: nextAmount >= j.targetAmount,
+          deposits: [depositRecord, ...(j.deposits || [])],
+        };
+      })
+    );
+
+    if (syncToExpense) {
+      const newTx: Transaction = {
+        id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        amount: Math.round(amount),
+        type: 'expense',
+        categoryName: '夢想儲蓄',
+        categoryIcon: targetJar.emoji || '🏺',
+        categoryColorHex: targetJar.colorHex || '#8B5CF6',
+        paymentMethodName: '儲蓄轉帳',
+        date: new Date().toISOString(),
+        notes: `【存入夢想存錢筒】${targetJar.title}${note ? ` · ${note}` : ''}`,
+        valueScore: 10,
+        isSharedWithFriends: false,
+      };
+      await addTransaction(newTx);
+    }
+
+    setCatMood('proud');
+  };
+
+  // --------------------------------------------------------------------------
+  // 🎓 學分進度與期中期末成績試算 (GPA & Credit Tracker)
+  // --------------------------------------------------------------------------
+  const addCourseGrade = (item: CourseGradeItem) => {
+    const canonicalId = toUUID(item.id || `cg_${Date.now()}_${Math.random()}`);
+    setCourseGrades((prev) => [{ ...item, id: canonicalId }, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateCourseGrade = (item: CourseGradeItem) => {
+    setCourseGrades((prev) => prev.map((cg) => (cg.id === item.id ? item : cg)));
+  };
+
+  const deleteCourseGrade = (id: string) => {
+    setCourseGrades((prev) => prev.filter((cg) => cg.id !== id));
+  };
+
+  const importCoursesToGrades = (): number => {
+    const existingNames = new Set(
+      courseGrades.map((cg) => cg.courseName.trim().toLowerCase())
+    );
+    const uniqueCourses = new Map<string, Course>();
+    for (const c of courses) {
+      const key = (c.name || '').trim().toLowerCase();
+      if (key && !existingNames.has(key) && !uniqueCourses.has(key)) {
+        uniqueCourses.set(key, c);
+      }
+    }
+
+    if (uniqueCourses.size === 0) return 0;
+
+    const newGradeItems: CourseGradeItem[] = Array.from(uniqueCourses.values()).map(
+      (c, idx) => ({
+        id: toUUID(`cg_imp_${Date.now()}_${idx}`),
+        semester: '115-1',
+        courseName: c.name,
+        emoji: '📚',
+        colorHex: c.colorHex || '#3B82F6',
+        credits: 3,
+        category: 'required',
+        attendanceWeight: 30,
+        midtermWeight: 30,
+        finalWeight: 40,
+        attendanceScore: null,
+        midtermScore: null,
+        finalScore: null,
+        isPassed: true,
+      })
+    );
+
+    setCourseGrades((prev) => [...newGradeItems, ...prev]);
+    setCatMood('happy');
+    return newGradeItems.length;
+  };
+
+  const updateGraduationTarget = (target: GraduationTarget) => {
+    setGraduationTarget(target);
+    setCatMood('happy');
+  };
+
   const saveFriendRecord = (record: SavedFriendRecord) => {
     // 檢查是否有共享行事曆異動 (新增或刪除行程/待辦)
     const existing = savedFriendsRef.current.find(
@@ -2196,6 +2484,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCountdown,
         deleteCountdown,
         togglePinCountdown,
+        savingsJars,
+        addSavingsJar,
+        updateSavingsJar,
+        deleteSavingsJar,
+        depositToSavingsJar,
+        courseGrades,
+        addCourseGrade,
+        updateCourseGrade,
+        deleteCourseGrade,
+        importCoursesToGrades,
+        graduationTarget,
+        updateGraduationTarget,
         splitBills,
         debts,
         addDebt,

@@ -5,6 +5,7 @@ import { fetchSharedScheduleByCode } from '../services/supabase';
 import { CourseModal } from '../components/CourseModal';
 import { OcrModal } from '../components/OcrModal';
 import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
+import { GradeCalculatorView } from '../components/GradeCalculatorView';
 import {
   Plus,
   Sparkles,
@@ -84,7 +85,7 @@ export const ScheduleView: React.FC = () => {
     setIsShareModalOpen,
   } = useApp();
 
-  const [viewMode, setViewMode] = useState<'week' | 'day'>('week');
+  const [viewMode, setViewMode] = useState<'week' | 'day' | 'grades'>('week');
   const [includeWeekend, setIncludeWeekend] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
 
@@ -324,11 +325,11 @@ export const ScheduleView: React.FC = () => {
 
       {/* 頂部操作與視圖切換列 */}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        {/* 週課表 vs 本日行程 */}
+        {/* 週課表 vs 本日行程 vs 學分與成績 */}
         <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
           <button
             onClick={() => setViewMode('week')}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
+            className={`px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
               viewMode === 'week'
                 ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                 : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -338,13 +339,24 @@ export const ScheduleView: React.FC = () => {
           </button>
           <button
             onClick={() => setViewMode('day')}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
+            className={`px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
               viewMode === 'day'
                 ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                 : 'text-calico-cocoa/60 dark:text-zinc-400'
             }`}
           >
             本日行程
+          </button>
+          <button
+            onClick={() => setViewMode('grades')}
+            className={`px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1 ${
+              viewMode === 'grades'
+                ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
+                : 'text-calico-cocoa/60 dark:text-zinc-400'
+            }`}
+          >
+            <span>🎓</span>
+            <span>學分與成績</span>
           </button>
         </div>
 
@@ -684,6 +696,11 @@ export const ScheduleView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ======================================================== */}
+      {/* 2.5 學分進度與期中期末成績試算 (GPA & Credit Tracker) */}
+      {/* ======================================================== */}
+      {viewMode === 'grades' && <GradeCalculatorView />}
 
       {/* ======================================================== */}
       {/* 3. 課程新增 / 編輯 Modal */}

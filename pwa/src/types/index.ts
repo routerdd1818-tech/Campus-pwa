@@ -283,3 +283,56 @@ export interface SavedFriendRecord {
   cachedSchedule?: SharedScheduleData;
 }
 
+// 🏺 夢想存錢筒存款明細
+export interface SavingsDeposit {
+  id: string;
+  amount: number;
+  date: string;         // YYYY-MM-DD
+  note?: string;        // 例: 省下手搖飲、打工獎金
+}
+
+// 🏺 夢想存錢筒／願望清單主結構 (純 Emoji + 色票)
+export interface SavingsJar {
+  id: string;
+  title: string;        // 例: iPad Air M3、日本畢旅
+  emoji: string;        // 自訂 Emoji (例: ✈️, 💻, 🎸)
+  colorHex: string;     // 主題色票
+  targetAmount: number; // 目標金額
+  currentAmount: number;// 已存金額
+  targetDate?: string;  // 預計達成日 (YYYY-MM-DD)
+  deposits: SavingsDeposit[];
+  isCompleted: boolean;
+  notes?: string;
+}
+
+// 🎓 學分分類與單科成績結構
+export type CreditCategory = 'required' | 'elective' | 'general'; // 必修 | 選修 | 通識
+
+export interface CourseGradeItem {
+  id: string;
+  semester: string;             // 例: '114-1'
+  courseName: string;           // 科目名稱
+  emoji: string;                // 自訂 Emoji (例: 💻, 📐, 📖)
+  colorHex: string;
+  credits: number;              // 學分數 (預設 2 或 3)
+  category: CreditCategory;     // 必修 / 選修 / 通識
+  // 配分權重 (總和 100)
+  attendanceWeight: number;     // 平時佔比 (預設 30)
+  midtermWeight: number;        // 期中佔比 (預設 30)
+  finalWeight: number;          // 期末佔比 (預設 40)
+  // 實得分數 (null 代表尚未公布/未考)
+  attendanceScore: number | null;
+  midtermScore: number | null;
+  finalScore: number | null;
+  isPassed?: boolean;           // 是否已修過取得學分
+}
+
+// 🎓 畢業學分門檻設定
+export interface GraduationTarget {
+  totalTarget: number;          // 畢業總學分 (預設 128)
+  requiredTarget: number;       // 必修門檻 (預設 72)
+  electiveTarget: number;       // 選修門檻 (預設 36)
+  generalTarget: number;        // 通識門檻 (預設 20)
+}
+
+

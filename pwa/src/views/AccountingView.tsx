@@ -7,6 +7,7 @@ import {
   RecurringItem,
   Installment,
   CountdownItem,
+  SavingsJar,
   FriendPeriodMode,
 } from '../types';
 import { TransactionModal } from '../components/TransactionModal';
@@ -18,6 +19,7 @@ import { CountdownModal } from '../components/CountdownModal';
 import { CountdownCard } from '../components/CountdownCard';
 import { RecurringModal } from '../components/RecurringModal';
 import { InstallmentModal } from '../components/InstallmentModal';
+import { SavingsJarModal } from '../components/SavingsJarModal';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Plus,
@@ -277,6 +279,11 @@ export const AccountingView: React.FC = () => {
     updateCountdown,
     deleteCountdown,
     togglePinCountdown,
+    savingsJars,
+    addSavingsJar,
+    updateSavingsJar,
+    deleteSavingsJar,
+    depositToSavingsJar,
   } = useApp();
 
   // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
@@ -286,8 +293,8 @@ export const AccountingView: React.FC = () => {
   const [ratingModalTx, setRatingModalTx] = useState<Transaction | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
 
-  // 🤝 往來與長期計畫 (多人分帳 · 借還 · 固定收支 · 分期 · 倒數日)
-  type DrawerTab = 'splits' | 'debts' | 'recurring' | 'installments' | 'countdowns';
+  // 🤝 往來與長期計畫 (多人分帳 · 借還 · 固定收支 · 分期 · 倒數日 · 夢想存錢筒)
+  type DrawerTab = 'splits' | 'debts' | 'recurring' | 'installments' | 'countdowns' | 'savings';
   const [isSocialDebtOpen, setIsSocialDebtOpen] = useState(false);
   const [socialDebtTab, setSocialDebtTab] = useState<DrawerTab>('splits');
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -298,13 +305,20 @@ export const AccountingView: React.FC = () => {
   const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
   const [expandedDebtHistoryId, setExpandedDebtHistoryId] = useState<string | null>(null);
 
-  // 🔄 固定收支 · 💳 分期付款 · ⏳ 倒數日 Modals
+  // 🔄 固定收支 · 💳 分期付款 · ⏳ 倒數日 · 🏺 夢想存錢筒 Modals
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
   const [recurringToEdit, setRecurringToEdit] = useState<RecurringItem | null>(null);
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
   const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
   const [isCountdownModalOpen, setIsCountdownModalOpen] = useState(false);
   const [countdownToEdit, setCountdownToEdit] = useState<CountdownItem | null>(null);
+  const [isSavingsModalOpen, setIsSavingsModalOpen] = useState(false);
+  const [savingsToEdit, setSavingsToEdit] = useState<SavingsJar | null>(null);
+  const [customDepositJarId, setCustomDepositJarId] = useState<string | null>(null);
+  const [customDepositAmount, setCustomDepositAmount] = useState('');
+  const [customDepositNote, setCustomDepositNote] = useState('');
+  const [syncDepositToExpense, setSyncDepositToExpense] = useState(false);
+  const [expandedSavingsId, setExpandedSavingsId] = useState<string | null>(null);
 
   // 📅 好友帳本日期與週期導航 (日 / 週 / 月)
   const [friendPeriodMode, setFriendPeriodMode] = useState<FriendPeriodMode>('daily');
@@ -1741,6 +1755,23 @@ export const AccountingView: React.FC = () => {
                       </span>
                     )}
                   </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSocialDebtTab('savings')}
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                      socialDebtTab === 'savings'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <span>🏺 存錢</span>
+                    {(savingsJars || []).length > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                        {(savingsJars || []).length}
+                      </span>
+                    )}
+                  </button>
                 </div>
               </div>
 
@@ -2530,6 +2561,254 @@ export const AccountingView: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {/* TAB 6: 夢想存錢筒／願望清單 (Savings Jar) */}
+              {socialDebtTab === 'savings' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          夢想累積總存款
+                        </span>
+                        <span className="text-sm font-black text-purple-600 dark:text-purple-400 whitespace-nowrap">
+                          ${(savingsJars || []).reduce((acc, j) => acc + j.currentAmount, 0).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <label className="flex items-center space-x-1.5 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={syncDepositToExpense}
+                          onChange={(e) => setSyncDepositToExpense(e.target.checked)}
+                          className="w-3.5 h-3.5 rounded accent-calico-orange"
+                        />
+                        <span className="text-[11px] font-bold text-calico-cocoa/70 dark:text-zinc-300 whitespace-nowrap">
+                          投幣同步記支出
+                        </span>
+                      </label>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSavingsToEdit(null);
+                        setIsSavingsModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>新增夢想清單</span>
+                    </button>
+                  </div>
+
+                  {/* List of Savings Jars */}
+                  {(!savingsJars || savingsJars.length === 0) ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        尚無夢想存錢筒，設定畢旅、平板或演唱會目標，每天少喝一杯手搖輕鬆達標 🏺
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {savingsJars.map((jar) => {
+                        const pct = Math.min(100, Math.round((jar.currentAmount / Math.max(1, jar.targetAmount)) * 100));
+                        const remain = Math.max(0, jar.targetAmount - jar.currentAmount);
+                        let dailyMicroGoal: number | null = null;
+                        if (jar.targetDate && remain > 0) {
+                          const today = new Date(new Date().toISOString().slice(0, 10));
+                          const end = new Date(jar.targetDate);
+                          const diffDays = Math.ceil((end.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+                          if (diffDays > 0) {
+                            dailyMicroGoal = Math.ceil(remain / diffDays);
+                          }
+                        }
+                        const isHistoryOpen = expandedSavingsId === jar.id;
+                        const isCustomOpen = customDepositJarId === jar.id;
+
+                        return (
+                          <div
+                            key={jar.id}
+                            className="p-3.5 rounded-2xl bg-white dark:bg-zinc-800/80 border border-black/5 dark:border-white/10 shadow-ios-sm space-y-3"
+                          >
+                            {/* Top info */}
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center space-x-2.5 min-w-0">
+                                <div
+                                  style={{
+                                    backgroundColor: `${jar.colorHex || '#8B5CF6'}20`,
+                                    borderColor: `${jar.colorHex || '#8B5CF6'}40`,
+                                  }}
+                                  className="w-10 h-10 rounded-2xl border flex items-center justify-center text-lg shrink-0 shadow-2xs"
+                                >
+                                  {jar.emoji || '🏺'}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center space-x-1.5">
+                                    <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 truncate">
+                                      {jar.title}
+                                    </h4>
+                                    {jar.isCompleted && (
+                                      <span className="px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 text-[10px] font-black whitespace-nowrap shrink-0">
+                                        🎉 已達標
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[10px] font-semibold text-calico-cocoa/50 dark:text-zinc-400 truncate mt-0.5">
+                                    {jar.targetDate ? `目標日 ${jar.targetDate}` : '持續累積中'}
+                                    {dailyMicroGoal ? ` · 每日存 $${dailyMicroGoal} 即達標` : ''}
+                                    {jar.notes ? ` · ${jar.notes}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center space-x-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setSavingsToEdit(jar);
+                                    setIsSavingsModalOpen(true);
+                                  }}
+                                  className="p-1 text-calico-cocoa/40 hover:text-amber-500 transition-colors"
+                                  title="編輯"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => deleteSavingsJar(jar.id)}
+                                  className="p-1 text-calico-cocoa/40 hover:text-red-500 transition-colors"
+                                  title="刪除"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Progress Bar */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs font-bold">
+                                <span className="text-calico-cocoa dark:text-zinc-200 whitespace-nowrap">
+                                  已存 <strong style={{ color: jar.colorHex }}>${jar.currentAmount.toLocaleString()}</strong> / ${jar.targetAmount.toLocaleString()}
+                                </span>
+                                <span className="text-[11px] font-black text-calico-cocoa/60 dark:text-zinc-400 whitespace-nowrap">
+                                  {pct}% {remain > 0 ? `(差 $${remain.toLocaleString()})` : ''}
+                                </span>
+                              </div>
+                              <div className="w-full h-2.5 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                                <div
+                                  style={{
+                                    width: `${pct}%`,
+                                    backgroundColor: jar.isCompleted ? '#10B981' : jar.colorHex || '#8B5CF6',
+                                  }}
+                                  className="h-full rounded-full transition-all duration-500"
+                                />
+                              </div>
+                            </div>
+
+                            {/* ⚡ Quick Deposit Coins */}
+                            <div className="space-y-2 pt-1 border-t border-black/5 dark:border-white/5">
+                              <div className="flex items-center justify-between gap-1.5 overflow-x-auto scrollbar-none">
+                                {[
+                                  { label: '🧋省手搖 +$60', amt: 60, note: '省下一杯手搖飲' },
+                                  { label: '🍱省宵夜 +$120', amt: 120, note: '忍住沒吃宵夜' },
+                                  { label: '💰+$500', amt: 500, note: '固定儲蓄投入' },
+                                ].map((btn) => (
+                                  <button
+                                    key={btn.label}
+                                    type="button"
+                                    onClick={() => depositToSavingsJar(jar.id, btn.amt, btn.note, syncDepositToExpense)}
+                                    className="px-2.5 py-1.5 rounded-xl bg-black/5 dark:bg-zinc-700/80 hover:bg-purple-500/15 hover:text-purple-600 dark:hover:text-purple-300 text-[11px] font-black text-calico-cocoa dark:text-zinc-200 active:scale-95 transition-all whitespace-nowrap shrink-0"
+                                  >
+                                    {btn.label}
+                                  </button>
+                                ))}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCustomDepositJarId(isCustomOpen ? null : jar.id);
+                                    setCustomDepositAmount('');
+                                    setCustomDepositNote('');
+                                  }}
+                                  className="px-2.5 py-1.5 rounded-xl bg-purple-500/15 text-purple-600 dark:text-purple-300 text-[11px] font-black active:scale-95 transition-all whitespace-nowrap shrink-0"
+                                >
+                                  ✏️ 自訂存入
+                                </button>
+                              </div>
+
+                              {/* Custom Deposit Inline Input */}
+                              {isCustomOpen && (
+                                <div className="p-2.5 rounded-xl bg-black/[0.03] dark:bg-white/[0.04] flex items-center gap-2 animate-fade-in">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={customDepositAmount}
+                                    onChange={(e) => setCustomDepositAmount(e.target.value)}
+                                    placeholder="金額 ($)"
+                                    className="w-24 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+                                  />
+                                  <input
+                                    type="text"
+                                    value={customDepositNote}
+                                    onChange={(e) => setCustomDepositNote(e.target.value)}
+                                    placeholder="備註 (如: 打工獎金)"
+                                    className="flex-1 min-w-0 px-2.5 py-1.5 rounded-xl bg-white dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold text-calico-cocoa dark:text-zinc-100 outline-none"
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const val = Number(customDepositAmount);
+                                      if (val > 0) {
+                                        depositToSavingsJar(jar.id, val, customDepositNote || '自訂存入', syncDepositToExpense);
+                                        setCustomDepositJarId(null);
+                                      }
+                                    }}
+                                    className="px-3 py-1.5 rounded-xl bg-purple-600 text-white text-xs font-black whitespace-nowrap shrink-0"
+                                  >
+                                    存入
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Deposit History Toggle */}
+                              <div className="flex items-center justify-between pt-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setExpandedSavingsId(isHistoryOpen ? null : jar.id)}
+                                  className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 hover:text-purple-500 flex items-center space-x-1"
+                                >
+                                  <span>📜 投幣紀錄 ({jar.deposits?.length || 0} 筆)</span>
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${isHistoryOpen ? 'rotate-180' : ''}`} />
+                                </button>
+                              </div>
+
+                              {isHistoryOpen && jar.deposits && jar.deposits.length > 0 && (
+                                <div className="space-y-1 pt-1 border-t border-black/5 dark:border-white/5 max-h-36 overflow-y-auto">
+                                  {jar.deposits.map((dep) => (
+                                    <div
+                                      key={dep.id}
+                                      className="flex items-center justify-between text-[11px] py-1 px-2 rounded-lg bg-black/[0.02] dark:bg-white/[0.03]"
+                                    >
+                                      <span className="text-calico-cocoa/70 dark:text-zinc-300 font-semibold truncate">
+                                        {dep.date} · {dep.note || '存入'}
+                                      </span>
+                                      <span className="font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap shrink-0 ml-2">
+                                        +${dep.amount}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -3069,6 +3348,23 @@ export const AccountingView: React.FC = () => {
           setCountdownToEdit(null);
         }}
         countdownToEdit={countdownToEdit}
+      />
+
+      {/* 🏺 Savings Jar Modal */}
+      <SavingsJarModal
+        isOpen={isSavingsModalOpen}
+        onClose={() => {
+          setIsSavingsModalOpen(false);
+          setSavingsToEdit(null);
+        }}
+        onSave={(saved) => {
+          if (savingsToEdit) {
+            updateSavingsJar(saved);
+          } else {
+            addSavingsJar(saved);
+          }
+        }}
+        initialData={savingsToEdit}
       />
     </div>
   );
