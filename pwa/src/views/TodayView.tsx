@@ -1,10 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { Course, Todo, Transaction, CalendarEvent, DayOfWeek } from '../types';
+import { Course, Todo, Transaction, CalendarEvent, DayOfWeek, CountdownItem } from '../types';
 import { CourseModal } from '../components/CourseModal';
 import { TodoModal } from '../components/TodoModal';
 import { TransactionModal } from '../components/TransactionModal';
 import { EventModal } from '../components/EventModal';
+import { CountdownModal } from '../components/CountdownModal';
 import {
   Sun,
   Clock,
@@ -51,6 +52,7 @@ export const TodayView: React.FC = () => {
     setIsFoodRouletteOpen,
     setIsPomodoroOpen,
     countdowns,
+    deleteCountdown,
   } = useApp();
 
   const now = new Date();
@@ -63,6 +65,9 @@ export const TodayView: React.FC = () => {
   const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
+  const [isCountdownModalOpen, setIsCountdownModalOpen] = useState(false);
+  const [countdownToEdit, setCountdownToEdit] = useState<CountdownItem | null>(null);
+  const [isAllCountdownsExpanded, setIsAllCountdownsExpanded] = useState(false);
 
   const [courseToEdit, setCourseToEdit] = useState<Course | null>(null);
   const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
@@ -150,6 +155,23 @@ export const TodayView: React.FC = () => {
     Math.round((budgetInfo.todaySpent / budgetInfo.effectiveLimit) * 100)
   );
 
+  // 5. 重要日子 (Countdowns & Countups)
+  const sortedCountdowns = useMemo(() => {
+    let list = [...(countdowns || [])];
+    return list.sort((a, b) => {
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
+      return new Date(a.targetDate).getTime() - new Date(b.targetDate).getTime();
+    });
+  }, [countdowns]);
+
+  const displayedCountdowns = useMemo(() => {
+    if (isAllCountdownsExpanded || sortedCountdowns.length <= 3) {
+      return sortedCountdowns;
+    }
+    return sortedCountdowns.slice(0, 3);
+  }, [sortedCountdowns, isAllCountdownsExpanded]);
+
   return (
     <div className="space-y-4 pb-28 animate-fade-in">
       {/* ======================================================== */}
@@ -213,42 +235,69 @@ export const TodayView: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* ⏳ 重要日子（倒數日 & 持續紀念日）首頁即時動態卡 */}
+      {/* 重要日子（倒數日 & 持續紀念日）首頁即時動態卡 */}
       {/* ======================================================== */}
       {countdowns && countdowns.length > 0 && (
-        <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-2.5">
+        <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <span className="text-base">⏳</span>
-              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
                 重要日子
               </h3>
-              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/10 text-amber-700 dark:text-amber-300 whitespace-nowrap shrink-0">
                 {countdowns.length} 個事件
               </span>
             </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('calendar')}
-              className="text-xs font-bold text-calico-orange hover:underline flex items-center space-x-0.5"
-            >
-              <span>查看行事曆</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
+            <div className="flex items-center space-x-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setCountdownToEdit(null);
+                  setIsCountdownModalOpen(true);
+                }}
+                className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center space-x-0.5 whitespace-nowrap"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>新增</span>
+              </button>
+              <span className="text-calico-cocoa/20">·</span>
+              <button
+                type="button"
+                onClick={() => setActiveTab('calendar')}
+                className="text-xs font-bold text-calico-orange hover:underline flex items-center space-x-0.5 whitespace-nowrap"
+              >
+                <span>查看行事曆</span>
+                <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
 
-          {/* 橫向膠囊滑動列 */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-            {countdowns.map((cd) => (
-              <div
+          {/* 垂直完整卡片排版（同行事曆頁樣式） */}
+          <div className="space-y-2.5">
+            {displayedCountdowns.map((cd) => (
+              <CountdownCard
                 key={cd.id}
-                onClick={() => setActiveTab('calendar')}
-                className="cursor-pointer active:scale-95 transition-transform shrink-0"
-              >
-                <CountdownCard item={cd} compact />
-              </div>
+                item={cd}
+                onEdit={(item) => {
+                  setCountdownToEdit(item);
+                  setIsCountdownModalOpen(true);
+                }}
+                onDelete={(id) => deleteCountdown(id)}
+              />
             ))}
           </div>
+
+          {sortedCountdowns.length > 3 && (
+            <button
+              type="button"
+              onClick={() => setIsAllCountdownsExpanded(!isAllCountdownsExpanded)}
+              className="w-full py-1.5 text-center text-xs font-bold text-calico-orange hover:bg-black/5 dark:hover:bg-white/5 rounded-xl transition-all"
+            >
+              {isAllCountdownsExpanded
+                ? '收合其餘日子 ⌃'
+                : `展開其餘 ${sortedCountdowns.length - 3} 個重要日子 ⌄`}
+            </button>
+          )}
         </div>
       )}
 
@@ -647,6 +696,16 @@ export const TodayView: React.FC = () => {
         isOpen={isTxModalOpen}
         onClose={() => setIsTxModalOpen(false)}
         onSave={addTransaction}
+      />
+
+      {/* ⏳ 重要日子新增/編輯 Modal */}
+      <CountdownModal
+        isOpen={isCountdownModalOpen}
+        onClose={() => {
+          setIsCountdownModalOpen(false);
+          setCountdownToEdit(null);
+        }}
+        countdownToEdit={countdownToEdit}
       />
     </div>
   );
