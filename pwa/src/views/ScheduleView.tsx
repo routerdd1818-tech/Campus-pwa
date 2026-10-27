@@ -7,6 +7,7 @@ import { CourseWishlistModal } from '../components/CourseWishlistModal';
 import { OcrModal } from '../components/OcrModal';
 import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import { GradeCalculatorView } from '../components/GradeCalculatorView';
+import { CategoryIcon } from '../components/CategoryIcon';
 import {
   Plus,
   Sparkles,
@@ -98,6 +99,23 @@ export const ScheduleView: React.FC = () => {
   const [wishlistToEdit, setWishlistToEdit] = useState<CourseWishlistItem | null>(null);
   const [selectedSemester, setSelectedSemester] = useState('115-2');
   const [wishlistViewType, setWishlistViewType] = useState<'cards' | 'grid'>('cards');
+
+  // 目標學期清單（涵蓋 113 至 120 學年度，及心願單自訂學期）
+  const availableWishlistSemesters = useMemo(() => {
+    const semSet = new Set<string>();
+    for (let y = 114; y <= 120; y++) {
+      if (y === 114) {
+        semSet.add('114-2');
+      } else {
+        semSet.add(`${y}-1`);
+        semSet.add(`${y}-2`);
+      }
+    }
+    (courseWishlist || []).forEach((w) => {
+      if (w.targetSemester) semSet.add(w.targetSemester);
+    });
+    return Array.from(semSet).sort();
+  }, [courseWishlist]);
 
   const filteredWishlist = useMemo(() => {
     if (selectedSemester === '全部') return courseWishlist || [];
@@ -822,11 +840,11 @@ export const ScheduleView: React.FC = () => {
 
             {/* 學期過濾標籤列 & 學分統計 */}
             <div className="flex flex-wrap items-center justify-between gap-2 pt-2.5 border-t border-black/5 dark:border-white/5 text-xs">
-              <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+              <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 scrollbar-none flex-1">
                 <span className="text-[11px] font-bold text-calico-cocoa/40 dark:text-zinc-500 whitespace-nowrap">
                   目標學期：
                 </span>
-                {['115-2', '116-1', '全部'].map((sem) => (
+                {['全部', ...availableWishlistSemesters.slice(0, 6)].map((sem) => (
                   <button
                     key={sem}
                     type="button"
@@ -837,9 +855,23 @@ export const ScheduleView: React.FC = () => {
                         : 'bg-black/5 dark:bg-white/5 text-calico-cocoa/60 dark:text-zinc-400'
                     }`}
                   >
-                    {sem === '全部' ? '全部學期' : `${sem} 學期`}
+                    {sem === '全部' ? '全部' : `${sem}`}
                   </button>
                 ))}
+
+                {/* 113~120 學年度全選下拉選單 */}
+                <select
+                  value={selectedSemester}
+                  onChange={(e) => setSelectedSemester(e.target.value)}
+                  className="px-2 py-1 rounded-lg text-xs font-black bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border border-indigo-500/20 outline-none shrink-0"
+                >
+                  <option value="全部">全部學期</option>
+                  {availableWishlistSemesters.map((sem) => (
+                    <option key={sem} value={sem}>
+                      {sem} 學年度
+                    </option>
+                  ))}
+                </select>
               </div>
 
               {/* 統計學分 */}
@@ -884,7 +916,7 @@ export const ScheduleView: React.FC = () => {
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center space-x-2 flex-wrap gap-y-1">
-                          <span className="text-lg">{w.emoji || '💻'}</span>
+                          <CategoryIcon iconKey={w.emoji} name={w.name} colorHex={w.colorHex || '#6366F1'} size="sm" />
                           <h4 className="text-base font-black text-calico-cocoa dark:text-zinc-100 truncate">
                             {w.name}
                           </h4>

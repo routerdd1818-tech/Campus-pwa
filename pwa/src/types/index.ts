@@ -367,18 +367,19 @@ export interface StockHoldingItem {
   isAutoQuote?: boolean;      // 是否支援報價系統連線
 }
 
-// 💰 資產帳戶 (現金、銀行、證券投資、其他)
-export type AssetAccountType = 'cash' | 'bank' | 'stock' | 'other';
+// 💰 資產帳戶 (現金、銀行存款、行動電子支付如 Line Pay、證券投資、其他)
+export type AssetAccountType = 'cash' | 'bank' | 'stock' | 'digital_wallet' | 'other';
 
 export interface AssetAccount {
   id: string;
-  name: string;               // 帳戶名稱 (例: '錢包現金', '國泰世華存款', '台新Richart', '永豐證券戶')
+  name: string;               // 帳戶名稱 (例: '錢包現金', '台新Richart', 'Line Pay', '街口支付')
   type: AssetAccountType;
-  balance: number;            // 現金/存款目前餘額 (證券戶則為所有持股總市值)
+  balance: number;            // 現金/存款/電子支付目前餘額 (證券戶則為所有持股總市值)
   stocks?: StockHoldingItem[];// 股票基金明細 (僅 type === 'stock')
   colorHex?: string;
+  iconKey?: string;           // 記帳風格圖示 key (wallet, landmark, smartphone, etc.)
   emoji?: string;
-  accountNumber?: string;     // 銀行後四碼等備註
+  accountNumber?: string;     // 銀行後四碼等備註 (如 8812)
   updatedAt: string;
 }
 

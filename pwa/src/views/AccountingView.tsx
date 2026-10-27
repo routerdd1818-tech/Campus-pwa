@@ -43,6 +43,8 @@ import {
   Receipt,
   Edit2,
   CalendarDays,
+  AlertCircle,
+  Wallet,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -463,14 +465,15 @@ export const AccountingView: React.FC = () => {
       .filter((t) => t.type === 'income' && t.date.slice(0, 7) === currentMonthStr)
       .reduce((sum, t) => sum + t.amount, 0);
 
+    const nonStockTotal = (assetAccounts || []).filter((a) => a.type !== 'stock').reduce((sum, a) => sum + a.balance, 0);
     const cashTotal = (assetAccounts || []).filter((a) => a.type === 'cash').reduce((sum, a) => sum + a.balance, 0);
-    const bankTotal = (assetAccounts || []).filter((a) => a.type === 'bank').reduce((sum, a) => sum + a.balance, 0);
+    const bankTotal = (assetAccounts || []).filter((a) => a.type === 'bank' || a.type === 'digital_wallet').reduce((sum, a) => sum + a.balance, 0);
     const stockTotal = (assetAccounts || []).find((a) => a.type === 'stock')?.stocks?.reduce((sum, s) => sum + s.shares * s.currentPrice, 0) || 0;
     const receivablesTotal = (debts || [])
       .filter((d) => d.type === 'they_owe' && !d.isSettled)
       .reduce((sum, d) => sum + (d.remainingAmount ?? 0), 0);
 
-    const totalNetWorth = cashTotal + bankTotal + stockTotal + receivablesTotal;
+    const totalNetWorth = nonStockTotal + stockTotal + receivablesTotal;
 
     const baseBudget = survivalSettings?.monthlyBudget || (
       settings.isIncomeBasedDailyLimit && currentMonthIncome > 0
@@ -1493,8 +1496,22 @@ export const AccountingView: React.FC = () => {
           >
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                <span className="text-2xl shrink-0">
-                  {survivalBudget.status === 'danger' ? '😿' : survivalBudget.status === 'warning' ? '🐱' : '😸'}
+                <span
+                  className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${
+                    survivalBudget.status === 'danger'
+                      ? 'bg-rose-500/20 text-rose-600 dark:text-rose-400'
+                      : survivalBudget.status === 'warning'
+                      ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                      : 'bg-emerald-500/20 text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  {survivalBudget.status === 'danger' ? (
+                    <AlertCircle className="w-5 h-5" />
+                  ) : survivalBudget.status === 'warning' ? (
+                    <Clock className="w-5 h-5" />
+                  ) : (
+                    <Wallet className="w-5 h-5" />
+                  )}
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center space-x-1.5 flex-wrap">

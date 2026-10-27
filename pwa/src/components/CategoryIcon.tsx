@@ -22,6 +22,13 @@ import {
   Award,
   Tag,
   MoreHorizontal,
+  Wallet,
+  Landmark,
+  CreditCard,
+  TrendingUp,
+  PiggyBank,
+  QrCode,
+  HandCoins,
   LucideIcon,
 } from 'lucide-react';
 
@@ -48,6 +55,13 @@ export const ICON_MAP: Record<string, LucideIcon> = {
   award: Award,
   tag: Tag,
   'more-horizontal': MoreHorizontal,
+  wallet: Wallet,
+  landmark: Landmark,
+  'credit-card': CreditCard,
+  'trending-up': TrendingUp,
+  'piggy-bank': PiggyBank,
+  'qr-code': QrCode,
+  'hand-coins': HandCoins,
 };
 
 export interface CategoryIconOption {
@@ -119,6 +133,12 @@ export function resolveCategoryIcon(iconKey?: string, categoryName?: string): Lu
   if (/薪|打工|兼職|家教|工作|實習/.test(name)) return Briefcase;
   if (/生活費|零用錢|津貼/.test(name)) return Coins;
   if (/獎|獎學金|比賽/.test(name)) return Award;
+  if (/現|錢包|皮夾|零錢|cash/.test(name)) return Wallet;
+  if (/銀行|存款|活存|定存|郵局|richart|玉山|國泰|中信|bank/.test(name)) return Landmark;
+  if (/line|pay|街口|支付|悠遊|一卡通|電子|行動|wallet/.test(name)) return Smartphone;
+  if (/卡|信用卡|簽帳|card/.test(name)) return CreditCard;
+  if (/股|證券|基金|投資|etf|stock/.test(name)) return TrendingUp;
+  if (/借|欠|債|應收/.test(name)) return HandCoins;
 
   return Tag;
 }

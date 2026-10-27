@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { AssetAccount, StockHoldingItem, SurvivalBudgetSettings } from '../types';
+import { AssetAccount, AssetAccountType, StockHoldingItem, SurvivalBudgetSettings } from '../types';
 import { POPULAR_STOCKS } from '../services/stockService';
 import {
   X,
@@ -16,6 +16,15 @@ import {
   History,
   AlertCircle,
   HelpCircle,
+  Landmark,
+  Smartphone,
+  CreditCard,
+  QrCode,
+  HandCoins,
+  PiggyBank,
+  Scale,
+  Briefcase,
+  ChevronRight,
 } from 'lucide-react';
 
 interface AssetReconciliationModalProps {
@@ -23,12 +32,48 @@ interface AssetReconciliationModalProps {
   onClose: () => void;
 }
 
+const PRESET_ACCOUNTS = [
+  { name: 'LINE Pay', type: 'digital_wallet' as AssetAccountType, iconKey: 'smartphone', colorHex: '#06C755', desc: '行動支付' },
+  { name: '街口支付', type: 'digital_wallet' as AssetAccountType, iconKey: 'smartphone', colorHex: '#E60012', desc: '電子支付' },
+  { name: '悠遊卡 / 一卡通', type: 'digital_wallet' as AssetAccountType, iconKey: 'credit-card', colorHex: '#008CD6', desc: '電子票證' },
+  { name: '台新 Richart', type: 'bank' as AssetAccountType, iconKey: 'landmark', colorHex: '#3B82F6', desc: '數位銀行' },
+  { name: '玉山銀行', type: 'bank' as AssetAccountType, iconKey: 'landmark', colorHex: '#14B8A6', desc: '銀行存款' },
+  { name: '國泰世華', type: 'bank' as AssetAccountType, iconKey: 'landmark', colorHex: '#009944', desc: '銀行活存' },
+  { name: '郵局儲金', type: 'bank' as AssetAccountType, iconKey: 'landmark', colorHex: '#00873C', desc: '郵局活存' },
+  { name: '錢包現金', type: 'cash' as AssetAccountType, iconKey: 'wallet', colorHex: '#10B981', desc: '實體皮夾' },
+];
+
+const ACCOUNT_ICONS = [
+  { key: 'wallet', label: '皮夾', icon: Wallet },
+  { key: 'landmark', label: '銀行', icon: Landmark },
+  { key: 'smartphone', label: '手機支付', icon: Smartphone },
+  { key: 'credit-card', label: '卡片', icon: CreditCard },
+  { key: 'qr-code', label: '掃碼', icon: QrCode },
+  { key: 'piggy-bank', label: '儲蓄', icon: PiggyBank },
+];
+
+const COLOR_OPTIONS = [
+  '#06C755', // LINE Pay 綠
+  '#10B981', // 翡翠綠
+  '#3B82F6', // 湛藍
+  '#14B8A6', // 蒂芬妮綠
+  '#E60012', // 街口紅
+  '#008CD6', // 悠遊藍
+  '#F59E0B', // 琥珀黃
+  '#8B5CF6', // 紫羅蘭
+  '#EC4899', // 玫瑰粉
+  '#64748B', // 石板灰
+];
+
 export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> = ({
   isOpen,
   onClose,
 }) => {
   const {
     assetAccounts,
+    addAssetAccount,
+    updateAssetAccount,
+    deleteAssetAccount,
     adjustAccountBalance,
     balanceAdjustments,
     addStockHolding,
@@ -42,6 +87,17 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
 
   const [activeTab, setActiveTab] = useState<'overview' | 'reconcile' | 'settings'>('overview');
   const [isRefreshing, setIsRefreshing] = useState(false);
+
+  // 帳戶新增/編輯 Modal 狀態
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<AssetAccount | null>(null);
+  const [accName, setAccName] = useState('');
+  const [accType, setAccType] = useState<AssetAccountType>('digital_wallet');
+  const [accNumber, setAccNumber] = useState('');
+  const [accBalance, setAccBalance] = useState('0');
+  const [accColor, setAccColor] = useState('#06C755');
+  const [accIconKey, setAccIconKey] = useState('smartphone');
+  const [accErrorMsg, setAccErrorMsg] = useState<string | null>(null);
 
   // 對帳表單狀態
   const [selectedAccountId, setSelectedAccountId] = useState<string>(() => assetAccounts[0]?.id || '');
@@ -70,6 +126,8 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
   // 總資產分類匯總
   const cashTotal = assetAccounts.filter((a) => a.type === 'cash').reduce((sum, a) => sum + a.balance, 0);
   const bankTotal = assetAccounts.filter((a) => a.type === 'bank').reduce((sum, a) => sum + a.balance, 0);
+  const digitalWalletTotal = assetAccounts.filter((a) => a.type === 'digital_wallet').reduce((sum, a) => sum + a.balance, 0);
+  const otherTotal = assetAccounts.filter((a) => a.type === 'other').reduce((sum, a) => sum + a.balance, 0);
   const stockAccount = assetAccounts.find((a) => a.type === 'stock');
   const stockTotal = stockAccount?.stocks?.reduce((sum, s) => sum + s.shares * s.currentPrice, 0) || 0;
 
@@ -79,7 +137,7 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
     .reduce((sum, d) => sum + (d.remainingAmount ?? 0), 0);
 
   // 總淨資產 (Net Worth)
-  const netWorthTotal = cashTotal + bankTotal + stockTotal + receivablesTotal;
+  const netWorthTotal = cashTotal + bankTotal + digitalWalletTotal + otherTotal + stockTotal + receivablesTotal;
 
   // 待對帳帳戶資訊
   const currentReconcileAccount = assetAccounts.find((a) => a.id === selectedAccountId) || assetAccounts[0];
@@ -87,6 +145,111 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
   const diffAmount = !isNaN(actualVal) && actualBalanceInput !== ''
     ? Math.round((actualVal - (currentReconcileAccount?.balance || 0)) * 10) / 10
     : 0;
+
+  // 取得帳戶對應 Lucide Icon
+  const getAccountIconComponent = (acc: AssetAccount) => {
+    if (acc.iconKey === 'wallet' || acc.type === 'cash') return Wallet;
+    if (acc.iconKey === 'landmark' || acc.type === 'bank') return Landmark;
+    if (acc.iconKey === 'smartphone' || acc.type === 'digital_wallet') return Smartphone;
+    if (acc.iconKey === 'trending-up' || acc.type === 'stock') return TrendingUp;
+    if (acc.iconKey === 'credit-card') return CreditCard;
+    if (acc.iconKey === 'qr-code') return QrCode;
+    if (acc.iconKey === 'piggy-bank') return PiggyBank;
+    return Wallet;
+  };
+
+  const getAccountTypeLabel = (type: AssetAccountType) => {
+    switch (type) {
+      case 'cash':
+        return '實體皮夾與零錢';
+      case 'digital_wallet':
+        return '行動支付 · LINE Pay/街口';
+      case 'bank':
+        return '銀行活存帳戶';
+      case 'stock':
+        return '投資證券戶';
+      case 'other':
+        return '其他資產帳戶';
+      default:
+        return '資產帳戶';
+    }
+  };
+
+  // 開啟新增帳戶
+  const handleOpenAddAccount = () => {
+    setEditingAccount(null);
+    setAccName('');
+    setAccType('digital_wallet');
+    setAccNumber('');
+    setAccBalance('0');
+    setAccColor('#06C755');
+    setAccIconKey('smartphone');
+    setAccErrorMsg(null);
+    setIsAccountModalOpen(true);
+  };
+
+  // 開啟編輯帳戶
+  const handleOpenEditAccount = (acc: AssetAccount) => {
+    setEditingAccount(acc);
+    setAccName(acc.name);
+    setAccType(acc.type);
+    setAccNumber(acc.accountNumber || '');
+    setAccBalance(String(acc.balance));
+    setAccColor(acc.colorHex || '#3B82F6');
+    setAccIconKey(acc.iconKey || (acc.type === 'cash' ? 'wallet' : acc.type === 'bank' ? 'landmark' : 'smartphone'));
+    setAccErrorMsg(null);
+    setIsAccountModalOpen(true);
+  };
+
+  // 儲存帳戶 (新增或修改)
+  const handleSaveAccount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!accName.trim()) {
+      setAccErrorMsg('請輸入帳戶名稱');
+      return;
+    }
+
+    const balNum = Number(accBalance) || 0;
+
+    if (editingAccount) {
+      updateAssetAccount({
+        ...editingAccount,
+        name: accName.trim(),
+        type: accType,
+        accountNumber: accNumber.trim() || undefined,
+        balance: balNum,
+        colorHex: accColor,
+        iconKey: accIconKey,
+      });
+    } else {
+      addAssetAccount({
+        id: `acc_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: accName.trim(),
+        type: accType,
+        accountNumber: accNumber.trim() || undefined,
+        balance: balNum,
+        colorHex: accColor,
+        iconKey: accIconKey,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    setIsAccountModalOpen(false);
+    setEditingAccount(null);
+  };
+
+  // 刪除帳戶
+  const handleDeleteAccount = (accId: string) => {
+    if (assetAccounts.length <= 1) {
+      alert('至少需保留一個資產帳戶');
+      return;
+    }
+    if (window.confirm('確定要刪除此帳戶嗎？此動作將移除該帳戶餘額紀錄。')) {
+      deleteAssetAccount(accId);
+      setIsAccountModalOpen(false);
+      setEditingAccount(null);
+    }
+  };
 
   // 刷新即時行情報價
   const handleRefreshQuotes = async () => {
@@ -153,71 +316,74 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
       includeReceivables,
       includeStocks,
     });
-    onClose();
+    alert('已成功儲存月底吃土設定！');
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/50 backdrop-blur-xs animate-fade-in">
-      <div className="w-full max-w-lg max-h-[92vh] overflow-hidden rounded-3xl bg-white dark:bg-calico-darkCard border border-black/10 dark:border-white/10 shadow-2xl flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      <div className="relative w-full max-w-lg bg-white dark:bg-zinc-900 rounded-3xl border border-black/10 dark:border-white/10 shadow-2xl flex flex-col max-h-[92vh] overflow-hidden">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 sm:p-5 border-b border-black/5 dark:border-white/10 shrink-0">
-          <div className="flex items-center space-x-2.5">
-            <div className="p-2.5 rounded-2xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
-              <Wallet className="w-5 h-5" />
+        <div className="p-4 sm:p-5 border-b border-black/5 dark:border-white/5 space-y-3 shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <span className="w-8 h-8 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                <Wallet className="w-4 h-4" />
+              </span>
+              <div>
+                <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100">
+                  資產盤點與對帳銷帳
+                </h3>
+                <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">
+                  身上總額盤點 · 支援 LINE Pay/活存自訂 · 一鍵差額平帳
+                </p>
+              </div>
             </div>
-            <div>
-              <h3 className="text-base font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
-                資產盤點與對帳銷帳
-              </h3>
-              <p className="text-[11px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold">
-                身上總額、股票報價、銷帳平帳與月底生存試算設定
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa/40 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-full bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400 font-bold flex items-center justify-center hover:bg-black/10 transition-all shrink-0"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
 
-        {/* Tab Switcher */}
-        <div className="p-2 border-b border-black/5 dark:border-white/5 bg-black/[0.02] dark:bg-white/[0.02] shrink-0">
+          {/* 三大功能切換 Segmented Control */}
           <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-black/5 dark:bg-zinc-800 text-xs font-bold">
             <button
               type="button"
               onClick={() => setActiveTab('overview')}
-              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1 ${
+              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1.5 ${
                 activeTab === 'overview'
                   ? 'bg-white dark:bg-zinc-700 text-calico-orange shadow-2xs font-black'
                   : 'text-calico-cocoa/60 dark:text-zinc-400'
               }`}
             >
-              <span>💼 資產盤點</span>
+              <Briefcase className="w-3.5 h-3.5" />
+              <span>資產盤點</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('reconcile')}
-              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1 ${
+              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1.5 ${
                 activeTab === 'reconcile'
                   ? 'bg-white dark:bg-zinc-700 text-calico-orange shadow-2xs font-black'
                   : 'text-calico-cocoa/60 dark:text-zinc-400'
               }`}
             >
-              <span>⚖️ 對帳銷帳</span>
+              <Scale className="w-3.5 h-3.5" />
+              <span>對帳銷帳</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('settings')}
-              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1 ${
+              className={`py-1.5 rounded-xl transition-all whitespace-nowrap flex items-center justify-center space-x-1.5 ${
                 activeTab === 'settings'
                   ? 'bg-white dark:bg-zinc-700 text-calico-orange shadow-2xs font-black'
                   : 'text-calico-cocoa/60 dark:text-zinc-400'
               }`}
             >
-              <span>⚙️ 吃土設定</span>
+              <Settings className="w-3.5 h-3.5" />
+              <span>吃土設定</span>
             </button>
           </div>
         </div>
@@ -230,10 +396,11 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
           {activeTab === 'overview' && (
             <div className="space-y-4 animate-fade-in">
               {/* 身家總額看板 */}
-              <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/20 space-y-2">
+              <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/20 space-y-2.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-amber-900 dark:text-amber-200">
-                    💰 身上錢與投資總淨值
+                  <span className="text-xs font-black text-amber-900 dark:text-amber-200 flex items-center space-x-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-amber-600" />
+                    <span>身上錢與投資總淨值</span>
                   </span>
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-800 dark:text-amber-200">
                     即時盤點
@@ -242,86 +409,158 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                 <div className="text-3xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight font-mono">
                   ${Math.round(netWorthTotal).toLocaleString()}
                 </div>
+
+                {/* 4 格分類概況（純 SVG 記帳風格） */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-amber-500/15 text-xs">
-                  <div>
-                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">💵 現金</span>
-                    <strong className="text-calico-cocoa dark:text-zinc-200 font-mono">${Math.round(cashTotal).toLocaleString()}</strong>
+                  <div className="p-2 rounded-2xl bg-white/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center space-x-2">
+                    <span className="w-7 h-7 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Wallet className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold leading-tight">現金</span>
+                      <strong className="text-xs text-calico-cocoa dark:text-zinc-200 font-mono truncate block">${Math.round(cashTotal).toLocaleString()}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">🏦 存款</span>
-                    <strong className="text-calico-cocoa dark:text-zinc-200 font-mono">${Math.round(bankTotal).toLocaleString()}</strong>
+
+                  <div className="p-2 rounded-2xl bg-white/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center space-x-2">
+                    <span className="w-7 h-7 rounded-xl bg-blue-500/15 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                      <Landmark className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold leading-tight">存款 / 支付</span>
+                      <strong className="text-xs text-calico-cocoa dark:text-zinc-200 font-mono truncate block">${Math.round(bankTotal + digitalWalletTotal).toLocaleString()}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">📈 股票基金</span>
-                    <strong className="text-calico-cocoa dark:text-zinc-200 font-mono">${Math.round(stockTotal).toLocaleString()}</strong>
+
+                  <div className="p-2 rounded-2xl bg-white/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center space-x-2">
+                    <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold leading-tight">股票基金</span>
+                      <strong className="text-xs text-calico-cocoa dark:text-zinc-200 font-mono truncate block">${Math.round(stockTotal).toLocaleString()}</strong>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold">🤝 別人欠款</span>
-                    <strong className="text-emerald-600 dark:text-emerald-400 font-mono">${Math.round(receivablesTotal).toLocaleString()}</strong>
+
+                  <div className="p-2 rounded-2xl bg-white/60 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 flex items-center space-x-2">
+                    <span className="w-7 h-7 rounded-xl bg-teal-500/15 text-teal-600 dark:text-teal-400 flex items-center justify-center shrink-0">
+                      <HandCoins className="w-3.5 h-3.5" />
+                    </span>
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold leading-tight">別人欠款</span>
+                      <strong className="text-xs text-teal-600 dark:text-teal-400 font-mono truncate block">${Math.round(receivablesTotal).toLocaleString()}</strong>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* 現金與銀行帳戶明細 */}
+              {/* 現金、存款與行動支付帳戶明細 (可編輯與新增) */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200">
-                    💳 現金與存款帳戶
-                  </span>
-                  <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                    記帳收支時自動加減
-                  </span>
+                  <div className="flex items-center space-x-2">
+                    <span className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                      <Wallet className="w-3.5 h-3.5" />
+                    </span>
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200">
+                      現金、存款與行動支付帳戶
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenAddAccount}
+                    className="px-2.5 py-1 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-700 dark:text-amber-300 font-black text-xs transition-all flex items-center space-x-1"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>新增帳戶</span>
+                  </button>
                 </div>
+
+                {/* 帳戶卡片列表 */}
                 <div className="space-y-2">
-                  {assetAccounts.filter((a) => a.type !== 'stock').map((acc) => (
-                    <div
-                      key={acc.id}
-                      className="flex items-center justify-between p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 hover:border-black/10 transition-all"
-                    >
-                      <div className="flex items-center space-x-2.5">
-                        <span className="text-xl">{acc.emoji || (acc.type === 'cash' ? '💵' : '🏦')}</span>
-                        <div>
-                          <div className="flex items-center space-x-1.5">
-                            <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">
-                              {acc.name}
-                            </span>
-                            {acc.accountNumber && (
-                              <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400 font-mono">
-                                *{acc.accountNumber}
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-500">
-                            {acc.type === 'cash' ? '實體皮夾與零錢' : '銀行活存帳戶'}
+                  {assetAccounts.filter((a) => a.type !== 'stock').map((acc) => {
+                    const IconComp = getAccountIconComponent(acc);
+                    return (
+                      <div
+                        key={acc.id}
+                        className="flex items-center justify-between p-3 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 hover:border-black/10 transition-all"
+                      >
+                        <div className="flex items-center space-x-3">
+                          <span
+                            className="w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs"
+                            style={{
+                              backgroundColor: `${acc.colorHex || '#10B981'}18`,
+                              color: acc.colorHex || '#10B981',
+                              border: `1px solid ${acc.colorHex || '#10B981'}30`,
+                            }}
+                          >
+                            <IconComp className="w-4 h-4" />
                           </span>
+                          <div>
+                            <div className="flex items-center space-x-1.5 flex-wrap gap-y-0.5">
+                              <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100">
+                                {acc.name}
+                              </span>
+                              {acc.accountNumber && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400 font-mono">
+                                  *{acc.accountNumber}
+                                </span>
+                              )}
+                              <span
+                                className="text-[9px] px-1.5 py-0.2 rounded font-bold"
+                                style={{
+                                  backgroundColor: `${acc.colorHex || '#10B981'}15`,
+                                  color: acc.colorHex || '#10B981',
+                                }}
+                              >
+                                {acc.type === 'cash' ? '現金' : acc.type === 'digital_wallet' ? '行動支付' : acc.type === 'bank' ? '活存' : '其他'}
+                              </span>
+                            </div>
+                            <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-500 font-medium block">
+                              {getAccountTypeLabel(acc.type)}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="text-right shrink-0">
+                          <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100 font-mono block">
+                            ${Math.round(acc.balance).toLocaleString()}
+                          </span>
+                          <div className="flex items-center space-x-2 justify-end mt-0.5">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenEditAccount(acc)}
+                              className="text-[10px] text-calico-cocoa/50 hover:text-calico-orange font-bold transition-colors"
+                            >
+                              編輯
+                            </button>
+                            <span className="text-[8px] text-black/20 dark:text-white/20">·</span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedAccountId(acc.id);
+                                setActiveTab('reconcile');
+                              }}
+                              className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold"
+                            >
+                              對帳平帳
+                            </button>
+                          </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100 font-mono">
-                          ${Math.round(acc.balance).toLocaleString()}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedAccountId(acc.id);
-                            setActiveTab('reconcile');
-                          }}
-                          className="block text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold mt-0.5 ml-auto"
-                        >
-                          對帳平帳
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
-              {/* 📈 股票與基金 (上報價系統與持股計算) */}
+              {/* 股票與基金 (上報價系統與持股計算) */}
               <div className="space-y-2.5 pt-2 border-t border-black/5 dark:border-white/5">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
+                    <span className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <TrendingUp className="w-3.5 h-3.5" />
+                    </span>
                     <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200">
-                      📈 股票與基金持股 (報價系統連動)
+                      股票與基金持股 (報價連動)
                     </span>
                     <button
                       type="button"
@@ -435,7 +674,7 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                   💡 為什麼需要對帳銷帳？
                 </span>
                 <p className="text-[11px] leading-relaxed">
-                  買飲料找零漏記、發票忘記拿，常導致記帳總額與皮夾現金對不上。
+                  買飲料找零漏記、發票忘記拿，常導致記帳總額與皮夾或 LINE Pay 現金對不上。
                   在此輸入「目前錢包或帳戶實際餘額」，系統將自動產生一筆「銷帳調整紀錄」補平差額！
                 </p>
               </div>
@@ -453,7 +692,7 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                   >
                     {assetAccounts.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.emoji || '💼'} {a.name}（目前系統帳面: ${Math.round(a.balance).toLocaleString()}）
+                        [{getAccountTypeLabel(a.type)}] {a.name}（目前系統帳面: ${Math.round(a.balance).toLocaleString()}）
                       </option>
                     ))}
                   </select>
@@ -478,23 +717,22 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                       value={actualBalanceInput}
                       onChange={(e) => setActualBalanceInput(e.target.value)}
                       placeholder={`例如清點後有 $${Math.round(currentReconcileAccount?.balance || 0)}`}
-                      className="w-full px-3 py-2.5 rounded-xl bg-black/5 dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-sm font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:border-amber-500"
+                      className="w-full px-3.5 py-2.5 rounded-2xl bg-black/5 dark:bg-zinc-900 border border-black/10 dark:border-white/10 text-sm font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:border-amber-500 font-mono"
                     />
                   </div>
 
-                  {actualBalanceInput !== '' && (
-                    <div className="flex items-center justify-between text-xs pt-2 border-t border-black/5 dark:border-white/5 font-bold">
-                      <span>自動計算對帳差額</span>
+                  {/* 差額即時運算預覽 */}
+                  {actualBalanceInput !== '' && !isNaN(actualVal) && (
+                    <div className="p-2.5 rounded-xl bg-black/5 dark:bg-zinc-900/60 flex items-center justify-between text-xs">
+                      <span className="font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        {diffAmount >= 0 ? '✨ 帳面盤盈（多出）：' : '⚠️ 帳面盤虧（短少）：'}
+                      </span>
                       <span
-                        className={`font-mono text-sm font-black ${
-                          diffAmount === 0
-                            ? 'text-emerald-600'
-                            : diffAmount > 0
-                            ? 'text-emerald-600'
-                            : 'text-rose-500'
+                        className={`font-black font-mono text-sm ${
+                          diffAmount >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
                         }`}
                       >
-                        {diffAmount === 0 ? '帳目吻合無差額 ✓' : diffAmount > 0 ? `+${diffAmount} (盤盈/多出)` : `${diffAmount} (盤虧/少記)`}
+                        {diffAmount >= 0 ? `+$${diffAmount.toLocaleString()}` : `-$${Math.abs(diffAmount).toLocaleString()}`}
                       </span>
                     </div>
                   )}
@@ -503,49 +741,52 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                 {/* 銷帳原因 */}
                 <div>
                   <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
-                    銷帳平帳說明
+                    銷帳平帳備註原因
                   </label>
                   <input
                     type="text"
                     value={reconcileReason}
                     onChange={(e) => setReconcileReason(e.target.value)}
-                    placeholder="例: 發票遺漏、零錢找錯、對帳校正"
-                    className="w-full px-3 py-2 rounded-2xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-medium text-calico-cocoa dark:text-zinc-100 outline-none focus:border-amber-500"
+                    placeholder="例如: 買飲料零錢誤差、忘記拿發票、定期校準"
+                    className="w-full px-3 py-2 rounded-2xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold text-calico-cocoa dark:text-zinc-100 outline-none focus:border-amber-500"
                   />
                 </div>
 
                 <button
                   type="submit"
-                  disabled={actualBalanceInput === ''}
-                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-black shadow-md hover:from-amber-600 hover:to-orange-600 disabled:opacity-40 transition-all whitespace-nowrap"
+                  disabled={actualBalanceInput === '' || isNaN(actualVal)}
+                  className="w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 disabled:opacity-40 text-white font-black text-xs shadow-ios active:scale-98 transition-all flex items-center justify-center space-x-1.5"
                 >
-                  確認銷帳平帳（同步修正餘額）
+                  <Check className="w-4 h-4" />
+                  <span>確認平帳 · 自動校正餘額</span>
                 </button>
               </form>
 
-              {/* 對帳銷帳歷史清單 */}
-              <div className="space-y-2 pt-2 border-t border-black/5 dark:border-white/5">
-                <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200 block">
-                  📜 銷帳調帳歷史紀錄
+              {/* 銷帳歷史紀錄 */}
+              <div className="pt-3 border-t border-black/5 dark:border-white/5 space-y-2">
+                <span className="text-xs font-black text-calico-cocoa dark:text-zinc-300 flex items-center space-x-1.5">
+                  <History className="w-3.5 h-3.5" />
+                  <span>最近銷帳校正歷史</span>
                 </span>
-                {balanceAdjustments.length > 0 ? (
-                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                    {balanceAdjustments.map((rec) => (
+
+                {balanceAdjustments && balanceAdjustments.length > 0 ? (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {balanceAdjustments.slice(0, 10).map((rec) => (
                       <div
                         key={rec.id}
-                        className="p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 flex items-center justify-between text-xs"
+                        className="p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 flex items-center justify-between text-xs"
                       >
                         <div>
                           <div className="flex items-center space-x-1.5">
-                            <span className="font-bold text-calico-cocoa dark:text-zinc-200">
+                            <span className="font-black text-calico-cocoa dark:text-zinc-100">
                               {rec.accountName}
                             </span>
-                            <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-500 font-mono">
+                            <span className="text-[10px] text-calico-cocoa/40 font-mono">
                               {rec.date}
                             </span>
                           </div>
-                          <span className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 block mt-0.5">
-                            {rec.reason} (${rec.beforeBalance} → ${rec.afterBalance})
+                          <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block mt-0.5">
+                            {rec.reason}
                           </span>
                         </div>
                         <span
@@ -621,7 +862,7 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                 </span>
               </div>
 
-              {/* 納入生存金資產範圍勾選 */}
+              {/* 納入生存金資產範圍勾選 (純 SVG 記帳風格) */}
               <div className="space-y-2 pt-2 border-t border-black/5 dark:border-white/5">
                 <span className="text-xs font-black text-calico-cocoa dark:text-zinc-200 block">
                   流動資產納入生存金範圍
@@ -629,8 +870,11 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
 
                 <div className="space-y-2">
                   <label className="flex items-center justify-between p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 cursor-pointer">
-                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200">
-                      💵 現金錢包餘額 (目前 ${Math.round(cashTotal).toLocaleString()})
+                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-2">
+                      <span className="w-6 h-6 rounded-lg bg-emerald-500/15 text-emerald-600 flex items-center justify-center">
+                        <Wallet className="w-3.5 h-3.5" />
+                      </span>
+                      <span>現金錢包餘額 (目前 ${Math.round(cashTotal).toLocaleString()})</span>
                     </span>
                     <input
                       type="checkbox"
@@ -641,8 +885,11 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                   </label>
 
                   <label className="flex items-center justify-between p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 cursor-pointer">
-                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200">
-                      🏦 銀行活存帳戶 (目前 ${Math.round(bankTotal).toLocaleString()})
+                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-2">
+                      <span className="w-6 h-6 rounded-lg bg-blue-500/15 text-blue-600 flex items-center justify-center">
+                        <Landmark className="w-3.5 h-3.5" />
+                      </span>
+                      <span>銀行存款與支付 (目前 ${Math.round(bankTotal + digitalWalletTotal).toLocaleString()})</span>
                     </span>
                     <input
                       type="checkbox"
@@ -653,8 +900,11 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                   </label>
 
                   <label className="flex items-center justify-between p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 cursor-pointer">
-                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200">
-                      🤝 別人欠我的未還款 (目前 ${Math.round(receivablesTotal).toLocaleString()})
+                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-2">
+                      <span className="w-6 h-6 rounded-lg bg-teal-500/15 text-teal-600 flex items-center justify-center">
+                        <HandCoins className="w-3.5 h-3.5" />
+                      </span>
+                      <span>別人欠款 (應收帳款，目前 ${Math.round(receivablesTotal).toLocaleString()})</span>
                     </span>
                     <input
                       type="checkbox"
@@ -665,8 +915,11 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                   </label>
 
                   <label className="flex items-center justify-between p-2.5 rounded-xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5 dark:border-white/5 cursor-pointer">
-                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200">
-                      📈 股票基金市值 (目前 ${Math.round(stockTotal).toLocaleString()})
+                    <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-200 flex items-center space-x-2">
+                      <span className="w-6 h-6 rounded-lg bg-amber-500/15 text-amber-600 flex items-center justify-center">
+                        <TrendingUp className="w-3.5 h-3.5" />
+                      </span>
+                      <span>股票與基金持股市值 (目前 ${Math.round(stockTotal).toLocaleString()})</span>
                     </span>
                     <input
                       type="checkbox"
@@ -678,55 +931,291 @@ export const AssetReconciliationModal: React.FC<AssetReconciliationModalProps> =
                 </div>
               </div>
 
-              <div className="pt-2">
-                <button
-                  type="submit"
-                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-black shadow-md hover:from-amber-600 hover:to-orange-600 transition-all whitespace-nowrap"
-                >
-                  儲存吃土生存試算設定
-                </button>
-              </div>
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-2xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs shadow-ios active:scale-98 transition-all"
+              >
+                儲存吃土設定
+              </button>
             </form>
           )}
         </div>
       </div>
 
-      {/* 內嵌新增/編輯股票持股 Modal */}
+      {/* ========================================================= */}
+      {/* 帳戶新增 / 編輯 Modal */}
+      {/* ========================================================= */}
+      {isAccountModalOpen && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl border border-black/10 dark:border-white/10 shadow-2xl p-4 sm:p-5 space-y-3.5 animate-scale-up">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center">
+                  <Wallet className="w-3.5 h-3.5" />
+                </span>
+                <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                  {editingAccount ? '編輯資產帳戶' : '新增資產與支付帳戶'}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAccountModalOpen(false)}
+                className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa/40"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {accErrorMsg && (
+              <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-600 text-xs font-bold">
+                {accErrorMsg}
+              </div>
+            )}
+
+            {/* 快速常用範本 (僅在新增時展示) */}
+            {!editingAccount && (
+              <div>
+                <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block mb-1">
+                  快速套用常見帳戶：
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESET_ACCOUNTS.map((p) => (
+                    <button
+                      key={p.name}
+                      type="button"
+                      onClick={() => {
+                        setAccName(p.name);
+                        setAccType(p.type);
+                        setAccColor(p.colorHex);
+                        setAccIconKey(p.iconKey);
+                      }}
+                      className="px-2 py-1 rounded-xl bg-black/5 dark:bg-zinc-800 hover:bg-amber-500/15 hover:text-amber-700 text-[11px] font-bold text-calico-cocoa/80 dark:text-zinc-300 transition-all"
+                    >
+                      {p.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveAccount} className="space-y-3">
+              {/* 帳戶名稱 */}
+              <div>
+                <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                  帳戶名稱 <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={accName}
+                  onChange={(e) => setAccName(e.target.value)}
+                  placeholder="例如: LINE Pay, 街口支付, 國泰世華"
+                  className="w-full px-3 py-2 rounded-xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none focus:border-amber-500"
+                />
+              </div>
+
+              {/* 帳戶類型 */}
+              <div>
+                <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                  帳戶屬性分類
+                </label>
+                <div className="grid grid-cols-3 gap-1 p-0.5 rounded-xl bg-black/5 dark:bg-zinc-800 text-xs font-bold">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccType('digital_wallet');
+                      setAccIconKey('smartphone');
+                    }}
+                    className={`py-1.5 rounded-lg transition-all text-center ${
+                      accType === 'digital_wallet'
+                        ? 'bg-white dark:bg-zinc-700 text-emerald-600 font-black shadow-2xs'
+                        : 'text-calico-cocoa/60'
+                    }`}
+                  >
+                    行動支付
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccType('bank');
+                      setAccIconKey('landmark');
+                    }}
+                    className={`py-1.5 rounded-lg transition-all text-center ${
+                      accType === 'bank'
+                        ? 'bg-white dark:bg-zinc-700 text-blue-600 font-black shadow-2xs'
+                        : 'text-calico-cocoa/60'
+                    }`}
+                  >
+                    銀行活存
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAccType('cash');
+                      setAccIconKey('wallet');
+                    }}
+                    className={`py-1.5 rounded-lg transition-all text-center ${
+                      accType === 'cash'
+                        ? 'bg-white dark:bg-zinc-700 text-amber-600 font-black shadow-2xs'
+                        : 'text-calico-cocoa/60'
+                    }`}
+                  >
+                    實體現金
+                  </button>
+                </div>
+              </div>
+
+              {/* 帳號後碼與目前餘額 */}
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                    帳號末四碼 (選填)
+                  </label>
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={accNumber}
+                    onChange={(e) => setAccNumber(e.target.value)}
+                    placeholder="例如: 8812"
+                    className="w-full px-3 py-2 rounded-xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-bold text-calico-cocoa dark:text-zinc-100 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                    目前金額 (元)
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={accBalance}
+                    onChange={(e) => setAccBalance(e.target.value)}
+                    placeholder="0"
+                    className="w-full px-3 py-2 rounded-xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* 圖示選擇 (純記帳 SVG 風格) */}
+              <div>
+                <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                  帳戶圖示徽章
+                </label>
+                <div className="flex items-center gap-1.5">
+                  {ACCOUNT_ICONS.map((item) => {
+                    const Icon = item.icon;
+                    const isSelected = accIconKey === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        onClick={() => setAccIconKey(item.key)}
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center transition-all ${
+                          isSelected
+                            ? 'bg-amber-500 text-white shadow-2xs scale-105'
+                            : 'bg-black/5 dark:bg-zinc-800 text-calico-cocoa/60 hover:text-calico-cocoa'
+                        }`}
+                        title={item.label}
+                      >
+                        <Icon className="w-4 h-4" />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 色票選擇 */}
+              <div>
+                <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
+                  主題色票
+                </label>
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+                  {COLOR_OPTIONS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setAccColor(c)}
+                      className={`w-6 h-6 rounded-full shrink-0 transition-transform ${
+                        accColor === c ? 'scale-125 ring-2 ring-offset-2 ring-amber-500' : 'opacity-80'
+                      }`}
+                      style={{ backgroundColor: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              {/* 操作按鈕 */}
+              <div className="flex items-center space-x-2 pt-2">
+                {editingAccount && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteAccount(editingAccount.id)}
+                    className="py-2 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 text-xs font-bold transition-colors"
+                  >
+                    刪除帳戶
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setIsAccountModalOpen(false)}
+                  className="flex-1 py-2 rounded-xl bg-black/5 dark:bg-white/10 text-xs font-bold text-calico-cocoa/70"
+                >
+                  取消
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white text-xs font-black shadow-ios active:scale-95 transition-all"
+                >
+                  {editingAccount ? '儲存變更' : '建立帳戶'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================= */}
+      {/* 股票持股新增 / 編輯 Modal */}
+      {/* ========================================================= */}
       {isStockModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-fade-in">
-          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-zinc-900 border border-black/10 dark:border-white/10 shadow-2xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-black/5 dark:border-white/10 pb-3">
-              <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                {editingStock ? '編輯持股紀錄' : '新增股票 / 基金持股'}
-              </h4>
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-sm bg-white dark:bg-zinc-900 rounded-3xl border border-black/10 dark:border-white/10 shadow-2xl p-4 sm:p-5 space-y-3.5 animate-scale-up">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <span className="w-7 h-7 rounded-xl bg-amber-500/15 text-amber-600 flex items-center justify-center">
+                  <TrendingUp className="w-3.5 h-3.5" />
+                </span>
+                <h4 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                  {editingStock ? '編輯持股' : '新增股票/基金持股'}
+                </h4>
+              </div>
               <button
                 type="button"
                 onClick={() => setIsStockModalOpen(false)}
-                className="w-7 h-7 rounded-full bg-black/5 dark:bg-white/10 text-xs font-bold flex items-center justify-center"
+                className="p-1.5 rounded-full hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa/40"
               >
-                ✕
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <form onSubmit={handleSaveStock} className="space-y-3">
-              {/* 常用標的快速點選 */}
+              {/* 熱門標的快速選取 */}
               <div>
-                <label className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 block mb-1">
-                  常用熱門標的快速選取
-                </label>
-                <div className="flex flex-wrap gap-1">
-                  {POPULAR_STOCKS.slice(0, 6).map((p) => (
+                <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block mb-1">
+                  熱門標的快速帶入：
+                </span>
+                <div className="flex flex-wrap gap-1.5">
+                  {POPULAR_STOCKS.slice(0, 6).map((pop) => (
                     <button
-                      key={p.symbol}
+                      key={pop.symbol}
                       type="button"
                       onClick={() => {
-                        setStockSymbol(p.symbol);
-                        setStockName(p.name);
-                        setStockPrice(String(p.defaultPrice));
+                        setStockSymbol(pop.symbol);
+                        setStockName(pop.name);
+                        setStockPrice(String(pop.defaultPrice));
                       }}
-                      className="px-2 py-0.5 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-amber-500/15 text-[10px] font-bold text-calico-cocoa/70 dark:text-zinc-300"
+                      className="px-2 py-0.5 rounded-lg bg-black/5 dark:bg-zinc-800 hover:bg-amber-500/15 hover:text-amber-700 text-[10px] font-mono font-bold text-calico-cocoa/80 dark:text-zinc-300 transition-all"
                     >
-                      {p.name} ({p.symbol.split('.')[0]})
+                      {pop.name}
                     </button>
                   ))}
                 </div>

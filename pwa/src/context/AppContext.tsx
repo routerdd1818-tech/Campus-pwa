@@ -455,8 +455,17 @@ export const DEFAULT_ASSET_ACCOUNTS: AssetAccount[] = [
     name: '錢包現金',
     type: 'cash',
     balance: 3850,
-    emoji: '💵',
+    iconKey: 'wallet',
     colorHex: '#10B981',
+    updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'acc_linepay',
+    name: 'LINE Pay 行動支付',
+    type: 'digital_wallet',
+    balance: 2350,
+    iconKey: 'smartphone',
+    colorHex: '#06C755',
     updatedAt: new Date().toISOString(),
   },
   {
@@ -464,7 +473,7 @@ export const DEFAULT_ASSET_ACCOUNTS: AssetAccount[] = [
     name: '台新Richart存款',
     type: 'bank',
     balance: 26500,
-    emoji: '🏦',
+    iconKey: 'landmark',
     colorHex: '#3B82F6',
     accountNumber: '8812',
     updatedAt: new Date().toISOString(),
@@ -474,7 +483,7 @@ export const DEFAULT_ASSET_ACCOUNTS: AssetAccount[] = [
     name: '玉山銀行存款',
     type: 'bank',
     balance: 14200,
-    emoji: '💳',
+    iconKey: 'landmark',
     colorHex: '#14B8A6',
     accountNumber: '3351',
     updatedAt: new Date().toISOString(),
@@ -484,7 +493,7 @@ export const DEFAULT_ASSET_ACCOUNTS: AssetAccount[] = [
     name: '台美股投資證券戶',
     type: 'stock',
     balance: 50500,
-    emoji: '📈',
+    iconKey: 'trending-up',
     colorHex: '#F59E0B',
     stocks: [
       {
@@ -2123,7 +2132,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const targetType = isCash ? 'cash' : 'bank';
       const delta = t.type === 'expense' ? -t.amount : t.amount;
 
-      let matchedIndex = prev.findIndex((acc) => pm.includes(acc.name.toLowerCase()));
+      let matchedIndex = prev.findIndex((acc) => pm && (pm.includes(acc.name.toLowerCase()) || acc.name.toLowerCase().includes(pm)));
+      if (matchedIndex === -1) {
+        const isDigital = pm.includes('line') || pm.includes('街口') || pm.includes('pay') || pm.includes('電子') || pm.includes('悠遊') || pm.includes('一卡通');
+        if (isDigital) matchedIndex = prev.findIndex((acc) => acc.type === 'digital_wallet');
+      }
       if (matchedIndex === -1) {
         matchedIndex = prev.findIndex((acc) => acc.type === targetType);
       }
@@ -2154,7 +2167,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         const targetType = isCash ? 'cash' : 'bank';
         const reverseDelta = targetTx.type === 'expense' ? targetTx.amount : -targetTx.amount;
 
-        let matchedIndex = prev.findIndex((acc) => pm.includes(acc.name.toLowerCase()));
+        let matchedIndex = prev.findIndex((acc) => pm && (pm.includes(acc.name.toLowerCase()) || acc.name.toLowerCase().includes(pm)));
+        if (matchedIndex === -1) {
+          const isDigital = pm.includes('line') || pm.includes('街口') || pm.includes('pay') || pm.includes('電子') || pm.includes('悠遊') || pm.includes('一卡通');
+          if (isDigital) matchedIndex = prev.findIndex((acc) => acc.type === 'digital_wallet');
+        }
         if (matchedIndex === -1) matchedIndex = prev.findIndex((acc) => acc.type === targetType);
         if (matchedIndex === -1 && prev.length > 0) matchedIndex = 0;
 

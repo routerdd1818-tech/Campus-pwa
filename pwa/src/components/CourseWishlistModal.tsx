@@ -29,6 +29,12 @@ const PERIOD_PRESETS = [
   { label: '夜間 9-10 節 (17:30-19:20)', start: '17:30', end: '19:20' },
 ];
 
+export const ALL_SEMESTERS_UP_TO_120: string[] = [];
+for (let y = 113; y <= 120; y++) {
+  ALL_SEMESTERS_UP_TO_120.push(`${y}-1`);
+  ALL_SEMESTERS_UP_TO_120.push(`${y}-2`);
+}
+
 export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
   isOpen,
   onClose,
@@ -47,7 +53,7 @@ export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
   const [instructor, setInstructor] = useState('');
   const [priority, setPriority] = useState<CourseWishlistItem['priority']>('must');
   const [colorHex, setColorHex] = useState(MODERN_PALETTE[0].hex);
-  const [emoji, setEmoji] = useState('💻');
+  const [emoji, setEmoji] = useState('book');
   const [notes, setNotes] = useState('');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -65,7 +71,7 @@ export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
         setInstructor(wishlistToEdit.instructor || '');
         setPriority(wishlistToEdit.priority || 'must');
         setColorHex(wishlistToEdit.colorHex || MODERN_PALETTE[0].hex);
-        setEmoji(wishlistToEdit.emoji || '💻');
+        setEmoji(wishlistToEdit.emoji || 'book');
         setNotes(wishlistToEdit.notes || '');
       } else {
         setName('');
@@ -79,7 +85,7 @@ export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
         setInstructor('');
         setPriority('must');
         setColorHex(MODERN_PALETTE[0].hex);
-        setEmoji('💻');
+        setEmoji('book');
         setNotes('');
       }
       setErrorMsg(null);
@@ -159,8 +165,8 @@ export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
           )}
 
           {/* 課程名稱與學期 */}
-          <div className="grid grid-cols-3 gap-2.5">
-            <div className="col-span-2">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+            <div className="sm:col-span-2">
               <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
                 課程名稱 <span className="text-rose-500">*</span>
               </label>
@@ -175,14 +181,54 @@ export const CourseWishlistModal: React.FC<CourseWishlistModalProps> = ({
             </div>
             <div>
               <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 block mb-1">
-                預計學期
+                預計學期 (至120年)
               </label>
+              <select
+                value={ALL_SEMESTERS_UP_TO_120.includes(targetSemester) ? targetSemester : 'custom'}
+                onChange={(e) => {
+                  if (e.target.value !== 'custom') {
+                    setTargetSemester(e.target.value);
+                  }
+                }}
+                className="w-full px-2.5 py-2.5 rounded-2xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none"
+              >
+                {ALL_SEMESTERS_UP_TO_120.map((sem) => (
+                  <option key={sem} value={sem}>
+                    {sem} 學年度
+                  </option>
+                ))}
+                <option value="custom">自訂學期...</option>
+              </select>
+            </div>
+          </div>
+
+          {/* 常用學期快捷標籤與自訂學期輸入 */}
+          <div className="flex flex-wrap items-center justify-between gap-2 p-2 rounded-2xl bg-black/[0.02] dark:bg-white/[0.02] border border-black/5">
+            <div className="flex items-center space-x-1.5 overflow-x-auto pb-0.5 scrollbar-none flex-1">
+              <span className="text-[10px] font-bold text-calico-cocoa/40 shrink-0">快捷學期:</span>
+              {['115-2', '116-1', '116-2', '117-1', '118-1', '119-1', '120-1', '120-2'].map((sem) => (
+                <button
+                  key={sem}
+                  type="button"
+                  onClick={() => setTargetSemester(sem)}
+                  className={`px-2 py-0.5 rounded-lg text-[10px] font-mono font-bold transition-all shrink-0 ${
+                    targetSemester === sem
+                      ? 'bg-indigo-500 text-white shadow-2xs font-black'
+                      : 'bg-black/5 dark:bg-white/5 text-calico-cocoa/60 hover:text-calico-cocoa'
+                  }`}
+                >
+                  {sem}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center space-x-1.5 shrink-0">
+              <span className="text-[10px] text-calico-cocoa/50">自訂:</span>
               <input
                 type="text"
                 value={targetSemester}
                 onChange={(e) => setTargetSemester(e.target.value)}
                 placeholder="115-2"
-                className="w-full px-3 py-2.5 rounded-2xl bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-black text-center text-calico-cocoa dark:text-zinc-100 outline-none focus:border-indigo-500"
+                className="w-16 px-2 py-0.5 rounded-lg bg-black/5 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-bold text-center text-calico-cocoa dark:text-zinc-100 outline-none"
               />
             </div>
           </div>

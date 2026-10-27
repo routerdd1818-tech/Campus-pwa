@@ -203,36 +203,31 @@ export const TodayView: React.FC = () => {
       </div>
 
       {/* ======================================================== */}
-      {/* 🐾 可樂管家校園百寶箱 (Campus Fun Tools Quick Bar) */}
+      {/* 伴讀番茄鐘專注捷徑 (純 SVG 記帳風格，移除轉盤與抽籤) */}
       {/* ======================================================== */}
-      <div className="grid grid-cols-3 gap-2.5">
-        <button
-          onClick={() => setIsFortuneModalOpen(true)}
-          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-amber-400 active:scale-95 transition-all group"
-        >
-          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">🎋</span>
-          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">今日吉籤</span>
-          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">測點名考運</span>
-        </button>
-
-        <button
-          onClick={() => setIsFoodRouletteOpen(true)}
-          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-calico-orange active:scale-95 transition-all group"
-        >
-          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">🍱</span>
-          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">吃啥轉盤</span>
-          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">拯救選擇題</span>
-        </button>
-
-        <button
-          onClick={() => setIsPomodoroOpen(true)}
-          className="p-2.5 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex flex-col items-center justify-center text-center hover:border-indigo-400 active:scale-95 transition-all group"
-        >
-          <span className="text-xl mb-1 group-hover:scale-110 transition-transform">⏱️</span>
-          <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200">伴讀番茄</span>
-          <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">25分衝刺</span>
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={() => setIsPomodoroOpen(true)}
+        className="w-full p-3 rounded-2xl bg-white/90 dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex items-center justify-between hover:border-indigo-400/40 active:scale-98 transition-all group"
+      >
+        <div className="flex items-center space-x-3">
+          <span className="w-8 h-8 rounded-xl bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+            <Clock className="w-4 h-4" />
+          </span>
+          <div className="text-left">
+            <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 block">
+              伴讀番茄鐘
+            </span>
+            <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">
+              25 分鐘專注衝刺 · 隨選專注白噪音
+            </span>
+          </div>
+        </div>
+        <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 flex items-center space-x-0.5">
+          <span>開啟專注</span>
+          <ChevronRight className="w-3.5 h-3.5" />
+        </span>
+      </button>
 
       {/* ======================================================== */}
       {/* 重要日子（倒數日 & 持續紀念日）首頁即時動態卡 */}
