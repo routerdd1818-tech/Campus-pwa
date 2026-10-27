@@ -4,6 +4,8 @@ import {
   Todo,
   Transaction,
   Installment,
+  RecurringItem,
+  CountdownItem,
   SplitBill,
   DebtRecord,
   DebtRepayment,
@@ -241,6 +243,92 @@ export const DEFAULT_TODO_CATEGORIES: CustomCategory[] = [
   { id: 'todo_trip', name: '出國/旅遊', colorHex: '#DD6B20' },
 ];
 
+export const DEFAULT_RECURRING_ITEMS: RecurringItem[] = [
+  {
+    id: 'rec_rent',
+    title: '租屋套房房租',
+    amount: 8500,
+    type: 'expense',
+    dayOfMonth: 5,
+    categoryName: '居住房租',
+    emoji: '🏠',
+    colorHex: '#3B82F6',
+    paymentMethodName: '郵局轉帳',
+    isActive: true,
+    autoRecord: false,
+    notes: '每月5號前匯款給房東',
+  },
+  {
+    id: 'rec_netflix',
+    title: 'Netflix 家庭方案',
+    amount: 130,
+    type: 'expense',
+    dayOfMonth: 15,
+    categoryName: '休閒娛樂',
+    emoji: '🍿',
+    colorHex: '#EF4444',
+    paymentMethodName: '信用卡',
+    isActive: true,
+    autoRecord: false,
+    notes: '室友4人分攤',
+  },
+  {
+    id: 'rec_salary',
+    title: '校內助理助學金',
+    amount: 6000,
+    type: 'income',
+    dayOfMonth: 20,
+    categoryName: '薪資收入',
+    emoji: '🎓',
+    colorHex: '#10B981',
+    paymentMethodName: '銀行帳戶',
+    isActive: true,
+    autoRecord: false,
+    notes: '實驗室專案助學金',
+  },
+];
+
+export const DEFAULT_INSTALLMENTS: Installment[] = [
+  {
+    id: 'inst_macbook',
+    title: 'M3 MacBook Air 筆電',
+    totalAmount: 36000,
+    totalPeriods: 12,
+    paidPeriods: 4,
+    periodAmount: 3000,
+    startDate: '2026-06-10',
+    billingDay: 10,
+    paymentMethodName: '玉山信用卡',
+    emoji: '💻',
+    colorHex: '#6366F1',
+    notes: '學業程式開發分期，12期0利率',
+    isCompleted: false,
+  },
+];
+
+export const DEFAULT_COUNTDOWNS: CountdownItem[] = [
+  {
+    id: 'cd_grad',
+    title: '大學畢業典禮',
+    targetDate: '2026-06-20',
+    emoji: '🎓',
+    category: 'life',
+    colorHex: '#F59E0B',
+    isPinned: true,
+    notes: '一起拍學士服合照！',
+  },
+  {
+    id: 'cd_finals',
+    title: '期末考週結束',
+    targetDate: '2026-06-26',
+    emoji: '📝',
+    category: 'exam',
+    colorHex: '#10B981',
+    isPinned: false,
+    notes: '歐趴衝刺！',
+  },
+];
+
 const DEFAULT_SETTINGS: UserSettings = {
   supabaseUrl: DEFAULT_SUPABASE_URL,
   supabaseAnonKey: DEFAULT_SUPABASE_ANON_KEY,
@@ -316,6 +404,20 @@ interface AppContextType {
   classPeriods: ClassPeriod[];
   updateClassPeriods: (periods: ClassPeriod[]) => void;
   installments: Installment[];
+  addInstallment: (item: Installment) => void;
+  updateInstallment: (item: Installment) => void;
+  deleteInstallment: (id: string) => void;
+  payInstallmentPeriod: (id: string) => Promise<void>;
+  recurringItems: RecurringItem[];
+  addRecurringItem: (item: RecurringItem) => void;
+  updateRecurringItem: (item: RecurringItem) => void;
+  deleteRecurringItem: (id: string) => void;
+  recordRecurringNow: (id: string) => Promise<void>;
+  countdowns: CountdownItem[];
+  addCountdown: (item: CountdownItem) => void;
+  updateCountdown: (item: CountdownItem) => void;
+  deleteCountdown: (id: string) => void;
+  togglePinCountdown: (id: string) => void;
   splitBills: SplitBill[];
   debts: DebtRecord[];
   addDebt: (debt: DebtRecord) => void;
@@ -696,8 +798,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   savedFriendsRef.current = savedFriends;
 
   const [installments, setInstallments] = useState<Installment[]>(() => {
-    const saved = localStorage.getItem('campus_installments');
-    return saved ? JSON.parse(saved) : [];
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'installments')) || (!uid ? localStorage.getItem('campus_installments') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_INSTALLMENTS;
+  });
+
+  const [recurringItems, setRecurringItems] = useState<RecurringItem[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'recurring_items')) || (!uid ? localStorage.getItem('campus_recurring_items') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_RECURRING_ITEMS;
+  });
+
+  const [countdowns, setCountdowns] = useState<CountdownItem[]>(() => {
+    const uid = initialUser?.id;
+    const saved = localStorage.getItem(getScopedKey(uid, 'countdowns')) || (!uid ? localStorage.getItem('campus_countdowns') : null);
+    if (saved) {
+      try { return JSON.parse(saved); } catch {}
+    }
+    return DEFAULT_COUNTDOWNS;
   });
 
   const [debts, setDebts] = useState<DebtRecord[]>(() => {
@@ -717,6 +841,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     return [];
   });
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'installments'), JSON.stringify(installments));
+  }, [installments]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'recurring_items'), JSON.stringify(recurringItems));
+  }, [recurringItems]);
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'countdowns'), JSON.stringify(countdowns));
+  }, [countdowns]);
 
   useEffect(() => {
     const uid = activeUserIdRef.current;
@@ -905,6 +1044,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(getScopedKey(oldUid, 'custom_todo_cats'), JSON.stringify(customTodoCategories));
     localStorage.setItem(getScopedKey(oldUid, 'debts'), JSON.stringify(debts));
     localStorage.setItem(getScopedKey(oldUid, 'split_bills'), JSON.stringify(splitBills));
+    localStorage.setItem(getScopedKey(oldUid, 'installments'), JSON.stringify(installments));
+    localStorage.setItem(getScopedKey(oldUid, 'recurring_items'), JSON.stringify(recurringItems));
+    localStorage.setItem(getScopedKey(oldUid, 'countdowns'), JSON.stringify(countdowns));
 
     // 2. Switch active ref
     activeUserIdRef.current = newUid;
@@ -970,6 +1112,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const rawSplitBills = localStorage.getItem(getScopedKey(newUid, 'split_bills'));
     setSplitBills(rawSplitBills ? JSON.parse(rawSplitBills) : []);
+
+    const rawInsts = localStorage.getItem(getScopedKey(newUid, 'installments'));
+    setInstallments(rawInsts ? JSON.parse(rawInsts) : DEFAULT_INSTALLMENTS);
+
+    const rawRecs = localStorage.getItem(getScopedKey(newUid, 'recurring_items'));
+    setRecurringItems(rawRecs ? JSON.parse(rawRecs) : DEFAULT_RECURRING_ITEMS);
+
+    const rawCds = localStorage.getItem(getScopedKey(newUid, 'countdowns'));
+    setCountdowns(rawCds ? JSON.parse(rawCds) : DEFAULT_COUNTDOWNS);
 
     const rawSynced = localStorage.getItem(getScopedKey(newUid, 'last_synced_at'));
     setLastSyncedAt(rawSynced || null);
@@ -1716,6 +1867,144 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setCatMood('proud');
   };
 
+  // --------------------------------------------------------------------------
+  // 🔄 每月固定支出與收入 (Recurring Items)
+  // --------------------------------------------------------------------------
+  const addRecurringItem = (item: RecurringItem) => {
+    const canonicalId = toUUID(item.id || `rec_${Date.now()}_${Math.random()}`);
+    const newItem: RecurringItem = {
+      ...item,
+      id: canonicalId,
+      userId: currentUser?.id || item.userId,
+    };
+    setRecurringItems((prev) => [newItem, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateRecurringItem = (item: RecurringItem) => {
+    setRecurringItems((prev) => prev.map((r) => (r.id === item.id ? item : r)));
+  };
+
+  const deleteRecurringItem = (id: string) => {
+    setRecurringItems((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  const recordRecurringNow = async (id: string) => {
+    const item = recurringItems.find((r) => r.id === id);
+    if (!item) return;
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const newTx: Transaction = {
+      id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount: item.amount,
+      type: item.type,
+      categoryName: item.categoryName,
+      categoryIcon: item.emoji || (item.type === 'expense' ? '💸' : '💰'),
+      categoryColorHex: item.colorHex || '#3B82F6',
+      paymentMethodName: item.paymentMethodName || '一般帳戶',
+      date: new Date().toISOString(),
+      notes: `【每月固定】${item.title}${item.notes ? ` · ${item.notes}` : ''}`,
+      valueScore: 8,
+      isSharedWithFriends: false,
+    };
+    await addTransaction(newTx);
+    setRecurringItems((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, lastRecordedMonth: currentMonth } : r))
+    );
+    setCatMood('proud');
+  };
+
+  // --------------------------------------------------------------------------
+  // 💳 分期付款追蹤 (Installments Tracker)
+  // --------------------------------------------------------------------------
+  const addInstallment = (item: Installment) => {
+    const canonicalId = toUUID(item.id || `inst_${Date.now()}_${Math.random()}`);
+    const newItem: Installment = {
+      ...item,
+      id: canonicalId,
+      userId: currentUser?.id || item.userId,
+      isCompleted: item.paidPeriods >= item.totalPeriods,
+    };
+    setInstallments((prev) => [newItem, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateInstallment = (item: Installment) => {
+    setInstallments((prev) =>
+      prev.map((inst) => {
+        if (inst.id !== item.id) return inst;
+        return {
+          ...item,
+          isCompleted: item.paidPeriods >= item.totalPeriods,
+        };
+      })
+    );
+  };
+
+  const deleteInstallment = (id: string) => {
+    setInstallments((prev) => prev.filter((inst) => inst.id !== id));
+  };
+
+  const payInstallmentPeriod = async (id: string) => {
+    const item = installments.find((inst) => inst.id === id);
+    if (!item || item.isCompleted) return;
+    const nextPaid = item.paidPeriods + 1;
+    const isNowCompleted = nextPaid >= item.totalPeriods;
+    const newTx: Transaction = {
+      id: `tx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount: item.periodAmount,
+      type: 'expense',
+      categoryName: '分期付款',
+      categoryIcon: item.emoji || '💳',
+      categoryColorHex: item.colorHex || '#6366F1',
+      paymentMethodName: item.paymentMethodName || '信用卡',
+      date: new Date().toISOString(),
+      notes: `【分期扣款 第${nextPaid}/${item.totalPeriods}期】${item.title}${item.notes ? ` · ${item.notes}` : ''}`,
+      valueScore: 8,
+      isSharedWithFriends: false,
+    };
+    await addTransaction(newTx);
+    setInstallments((prev) =>
+      prev.map((inst) =>
+        inst.id === id
+          ? {
+              ...inst,
+              paidPeriods: nextPaid,
+              isCompleted: isNowCompleted,
+            }
+          : inst
+      )
+    );
+    setCatMood('proud');
+  };
+
+  // --------------------------------------------------------------------------
+  // ⏳ 倒數日系統 (Countdowns Tracker)
+  // --------------------------------------------------------------------------
+  const addCountdown = (item: CountdownItem) => {
+    const canonicalId = toUUID(item.id || `cd_${Date.now()}_${Math.random()}`);
+    const newItem: CountdownItem = {
+      ...item,
+      id: canonicalId,
+      userId: currentUser?.id || item.userId,
+    };
+    setCountdowns((prev) => [newItem, ...prev]);
+    setCatMood('happy');
+  };
+
+  const updateCountdown = (item: CountdownItem) => {
+    setCountdowns((prev) => prev.map((cd) => (cd.id === item.id ? item : cd)));
+  };
+
+  const deleteCountdown = (id: string) => {
+    setCountdowns((prev) => prev.filter((cd) => cd.id !== id));
+  };
+
+  const togglePinCountdown = (id: string) => {
+    setCountdowns((prev) =>
+      prev.map((cd) => (cd.id === id ? { ...cd, isPinned: !cd.isPinned } : cd))
+    );
+  };
+
   const saveFriendRecord = (record: SavedFriendRecord) => {
     // 檢查是否有共享行事曆異動 (新增或刪除行程/待辦)
     const existing = savedFriendsRef.current.find(
@@ -1847,8 +2136,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem(getScopedKey(uid, 'custom_todo_cats'));
     localStorage.removeItem(getScopedKey(uid, 'debts'));
     localStorage.removeItem(getScopedKey(uid, 'split_bills'));
+    localStorage.removeItem(getScopedKey(uid, 'installments'));
+    localStorage.removeItem(getScopedKey(uid, 'recurring_items'));
+    localStorage.removeItem(getScopedKey(uid, 'countdowns'));
     setDebts([]);
     setSplitBills([]);
+    setInstallments([]);
+    setRecurringItems([]);
+    setCountdowns([]);
   };
 
   return (
@@ -1887,6 +2182,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         classPeriods,
         updateClassPeriods,
         installments,
+        addInstallment,
+        updateInstallment,
+        deleteInstallment,
+        payInstallmentPeriod,
+        recurringItems,
+        addRecurringItem,
+        updateRecurringItem,
+        deleteRecurringItem,
+        recordRecurringNow,
+        countdowns,
+        addCountdown,
+        updateCountdown,
+        deleteCountdown,
+        togglePinCountdown,
         splitBills,
         debts,
         addDebt,

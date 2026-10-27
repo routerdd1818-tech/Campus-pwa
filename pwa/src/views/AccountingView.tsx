@@ -1,11 +1,23 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { Transaction, DebtRecord, SplitBill } from '../types';
+import {
+  Transaction,
+  DebtRecord,
+  SplitBill,
+  RecurringItem,
+  Installment,
+  CountdownItem,
+  FriendPeriodMode,
+} from '../types';
 import { TransactionModal } from '../components/TransactionModal';
 import { PeerRatingModal } from '../components/PeerRatingModal';
 import { DebtModal } from '../components/DebtModal';
 import { RepayDebtModal } from '../components/RepayDebtModal';
 import { SplitBillModal } from '../components/SplitBillModal';
+import { CountdownModal } from '../components/CountdownModal';
+import { CountdownCard } from '../components/CountdownCard';
+import { RecurringModal } from '../components/RecurringModal';
+import { InstallmentModal } from '../components/InstallmentModal';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import {
   Plus,
@@ -32,6 +44,8 @@ import {
   Receipt,
   Edit2,
   CalendarDays,
+  Pin,
+  Hourglass,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -248,6 +262,21 @@ export const AccountingView: React.FC = () => {
     deleteSplitBill,
     settleSplitParticipant,
     settleEntireSplitBill,
+    recurringItems,
+    addRecurringItem,
+    updateRecurringItem,
+    deleteRecurringItem,
+    recordRecurringNow,
+    installments,
+    addInstallment,
+    updateInstallment,
+    deleteInstallment,
+    payInstallmentPeriod,
+    countdowns,
+    addCountdown,
+    updateCountdown,
+    deleteCountdown,
+    togglePinCountdown,
   } = useApp();
 
   // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
@@ -257,9 +286,10 @@ export const AccountingView: React.FC = () => {
   const [ratingModalTx, setRatingModalTx] = useState<Transaction | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
 
-  // 🤝 往來帳務 (多人分帳 · 借還 · 分期)
+  // 🤝 往來與長期計畫 (多人分帳 · 借還 · 固定收支 · 分期 · 倒數日)
+  type DrawerTab = 'splits' | 'debts' | 'recurring' | 'installments' | 'countdowns';
   const [isSocialDebtOpen, setIsSocialDebtOpen] = useState(false);
-  const [socialDebtTab, setSocialDebtTab] = useState<'splits' | 'debts'>('splits');
+  const [socialDebtTab, setSocialDebtTab] = useState<DrawerTab>('splits');
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
   const [splitToEdit, setSplitToEdit] = useState<SplitBill | null>(null);
   const [isDebtModalOpen, setIsDebtModalOpen] = useState(false);
@@ -268,20 +298,73 @@ export const AccountingView: React.FC = () => {
   const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
   const [expandedDebtHistoryId, setExpandedDebtHistoryId] = useState<string | null>(null);
 
-  // 📅 好友帳本當日消費日期導航
+  // 🔄 固定收支 · 💳 分期付款 · ⏳ 倒數日 Modals
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
+  const [recurringToEdit, setRecurringToEdit] = useState<RecurringItem | null>(null);
+  const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
+  const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
+  const [isCountdownModalOpen, setIsCountdownModalOpen] = useState(false);
+  const [countdownToEdit, setCountdownToEdit] = useState<CountdownItem | null>(null);
+
+  // 📅 好友帳本日期與週期導航 (日 / 週 / 月)
+  const [friendPeriodMode, setFriendPeriodMode] = useState<FriendPeriodMode>('daily');
   const [friendSelectedDate, setFriendSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [friendViewListMode, setFriendViewListMode] = useState<'daily' | 'all'>('daily');
 
-  const handleFriendPrevDay = () => {
-    const d = new Date(friendSelectedDate);
-    d.setDate(d.getDate() - 1);
-    setFriendSelectedDate(d.toISOString().slice(0, 10));
+  const friendWeekRange = useMemo(() => {
+    const [y, m, d] = friendSelectedDate.split('-').map(Number);
+    const curr = new Date(y, m - 1, d);
+    const day = curr.getDay(); // 0 is Sun
+    const start = new Date(curr);
+    start.setDate(curr.getDate() - day);
+    const end = new Date(start);
+    end.setDate(start.getDate() + 6);
+    const startStr = `${start.getFullYear()}-${String(start.getMonth() + 1).padStart(2, '0')}-${String(start.getDate()).padStart(2, '0')}`;
+    const endStr = `${end.getFullYear()}-${String(end.getMonth() + 1).padStart(2, '0')}-${String(end.getDate()).padStart(2, '0')}`;
+    return { startStr, endStr };
+  }, [friendSelectedDate]);
+
+  const friendPeriodLabel = useMemo(() => {
+    if (friendPeriodMode === 'daily') return '當日';
+    if (friendPeriodMode === 'weekly') return '當週';
+    return '當月';
+  }, [friendPeriodMode]);
+
+  const isCurrentFriendPeriod = useMemo(() => {
+    const todayStr = new Date().toISOString().slice(0, 10);
+    if (friendPeriodMode === 'daily') return friendSelectedDate === todayStr;
+    if (friendPeriodMode === 'weekly') return todayStr >= friendWeekRange.startStr && todayStr <= friendWeekRange.endStr;
+    return friendSelectedDate.slice(0, 7) === todayStr.slice(0, 7);
+  }, [friendPeriodMode, friendSelectedDate, friendWeekRange]);
+
+  const handleFriendPrev = () => {
+    const [y, m, d] = friendSelectedDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (friendPeriodMode === 'daily') {
+      date.setDate(date.getDate() - 1);
+    } else if (friendPeriodMode === 'weekly') {
+      date.setDate(date.getDate() - 7);
+    } else {
+      date.setMonth(date.getMonth() - 1);
+    }
+    setFriendSelectedDate(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    );
   };
 
-  const handleFriendNextDay = () => {
-    const d = new Date(friendSelectedDate);
-    d.setDate(d.getDate() + 1);
-    setFriendSelectedDate(d.toISOString().slice(0, 10));
+  const handleFriendNext = () => {
+    const [y, m, d] = friendSelectedDate.split('-').map(Number);
+    const date = new Date(y, m - 1, d);
+    if (friendPeriodMode === 'daily') {
+      date.setDate(date.getDate() + 1);
+    } else if (friendPeriodMode === 'weekly') {
+      date.setDate(date.getDate() + 7);
+    } else {
+      date.setMonth(date.getMonth() + 1);
+    }
+    setFriendSelectedDate(
+      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+    );
   };
 
   const handleFriendToday = () => {
@@ -322,6 +405,110 @@ export const AccountingView: React.FC = () => {
     };
   }, [debts, splitBills, currentUser, settings.ownerName]);
 
+  // 🔄 固定收支統計 (Recurring Stats)
+  const recurringStats = useMemo(() => {
+    const activeItems = (recurringItems || []).filter((r) => r.isActive);
+    const monthlyExpense = activeItems
+      .filter((r) => r.type === 'expense')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const monthlyIncome = activeItems
+      .filter((r) => r.type === 'income')
+      .reduce((sum, r) => sum + r.amount, 0);
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    const recordedThisMonthCount = activeItems.filter((r) => r.lastRecordedMonth === currentMonth).length;
+    return {
+      monthlyExpense,
+      monthlyIncome,
+      net: monthlyIncome - monthlyExpense,
+      activeCount: activeItems.length,
+      recordedThisMonthCount,
+    };
+  }, [recurringItems]);
+
+  // 💳 分期付款統計 (Installment Stats)
+  const installmentStats = useMemo(() => {
+    const activeList = (installments || []).filter((i) => !i.isCompleted);
+    const totalRemaining = activeList.reduce(
+      (sum, i) => sum + Math.max(0, (i.totalPeriods - i.paidPeriods) * i.periodAmount),
+      0
+    );
+    const totalMonthlyPayment = activeList.reduce((sum, i) => sum + i.periodAmount, 0);
+    return {
+      activeCount: activeList.length,
+      totalRemaining,
+      totalMonthlyPayment,
+    };
+  }, [installments]);
+
+  // ⏳ 倒數日置頂項目
+  const pinnedCountdowns = useMemo(() => {
+    return (countdowns || []).filter((c) => c.isPinned);
+  }, [countdowns]);
+
+  // 🐾 月底吃土生存試算 (Daily Survival Budget)
+  const survivalBudget = useMemo(() => {
+    const now = new Date();
+    const currentMonthStr = now.toISOString().slice(0, 7);
+    const todayDay = now.getDate();
+    const [y, m] = currentMonthStr.split('-').map(Number);
+    const daysInCurrentMonth = new Date(y, m, 0).getDate();
+
+    const currentMonthExpense = transactions
+      .filter((t) => t.type === 'expense' && t.date.slice(0, 7) === currentMonthStr)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const currentMonthIncome = transactions
+      .filter((t) => t.type === 'income' && t.date.slice(0, 7) === currentMonthStr)
+      .reduce((sum, t) => sum + t.amount, 0);
+
+    const monthlyTotalBudget = settings.isIncomeBasedDailyLimit && currentMonthIncome > 0
+      ? currentMonthIncome
+      : (settings.customDailyLimit || 300) * daysInCurrentMonth;
+
+    // 尚未扣除之固定支出
+    const pendingRecurring = (recurringItems || [])
+      .filter((r) => r.isActive && r.type === 'expense' && r.lastRecordedMonth !== currentMonthStr)
+      .reduce((sum, r) => sum + r.amount, 0);
+
+    // 尚未扣除之本月分期
+    const pendingInstallment = (installments || [])
+      .filter((i) => !i.isCompleted && i.billingDay >= todayDay)
+      .reduce((sum, i) => sum + i.periodAmount, 0);
+
+    const totalReservedFixed = pendingRecurring + pendingInstallment;
+    const freeBalance = Math.max(0, monthlyTotalBudget - currentMonthExpense - totalReservedFixed);
+    const remainingDays = Math.max(1, budgetInfo.daysUntilReset || (daysInCurrentMonth - todayDay + 1));
+    const dailySafetyBudget = Math.floor(freeBalance / remainingDays);
+
+    let status: 'safe' | 'warning' | 'danger' = 'safe';
+    let catComment = '大魚大肉！罐罐自由無壓力 🐟';
+
+    if (dailySafetyBudget < 100) {
+      status = 'danger';
+      catComment = '吃土警報發布！只剩泡麵能吃了喵 😿';
+    } else if (dailySafetyBudget < 200) {
+      status = 'warning';
+      catComment = '微吃土狀態，建議吃學餐省荷包 🍱';
+    } else if (dailySafetyBudget < 400) {
+      status = 'safe';
+      catComment = '生活安穩，喝杯大冰奶犒賞自己 ☕';
+    } else {
+      status = 'safe';
+      catComment = '大魚大肉！罐罐自由無壓力 🐟';
+    }
+
+    return {
+      monthlyTotalBudget,
+      currentMonthExpense,
+      totalReservedFixed,
+      freeBalance,
+      remainingDays,
+      dailySafetyBudget,
+      status,
+      catComment,
+    };
+  }, [transactions, settings, recurringItems, installments, budgetInfo.daysUntilReset]);
+
   // Active friend calculations
   const currentFriend = savedFriends[selectedFriendIndex] || savedFriends[0];
 
@@ -358,13 +545,13 @@ export const AccountingView: React.FC = () => {
     );
   }, [friendSchedule]);
 
-  // 🌟 好友記帳：聚焦於「當日消費」而非總花費
+  // 🌟 好友記帳：週期篩選 (日 / 週 / 月) 與統計
   const friendStats = useMemo(() => {
-    let todayExpense = 0;
-    let todayIncome = 0;
-    let todayRatedCount = 0;
-    let todayTotalRating = 0;
-    const todayCatMap: Record<string, { amount: number; colorHex: string; count: number }> = {};
+    let periodExpense = 0;
+    let periodIncome = 0;
+    let periodRatedCount = 0;
+    let periodTotalRating = 0;
+    const periodCatMap: Record<string, { amount: number; colorHex: string; count: number }> = {};
 
     let totalExpense = 0;
     let totalIncome = 0;
@@ -372,25 +559,33 @@ export const AccountingView: React.FC = () => {
     let ratedCount = 0;
     let totalRating = 0;
 
-    const todayTxs = friendTransactions.filter(
-      (t) => t.date && t.date.slice(0, 10) === friendSelectedDate
-    );
-
-    todayTxs.forEach((t) => {
-      if (t.type === 'expense' || !t.type) {
-        todayExpense += t.amount;
-        if (!todayCatMap[t.categoryName]) {
-          todayCatMap[t.categoryName] = { amount: 0, colorHex: t.categoryColorHex || '#E67E22', count: 0 };
-        }
-        todayCatMap[t.categoryName].amount += t.amount;
-        todayCatMap[t.categoryName].count += 1;
+    const periodTxs = friendTransactions.filter((t) => {
+      if (!t.date) return false;
+      const txDate = t.date.slice(0, 10);
+      if (friendPeriodMode === 'daily') {
+        return txDate === friendSelectedDate;
+      } else if (friendPeriodMode === 'weekly') {
+        return txDate >= friendWeekRange.startStr && txDate <= friendWeekRange.endStr;
       } else {
-        todayIncome += t.amount;
+        return txDate.slice(0, 7) === friendSelectedDate.slice(0, 7);
+      }
+    });
+
+    periodTxs.forEach((t) => {
+      if (t.type === 'expense' || !t.type) {
+        periodExpense += t.amount;
+        if (!periodCatMap[t.categoryName]) {
+          periodCatMap[t.categoryName] = { amount: 0, colorHex: t.categoryColorHex || '#E67E22', count: 0 };
+        }
+        periodCatMap[t.categoryName].amount += t.amount;
+        periodCatMap[t.categoryName].count += 1;
+      } else {
+        periodIncome += t.amount;
       }
 
       if (t.peerRating) {
-        todayTotalRating += t.peerRating;
-        todayRatedCount += 1;
+        periodTotalRating += t.peerRating;
+        periodRatedCount += 1;
       }
     });
 
@@ -412,13 +607,13 @@ export const AccountingView: React.FC = () => {
       }
     });
 
-    const todayCategories = Object.entries(todayCatMap)
+    const periodCategories = Object.entries(periodCatMap)
       .map(([name, data]) => ({
         name,
         amount: data.amount,
         colorHex: data.colorHex,
         count: data.count,
-        percent: todayExpense > 0 ? Math.round((data.amount / todayExpense) * 100) : 0,
+        percent: periodExpense > 0 ? Math.round((data.amount / periodExpense) * 100) : 0,
       }))
       .sort((a, b) => b.amount - a.amount);
 
@@ -433,13 +628,20 @@ export const AccountingView: React.FC = () => {
       .sort((a, b) => b.amount - a.amount);
 
     return {
-      todayExpense,
-      todayIncome,
-      todayTxCount: todayTxs.length,
-      todayCategories,
-      todayAvgRating: todayRatedCount > 0 ? (todayTotalRating / todayRatedCount).toFixed(1) : null,
-      todayRatedCount,
-      todayTransactions: todayTxs,
+      periodExpense,
+      periodIncome,
+      periodTxCount: periodTxs.length,
+      periodCategories,
+      periodAvgRating: periodRatedCount > 0 ? (periodTotalRating / periodRatedCount).toFixed(1) : null,
+      periodRatedCount,
+      periodTransactions: periodTxs,
+      todayExpense: periodExpense,
+      todayIncome: periodIncome,
+      todayTxCount: periodTxs.length,
+      todayCategories: periodCategories,
+      todayAvgRating: periodRatedCount > 0 ? (periodTotalRating / periodRatedCount).toFixed(1) : null,
+      todayRatedCount: periodRatedCount,
+      todayTransactions: periodTxs,
       totalExpense,
       totalIncome,
       categories,
@@ -447,7 +649,7 @@ export const AccountingView: React.FC = () => {
       avgRating: ratedCount > 0 ? (totalRating / ratedCount).toFixed(1) : null,
       ratedCount,
     };
-  }, [friendTransactions, friendSelectedDate]);
+  }, [friendTransactions, friendPeriodMode, friendSelectedDate, friendWeekRange]);
 
   const renderPeerRatingBadge = (tx: Transaction) => {
     if (!tx.peerRating) return null;
@@ -755,6 +957,30 @@ export const AccountingView: React.FC = () => {
 
       {ledgerScope === 'mine' && (
         <>
+          {/* 📌 Pinned Countdowns Ribbon */}
+          {pinnedCountdowns.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <div className="text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-1 rounded-xl whitespace-nowrap shrink-0 flex items-center space-x-1">
+                <Pin className="w-3 h-3" />
+                <span>重要倒數</span>
+              </div>
+              {pinnedCountdowns.map((cd) => (
+                <div
+                  key={cd.id}
+                  onClick={() => {
+                    setViewMode('ledger');
+                    setIsSocialDebtOpen(true);
+                    setSocialDebtTab('countdowns');
+                  }}
+                  className="cursor-pointer active:scale-95 transition-transform shrink-0"
+                  title="點擊前往倒數日管理"
+                >
+                  <CountdownCard item={cd} compact />
+                </div>
+              ))}
+            </div>
+          )}
+
           {/* Top View Mode 3-Segment Switcher */}
       <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
         <button
@@ -1064,35 +1290,37 @@ export const AccountingView: React.FC = () => {
               </p>
             </div>
 
-            {/* Box 4: 往來債務 (待還 / 待收) */}
+            {/* Box 4: 往來與長期計畫 */}
             <div
               onClick={() => {
                 setViewMode('ledger');
                 setIsSocialDebtOpen(true);
               }}
               className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios cursor-pointer hover:border-amber-400 transition-all group"
-              title="點擊展開往來分帳與借還債務中心"
+              title="點擊展開往來分帳、借還、固定收支、分期與倒數日"
             >
               <div className="flex items-center justify-between text-amber-700 dark:text-amber-400 text-xs font-bold mb-1">
                 <div className="flex items-center space-x-1.5">
-                  <CreditCard className="w-4 h-4" />
-                  <span>往來債務</span>
+                  <Calculator className="w-4 h-4" />
+                  <span>往來與計畫</span>
                 </div>
                 <span className="text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-extrabold group-hover:scale-105 transition-transform">
-                  {debtStats.activeDebtsCount + debtStats.activeSplitsCount} 筆 ➔
+                  {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (countdowns || []).length} 筆 ➔
                 </span>
               </div>
               <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
-                {debtStats.totalIOwe > 0 ? `待還 $${debtStats.totalIOwe}` : debtStats.totalTheyOwe > 0 ? `待收 $${debtStats.totalTheyOwe}` : '$0'}
+                {debtStats.totalIOwe > 0 ? `待還 $${debtStats.totalIOwe}` : debtStats.totalTheyOwe > 0 ? `待收 $${debtStats.totalTheyOwe}` : `$${installmentStats.totalRemaining}`}
               </p>
               <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1 truncate">
                 {debtStats.totalTheyOwe > 0 && debtStats.totalIOwe > 0
                   ? `待收 $${debtStats.totalTheyOwe} · 待還 $${debtStats.totalIOwe}`
+                  : installmentStats.activeCount > 0
+                  ? `分期剩餘 $${installmentStats.totalRemaining} · 倒數 ${(countdowns || []).length} 個`
                   : debtStats.totalIOwe > 0
-                  ? '包含分期與借款剩餘'
+                  ? '包含借款與待償項目'
                   : debtStats.totalTheyOwe > 0
                   ? '包含代墊與借出款項'
-                  : '無未結清借還款項 🍃'}
+                  : '分帳借還 · 固定收支 · 倒數日'}
               </p>
             </div>
           </div>
@@ -1261,6 +1489,73 @@ export const AccountingView: React.FC = () => {
             </div>
           </div>
 
+          {/* 🐾 月底吃土生存試算卡片 (Daily Survival Barometer) */}
+          <div
+            className={`p-4 rounded-3xl border shadow-ios space-y-2.5 transition-all ${
+              survivalBudget.status === 'danger'
+                ? 'bg-rose-500/10 dark:bg-rose-950/20 border-rose-500/30'
+                : survivalBudget.status === 'warning'
+                ? 'bg-amber-500/10 dark:bg-amber-950/20 border-amber-500/30'
+                : 'bg-emerald-500/10 dark:bg-emerald-950/20 border-emerald-500/30'
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                <span className="text-2xl shrink-0">
+                  {survivalBudget.status === 'danger' ? '😿' : survivalBudget.status === 'warning' ? '🐱' : '😸'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center space-x-1.5 flex-wrap">
+                    <h4 className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap shrink-0">
+                      月底吃土生存試算
+                    </h4>
+                    <span
+                      className={`text-[10px] font-black px-2 py-0.5 rounded-full whitespace-nowrap shrink-0 ${
+                        survivalBudget.status === 'danger'
+                          ? 'bg-rose-500 text-white'
+                          : survivalBudget.status === 'warning'
+                          ? 'bg-amber-500 text-white'
+                          : 'bg-emerald-500 text-white'
+                      }`}
+                    >
+                      {survivalBudget.status === 'danger' ? '吃土警報' : survivalBudget.status === 'warning' ? '謹慎節約' : '安全餘裕'}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 truncate">
+                    {survivalBudget.catComment}
+                  </p>
+                </div>
+              </div>
+
+              <div className="text-right shrink-0">
+                <span className="text-[10px] font-bold text-calico-cocoa/50 dark:text-zinc-400 block whitespace-nowrap">
+                  今日安全額度
+                </span>
+                <span
+                  className={`text-xl font-black whitespace-nowrap tracking-tight ${
+                    survivalBudget.status === 'danger'
+                      ? 'text-rose-600 dark:text-rose-400'
+                      : survivalBudget.status === 'warning'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : 'text-emerald-600 dark:text-emerald-400'
+                  }`}
+                >
+                  ${survivalBudget.dailySafetyBudget}
+                  <span className="text-xs font-bold text-calico-cocoa/50 dark:text-zinc-400"> /天</span>
+                </span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px] font-medium text-calico-cocoa/70 dark:text-zinc-300">
+              <span className="whitespace-nowrap shrink-0">
+                自由支配剩餘: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100">${survivalBudget.freeBalance}</strong>
+              </span>
+              <span className="text-[10px] text-calico-cocoa/40 dark:text-zinc-400 whitespace-nowrap shrink-0">
+                (已預留固定與分期 ${survivalBudget.totalReservedFixed} · 剩 {survivalBudget.remainingDays} 天)
+              </span>
+            </div>
+          </div>
+
           {/* Action Row & Category Filters */}
           <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
             {/* Filter Segmented Control */}
@@ -1306,11 +1601,11 @@ export const AccountingView: React.FC = () => {
                     ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white border-amber-600 shadow-amber-500/20'
                     : 'bg-white dark:bg-calico-darkCard text-calico-cocoa dark:text-zinc-200 border-black/5 dark:border-white/10 hover:border-amber-400/50'
                 }`}
-                title="展開/收合分帳與借還"
+                title="展開/收合往來分帳與長期計畫"
               >
-                <Users className={`w-3.5 h-3.5 ${isSocialDebtOpen ? 'text-white' : 'text-amber-500'}`} />
-                <span>分帳借還</span>
-                {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0) && (
+                <Calculator className={`w-3.5 h-3.5 ${isSocialDebtOpen ? 'text-white' : 'text-amber-500'}`} />
+                <span>往來與計畫</span>
+                {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0 || recurringStats.activeCount > 0 || installmentStats.activeCount > 0 || (countdowns || []).length > 0) && (
                   <span
                     className={`text-[10px] px-1 py-0.2 rounded-full font-extrabold ${
                       isSocialDebtOpen
@@ -1318,7 +1613,7 @@ export const AccountingView: React.FC = () => {
                         : 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
                     }`}
                   >
-                    {debtStats.activeDebtsCount + debtStats.activeSplitsCount}
+                    {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (countdowns || []).length}
                   </span>
                 )}
                 <ChevronDown
@@ -1340,57 +1635,109 @@ export const AccountingView: React.FC = () => {
           </div>
 
           {/* ========================================================================= */}
-          {/* 🤝 Collapsible Panel: 分帳與借還 (Multi-person Bill Splitting & Debts) */}
+          {/* 🤝 Collapsible Panel: 往來與長期計畫中心 (All-in-One Drawer) */}
           {/* ========================================================================= */}
           {isSocialDebtOpen && (
             <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/5 via-orange-500/5 to-amber-500/10 dark:from-zinc-900 dark:to-calico-darkCard border border-amber-500/20 dark:border-amber-500/30 shadow-ios space-y-4 animate-fade-in">
               {/* Header with Switcher Tabs */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 dark:border-white/10 pb-3">
                 <div className="flex items-center space-x-2">
-                  <div className="p-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400">
+                  <div className="p-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
                     <Calculator className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
-                      往來分帳與借還
+                    <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                      往來與長期計畫中心
                     </h3>
-                    <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400">
-                      多人聚餐先墊錢分帳 · 借款分期與還款進度
+                    <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap">
+                      分帳借還 · 固定收支 · 分期付款 · 校園倒數
                     </p>
                   </div>
                 </div>
 
-                {/* Sub Tab Switcher */}
-                <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+                {/* Sub Tab Switcher: 5 Tabs */}
+                <div className="flex items-center p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold overflow-x-auto scrollbar-none w-full sm:w-auto">
                   <button
+                    type="button"
                     onClick={() => setSocialDebtTab('splits')}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                       socialDebtTab === 'splits'
                         ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
                         : 'text-calico-cocoa/60 dark:text-zinc-400'
                     }`}
                   >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>多人分帳</span>
+                    <span>🤝 分帳</span>
                     {debtStats.activeSplitsCount > 0 && (
                       <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
                         {debtStats.activeSplitsCount}
                       </span>
                     )}
                   </button>
+
                   <button
+                    type="button"
                     onClick={() => setSocialDebtTab('debts')}
-                    className={`flex items-center space-x-1.5 px-3 py-1.5 rounded-xl transition-all ${
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
                       socialDebtTab === 'debts'
                         ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
                         : 'text-calico-cocoa/60 dark:text-zinc-400'
                     }`}
                   >
-                    <CreditCard className="w-3.5 h-3.5" />
-                    <span>借還與分期</span>
+                    <span>💳 借還</span>
                     {debtStats.activeDebtsCount > 0 && (
                       <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
                         {debtStats.activeDebtsCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSocialDebtTab('recurring')}
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                      socialDebtTab === 'recurring'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <span>🔄 固定</span>
+                    {recurringStats.activeCount > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300">
+                        {recurringStats.activeCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSocialDebtTab('installments')}
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                      socialDebtTab === 'installments'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <span>📅 分期</span>
+                    {installmentStats.activeCount > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
+                        {installmentStats.activeCount}
+                      </span>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setSocialDebtTab('countdowns')}
+                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                      socialDebtTab === 'countdowns'
+                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    <span>⏳ 倒數</span>
+                    {(countdowns || []).length > 0 && (
+                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300">
+                        {(countdowns || []).length}
                       </span>
                     )}
                   </button>
@@ -1799,6 +2146,390 @@ export const AccountingView: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {/* TAB 3: 每月固定收支 (Recurring Items) */}
+              {socialDebtTab === 'recurring' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          每月固定支出
+                        </span>
+                        <span className="text-sm font-black text-rose-500 dark:text-rose-400 whitespace-nowrap">
+                          -${recurringStats.monthlyExpense}
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          每月固定收入
+                        </span>
+                        <span className="text-sm font-black text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                          +${recurringStats.monthlyIncome}
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRecurringToEdit(null);
+                        setIsRecurringModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>新增固定收支</span>
+                    </button>
+                  </div>
+
+                  {/* List of Recurring Items */}
+                  {(!recurringItems || recurringItems.length === 0) ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        尚未建立固定收支，點擊上方按鈕建立房租、電信或串流扣款 🏠
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {recurringItems.map((r) => {
+                        const currentMonth = new Date().toISOString().slice(0, 7);
+                        const isRecordedThisMonth = r.lastRecordedMonth === currentMonth;
+
+                        return (
+                          <div
+                            key={r.id}
+                            className={`p-3.5 rounded-2xl bg-white dark:bg-zinc-800/80 border transition-all ${
+                              !r.isActive
+                                ? 'border-black/5 dark:border-white/5 opacity-60'
+                                : 'border-black/5 dark:border-white/10 shadow-ios-sm'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                                <div
+                                  style={{
+                                    backgroundColor: `${r.colorHex || '#3B82F6'}20`,
+                                    borderColor: `${r.colorHex || '#3B82F6'}40`,
+                                  }}
+                                  className="w-10 h-10 rounded-2xl border flex items-center justify-center text-lg shrink-0 shadow-2xs"
+                                >
+                                  {r.emoji || '🏠'}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center space-x-1.5 flex-wrap">
+                                    <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                                      {r.title}
+                                    </h4>
+                                    <span className="text-[10px] bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400 px-1.5 py-0.2 rounded-md font-medium whitespace-nowrap shrink-0">
+                                      每月 {r.dayOfMonth} 日
+                                    </span>
+                                    {!r.isActive && (
+                                      <span className="text-[10px] bg-black/10 text-zinc-500 px-1.5 py-0.2 rounded-md font-bold whitespace-nowrap shrink-0">
+                                        已暫停
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 mt-0.5 truncate">
+                                    {r.categoryName} · {r.paymentMethodName || '一般扣款'}
+                                    {r.notes ? ` · ${r.notes}` : ''}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span
+                                  className={`text-base font-black whitespace-nowrap ${
+                                    r.type === 'expense'
+                                      ? 'text-calico-cocoa dark:text-zinc-100'
+                                      : 'text-emerald-600 dark:text-emerald-400'
+                                  }`}
+                                >
+                                  {r.type === 'expense' ? `-$${r.amount}` : `+$${r.amount}`}
+                                </span>
+                                <div className="flex items-center space-x-1 mt-1 justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setRecurringToEdit(r);
+                                      setIsRecurringModalOpen(true);
+                                    }}
+                                    className="p-1 text-calico-cocoa/40 hover:text-amber-500 transition-colors"
+                                    title="編輯"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteRecurringItem(r.id)}
+                                    className="p-1 text-calico-cocoa/40 hover:text-red-500 transition-colors"
+                                    title="刪除"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Record now button */}
+                            <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
+                              <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">
+                                {isRecordedThisMonth ? `✓ 本月 (${currentMonth}) 已記帳入流水帳` : `本月尚未記錄此項目`}
+                              </span>
+                              <button
+                                type="button"
+                                disabled={isRecordedThisMonth}
+                                onClick={() => recordRecurringNow(r.id)}
+                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 whitespace-nowrap shrink-0 ${
+                                  isRecordedThisMonth
+                                    ? 'bg-black/5 dark:bg-white/5 text-calico-cocoa/40 dark:text-zinc-500 cursor-not-allowed'
+                                    : 'bg-calico-orange/15 hover:bg-calico-orange text-calico-orange hover:text-white shadow-2xs active:scale-95'
+                                }`}
+                              >
+                                <RefreshCw className="w-3 h-3 shrink-0" />
+                                <span>{isRecordedThisMonth ? '本月已入帳' : '本月一鍵入帳'}</span>
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 4: 分期付款追蹤 (Installments Tracker) */}
+              {socialDebtTab === 'installments' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          分期剩餘總額
+                        </span>
+                        <span className="text-sm font-black text-indigo-600 dark:text-indigo-400 whitespace-nowrap">
+                          ${installmentStats.totalRemaining}
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          進行中分期
+                        </span>
+                        <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                          {installmentStats.activeCount} 個計畫
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInstallmentToEdit(null);
+                        setIsInstallmentModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>新增分期計畫</span>
+                    </button>
+                  </div>
+
+                  {/* List of Installments */}
+                  {(!installments || installments.length === 0) ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        目前無分期付款計畫，筆電、手機或機車分期皆可在此追蹤 💻
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {installments.map((inst) => {
+                        const isDone = inst.isCompleted || inst.paidPeriods >= inst.totalPeriods;
+                        const progressPercent = Math.min(100, Math.round((inst.paidPeriods / inst.totalPeriods) * 100));
+                        const remainingAmount = Math.max(0, (inst.totalPeriods - inst.paidPeriods) * inst.periodAmount);
+
+                        return (
+                          <div
+                            key={inst.id}
+                            className={`p-3.5 rounded-2xl bg-white dark:bg-zinc-800/80 border transition-all ${
+                              isDone
+                                ? 'border-black/5 dark:border-white/5 opacity-60'
+                                : 'border-indigo-500/20 dark:border-indigo-500/30 shadow-ios-sm'
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                                <div
+                                  style={{
+                                    backgroundColor: `${inst.colorHex || '#6366F1'}20`,
+                                    borderColor: `${inst.colorHex || '#6366F1'}40`,
+                                  }}
+                                  className="w-10 h-10 rounded-2xl border flex items-center justify-center text-lg shrink-0 shadow-2xs"
+                                >
+                                  {inst.emoji || '💻'}
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center space-x-1.5 flex-wrap">
+                                    <h4 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+                                      {inst.title}
+                                    </h4>
+                                    <span
+                                      className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold whitespace-nowrap shrink-0 ${
+                                        isDone
+                                          ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
+                                          : 'bg-indigo-500/15 text-indigo-700 dark:text-indigo-300'
+                                      }`}
+                                    >
+                                      {isDone ? '✓ 已全數結清' : `進行中 ${inst.paidPeriods}/${inst.totalPeriods} 期`}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-calico-cocoa/50 dark:text-zinc-400 mt-0.5 truncate">
+                                    每月 {inst.billingDay} 日扣款 · 每期 ${inst.periodAmount} · {inst.paymentMethodName || '信用卡'}
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span className="text-base font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                                  ${inst.totalAmount}
+                                </span>
+                                <div className="flex items-center space-x-1 mt-1 justify-end">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setInstallmentToEdit(inst);
+                                      setIsInstallmentModalOpen(true);
+                                    }}
+                                    className="p-1 text-calico-cocoa/40 hover:text-indigo-500 transition-colors"
+                                    title="編輯"
+                                  >
+                                    <Edit2 className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteInstallment(inst.id)}
+                                    className="p-1 text-calico-cocoa/40 hover:text-red-500 transition-colors"
+                                    title="刪除"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Progress bar */}
+                            <div className="mt-2.5">
+                              <div className="flex items-center justify-between text-[11px] font-bold mb-1">
+                                <span className="text-calico-cocoa/60 dark:text-zinc-400">
+                                  已繳 {inst.paidPeriods} 期 / 剩 {Math.max(0, inst.totalPeriods - inst.paidPeriods)} 期 (剩餘 ${remainingAmount})
+                                </span>
+                                <span className="font-extrabold text-indigo-600 dark:text-indigo-400">
+                                  {progressPercent}%
+                                </span>
+                              </div>
+                              <div className="w-full h-2 rounded-full bg-black/5 dark:bg-white/10 overflow-hidden">
+                                <div
+                                  style={{ width: `${progressPercent}%` }}
+                                  className={`h-full rounded-full transition-all duration-500 ${
+                                    isDone ? 'bg-emerald-500' : 'bg-indigo-600'
+                                  }`}
+                                />
+                              </div>
+                            </div>
+
+                            {/* Pay this period button */}
+                            {!isDone && (
+                              <div className="mt-2.5 pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between">
+                                <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">
+                                  扣繳後將自動建立一筆 ${inst.periodAmount} 支出流水帳
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => payInstallmentPeriod(inst.id)}
+                                  className="px-3 py-1 rounded-xl text-xs font-bold bg-indigo-500/15 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white shadow-2xs active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                                >
+                                  <DollarSign className="w-3 h-3 shrink-0" />
+                                  <span>扣繳第 {inst.paidPeriods + 1} 期 (${inst.periodAmount})</span>
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* TAB 5: 校園倒數日 (Countdowns Tracker) */}
+              {socialDebtTab === 'countdowns' && (
+                <div className="space-y-3">
+                  {/* Summary & Create button */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
+                    <div className="flex items-center space-x-3 text-xs">
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          倒數目標事件
+                        </span>
+                        <span className="text-sm font-black text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                          {(countdowns || []).length} 個倒數
+                        </span>
+                      </div>
+                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
+                      <div>
+                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
+                          首頁置頂釘選
+                        </span>
+                        <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                          {pinnedCountdowns.length} 個常駐
+                        </span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCountdownToEdit(null);
+                        setIsCountdownModalOpen(true);
+                      }}
+                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>新增倒數日</span>
+                    </button>
+                  </div>
+
+                  {/* List of Countdowns */}
+                  {(!countdowns || countdowns.length === 0) ? (
+                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
+                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
+                        尚無倒數日，點擊上方按鈕記錄期末考、畢業典禮或重要日子 🎓
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {countdowns.map((cd) => (
+                        <CountdownCard
+                          key={cd.id}
+                          item={cd}
+                          onEdit={(item) => {
+                            setCountdownToEdit(item);
+                            setIsCountdownModalOpen(true);
+                          }}
+                          onDelete={(id) => deleteCountdown(id)}
+                          onTogglePin={(id) => togglePinCountdown(id)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -1954,61 +2685,113 @@ export const AccountingView: React.FC = () => {
                 </button>
               </div>
 
+              {/* 📅 Friend Period Switcher (日 / 週 / 月) */}
+              <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 text-xs font-bold">
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setFriendPeriodMode('daily')}
+                    className={`py-1.5 px-2 rounded-xl transition-all text-center whitespace-nowrap shrink-0 ${
+                      friendPeriodMode === 'daily'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    📅 日檢視
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFriendPeriodMode('weekly')}
+                    className={`py-1.5 px-2 rounded-xl transition-all text-center whitespace-nowrap shrink-0 ${
+                      friendPeriodMode === 'weekly'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    🗓️ 週檢視
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFriendPeriodMode('monthly')}
+                    className={`py-1.5 px-2 rounded-xl transition-all text-center whitespace-nowrap shrink-0 ${
+                      friendPeriodMode === 'monthly'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                    }`}
+                  >
+                    📊 月檢視
+                  </button>
+                </div>
+              </div>
+
               {/* 📅 Friend Date Navigation Toolbar */}
               <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios-sm flex items-center justify-between">
                 <button
-                  onClick={handleFriendPrevDay}
-                  className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors"
-                  title="前一天"
+                  type="button"
+                  onClick={handleFriendPrev}
+                  className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors shrink-0"
+                  title="前一個週期"
                 >
                   <ChevronLeft className="w-4 h-4" />
                 </button>
 
-                <div className="flex items-center space-x-2">
-                  <CalendarDays className="w-4 h-4 text-calico-orange" />
-                  <input
-                    type="date"
-                    value={friendSelectedDate}
-                    onChange={(e) => e.target.value && setFriendSelectedDate(e.target.value)}
-                    className="bg-transparent text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none cursor-pointer"
-                  />
-                  {friendSelectedDate === new Date().toISOString().slice(0, 10) && (
-                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-calico-orange/15 text-calico-orange font-black">
-                      今日
+                <div className="flex items-center space-x-2 shrink-0">
+                  <CalendarDays className="w-4 h-4 text-calico-orange shrink-0" />
+                  {friendPeriodMode === 'daily' ? (
+                    <input
+                      type="date"
+                      value={friendSelectedDate}
+                      onChange={(e) => e.target.value && setFriendSelectedDate(e.target.value)}
+                      className="bg-transparent text-xs font-black text-calico-cocoa dark:text-zinc-100 outline-none cursor-pointer"
+                    />
+                  ) : friendPeriodMode === 'weekly' ? (
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                      {friendWeekRange.startStr.slice(5)} ~ {friendWeekRange.endStr.slice(5)}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                      {friendSelectedDate.slice(0, 4)} 年 {parseInt(friendSelectedDate.slice(5, 7), 10)} 月
+                    </span>
+                  )}
+                  {isCurrentFriendPeriod && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-calico-orange/15 text-calico-orange font-black whitespace-nowrap shrink-0">
+                      當期
                     </span>
                   )}
                 </div>
 
-                <div className="flex items-center space-x-1">
-                  {friendSelectedDate !== new Date().toISOString().slice(0, 10) && (
+                <div className="flex items-center space-x-1 shrink-0">
+                  {!isCurrentFriendPeriod && (
                     <button
+                      type="button"
                       onClick={handleFriendToday}
-                      className="px-2 py-1 rounded-xl text-[10px] font-bold bg-calico-orange/15 text-calico-orange hover:bg-calico-orange hover:text-white transition-all"
+                      className="px-2 py-1 rounded-xl text-[10px] font-bold bg-calico-orange/15 text-calico-orange hover:bg-calico-orange hover:text-white transition-all whitespace-nowrap shrink-0"
                     >
-                      回到今日
+                      回到當期
                     </button>
                   )}
                   <button
-                    onClick={handleFriendNextDay}
-                    className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors"
-                    title="後一天"
+                    type="button"
+                    onClick={handleFriendNext}
+                    className="p-1.5 rounded-xl hover:bg-black/5 dark:hover:bg-white/10 text-calico-cocoa dark:text-zinc-300 transition-colors shrink-0"
+                    title="後一個週期"
                   >
                     <ChevronRight className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              {/* Friend Summary KPI Cards (聚焦「當日消費」) */}
+              {/* Friend Summary KPI Cards (聚焦「當期消費」) */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios">
                   <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block mb-1">
-                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的當日消費
+                    {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的{friendPeriodLabel}消費
                   </span>
                   <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
-                    ${friendStats.todayExpense}
+                    ${friendStats.periodExpense}
                   </p>
                   <div className="flex items-center justify-between text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
-                    <span>共 {friendStats.todayTxCount} 筆當日消費</span>
+                    <span>共 {friendStats.periodTxCount} 筆{friendPeriodLabel}消費</span>
                     <span>(歷史累計 ${friendStats.totalExpense})</span>
                   </div>
                 </div>
@@ -2019,11 +2802,11 @@ export const AccountingView: React.FC = () => {
                   </span>
                   <div className="flex items-baseline space-x-1.5">
                     <span className="text-2xl font-black text-calico-cocoa dark:text-zinc-100">
-                      {friendStats.todayAvgRating ? `★ ${friendStats.todayAvgRating}` : (friendStats.avgRating ? `★ ${friendStats.avgRating}` : '尚無評分')}
+                      {friendStats.periodAvgRating ? `★ ${friendStats.periodAvgRating}` : (friendStats.avgRating ? `★ ${friendStats.avgRating}` : '尚無評分')}
                     </span>
                   </div>
                   <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-semibold mt-1">
-                    今日評分 {friendStats.todayRatedCount} 筆 · 歷史累計 {friendStats.ratedCount} 筆
+                    {friendPeriodLabel}評分 {friendStats.periodRatedCount} 筆 · 歷史累計 {friendStats.ratedCount} 筆
                   </p>
                 </div>
               </div>
@@ -2040,16 +2823,16 @@ export const AccountingView: React.FC = () => {
                     </h4>
                   </div>
                   <span className="text-xs font-bold text-calico-cocoa/40 dark:text-zinc-400">
-                    {friendStats.todayCategories.length > 0
-                      ? `當日 ${friendStats.todayCategories.length} 個類別`
-                      : `歷史 ${friendStats.categories.length} 個類別`}
+                    {friendStats.periodCategories.length > 0
+                      ? `${friendPeriodLabel} ${friendStats.periodCategories.length} 個類別`
+                      : '尚無支出'}
                   </span>
                 </div>
 
                 <CategoryPieChart
-                  categories={friendStats.todayCategories.length > 0 ? friendStats.todayCategories : friendStats.categories}
-                  totalExpense={friendStats.todayCategories.length > 0 ? friendStats.todayExpense : friendStats.totalExpense}
-                  emptyText={friendStats.todayCategories.length > 0 ? '當日尚無支出記錄' : '好友目前尚無支出記錄'}
+                  categories={friendStats.periodCategories}
+                  totalExpense={friendStats.periodExpense}
+                  emptyText={`${friendPeriodLabel}尚無支出記錄`}
                 />
               </div>
 
@@ -2060,21 +2843,23 @@ export const AccountingView: React.FC = () => {
                     {currentFriend?.nickname || currentFriend?.ownerName || '好友'} 的收支明細與評分
                   </h4>
                   
-                  {/* View Mode Toggle: Daily vs All */}
+                  {/* View Mode Toggle: Period vs All */}
                   <div className="flex items-center p-0.5 rounded-xl bg-black/5 dark:bg-white/10 text-[11px] font-bold">
                     <button
+                      type="button"
                       onClick={() => setFriendViewListMode('daily')}
-                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                      className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
                         friendViewListMode === 'daily'
                           ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                           : 'text-calico-cocoa/60 dark:text-zinc-400'
                       }`}
                     >
-                      當日明細 ({friendStats.todayTxCount})
+                      {friendPeriodLabel}明細 ({friendStats.periodTxCount})
                     </button>
                     <button
+                      type="button"
                       onClick={() => setFriendViewListMode('all')}
-                      className={`px-2.5 py-1 rounded-lg transition-all ${
+                      className={`px-2.5 py-1 rounded-lg transition-all whitespace-nowrap shrink-0 ${
                         friendViewListMode === 'all'
                           ? 'bg-white dark:bg-zinc-800 text-calico-orange shadow-ios-sm'
                           : 'text-calico-cocoa/60 dark:text-zinc-400'
@@ -2085,8 +2870,8 @@ export const AccountingView: React.FC = () => {
                   </div>
                 </div>
 
-                {(friendViewListMode === 'daily' ? friendStats.todayTransactions : friendTransactions).length > 0 ? (
-                  (friendViewListMode === 'daily' ? friendStats.todayTransactions : friendTransactions).map((tx) => (
+                {(friendViewListMode === 'daily' ? friendStats.periodTransactions : friendTransactions).length > 0 ? (
+                  (friendViewListMode === 'daily' ? friendStats.periodTransactions : friendTransactions).map((tx) => (
                     <div
                       key={tx.id}
                       className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios flex flex-col space-y-2.5 transition-all"
@@ -2254,6 +3039,36 @@ export const AccountingView: React.FC = () => {
           setRepayDebtTarget(null);
         }}
         debt={repayDebtTarget}
+      />
+
+      {/* 🔄 Recurring Item Modal */}
+      <RecurringModal
+        isOpen={isRecurringModalOpen}
+        onClose={() => {
+          setIsRecurringModalOpen(false);
+          setRecurringToEdit(null);
+        }}
+        recurringToEdit={recurringToEdit}
+      />
+
+      {/* 💳 Installment Modal */}
+      <InstallmentModal
+        isOpen={isInstallmentModalOpen}
+        onClose={() => {
+          setIsInstallmentModalOpen(false);
+          setInstallmentToEdit(null);
+        }}
+        installmentToEdit={installmentToEdit}
+      />
+
+      {/* ⏳ Countdown Modal */}
+      <CountdownModal
+        isOpen={isCountdownModalOpen}
+        onClose={() => {
+          setIsCountdownModalOpen(false);
+          setCountdownToEdit(null);
+        }}
+        countdownToEdit={countdownToEdit}
       />
     </div>
   );

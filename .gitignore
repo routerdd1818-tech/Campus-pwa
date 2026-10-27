@@ -18,4 +18,5 @@ pwa/dist/
 .DS_Store
 .Rhistory
 *.zip
+!campus-pwa.zip
 

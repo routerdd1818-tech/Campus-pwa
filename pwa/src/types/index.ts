@@ -105,6 +105,23 @@ export interface DebtRecord {
   createdAt?: string;
 }
 
+export interface RecurringItem {
+  id: string;
+  userId?: string;
+  title: string;
+  amount: number;
+  type: 'expense' | 'income';
+  dayOfMonth: number;            // 扣款日 1-31
+  categoryName: string;
+  emoji: string;                 // 自訂 Emoji (例: 🏠, 🍿, 📱)
+  colorHex: string;              // 主題色票
+  paymentMethodName: string;
+  isActive: boolean;
+  autoRecord: boolean;
+  lastRecordedMonth?: string;    // YYYY-MM
+  notes?: string;
+}
+
 export interface Installment {
   id: string;
   userId?: string;
@@ -116,9 +133,25 @@ export interface Installment {
   startDate: string;
   billingDay: number;
   paymentMethodName: string;
+  emoji?: string;                 // 自訂 Emoji (例: 💻, 🛵, 📱)
+  colorHex?: string;
   notes?: string;
   isCompleted: boolean;
 }
+
+export interface CountdownItem {
+  id: string;
+  userId?: string;
+  title: string;
+  targetDate: string;            // YYYY-MM-DD
+  emoji: string;                 // 自訂 Emoji (例: 🎓, 🎂, ✈️, 💳)
+  category: 'exam' | 'finance' | 'life' | 'anniversary' | 'other';
+  colorHex: string;
+  isPinned: boolean;             // 置頂釘選
+  notes?: string;
+}
+
+export type FriendPeriodMode = 'daily' | 'weekly' | 'monthly';
 
 export interface SplitPayer {
   name: string; // 代墊/付款者名稱 (如：我、小明)
