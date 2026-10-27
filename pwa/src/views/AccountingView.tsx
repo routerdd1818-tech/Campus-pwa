@@ -6,7 +6,6 @@ import {
   SplitBill,
   RecurringItem,
   Installment,
-  CountdownItem,
   SavingsJar,
   FriendPeriodMode,
 } from '../types';
@@ -15,8 +14,6 @@ import { PeerRatingModal } from '../components/PeerRatingModal';
 import { DebtModal } from '../components/DebtModal';
 import { RepayDebtModal } from '../components/RepayDebtModal';
 import { SplitBillModal } from '../components/SplitBillModal';
-import { CountdownModal } from '../components/CountdownModal';
-import { CountdownCard } from '../components/CountdownCard';
 import { RecurringModal } from '../components/RecurringModal';
 import { InstallmentModal } from '../components/InstallmentModal';
 import { SavingsJarModal } from '../components/SavingsJarModal';
@@ -42,12 +39,9 @@ import {
   Clock,
   ArrowRight,
   DollarSign,
-  Calculator,
   Receipt,
   Edit2,
   CalendarDays,
-  Pin,
-  Hourglass,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -274,11 +268,6 @@ export const AccountingView: React.FC = () => {
     updateInstallment,
     deleteInstallment,
     payInstallmentPeriod,
-    countdowns,
-    addCountdown,
-    updateCountdown,
-    deleteCountdown,
-    togglePinCountdown,
     savingsJars,
     addSavingsJar,
     updateSavingsJar,
@@ -293,8 +282,8 @@ export const AccountingView: React.FC = () => {
   const [ratingModalTx, setRatingModalTx] = useState<Transaction | null>(null);
   const [isRatingModalOpen, setIsRatingModalOpen] = useState<boolean>(false);
 
-  // 🤝 往來與長期計畫 (多人分帳 · 借還 · 固定收支 · 分期 · 倒數日 · 夢想存錢筒)
-  type DrawerTab = 'splits' | 'debts' | 'recurring' | 'installments' | 'countdowns' | 'savings';
+  // 🤝 往來與長期計畫 (多人分帳 · 借還 · 固定收支 · 分期 · 夢想存錢筒)
+  type DrawerTab = 'splits' | 'debts' | 'recurring' | 'installments' | 'savings';
   const [isSocialDebtOpen, setIsSocialDebtOpen] = useState(false);
   const [socialDebtTab, setSocialDebtTab] = useState<DrawerTab>('splits');
   const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
@@ -305,13 +294,11 @@ export const AccountingView: React.FC = () => {
   const [isRepayModalOpen, setIsRepayModalOpen] = useState(false);
   const [expandedDebtHistoryId, setExpandedDebtHistoryId] = useState<string | null>(null);
 
-  // 🔄 固定收支 · 💳 分期付款 · ⏳ 倒數日 · 🏺 夢想存錢筒 Modals
+  // 🔄 固定收支 · 💳 分期付款 · 🏺 夢想存錢筒 Modals
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
   const [recurringToEdit, setRecurringToEdit] = useState<RecurringItem | null>(null);
   const [isInstallmentModalOpen, setIsInstallmentModalOpen] = useState(false);
   const [installmentToEdit, setInstallmentToEdit] = useState<Installment | null>(null);
-  const [isCountdownModalOpen, setIsCountdownModalOpen] = useState(false);
-  const [countdownToEdit, setCountdownToEdit] = useState<CountdownItem | null>(null);
   const [isSavingsModalOpen, setIsSavingsModalOpen] = useState(false);
   const [savingsToEdit, setSavingsToEdit] = useState<SavingsJar | null>(null);
   const [customDepositJarId, setCustomDepositJarId] = useState<string | null>(null);
@@ -453,11 +440,6 @@ export const AccountingView: React.FC = () => {
       totalMonthlyPayment,
     };
   }, [installments]);
-
-  // ⏳ 倒數日置頂項目
-  const pinnedCountdowns = useMemo(() => {
-    return (countdowns || []).filter((c) => c.isPinned);
-  }, [countdowns]);
 
   // 🐾 月底吃土生存試算 (Daily Survival Budget)
   const survivalBudget = useMemo(() => {
@@ -971,30 +953,6 @@ export const AccountingView: React.FC = () => {
 
       {ledgerScope === 'mine' && (
         <>
-          {/* 📌 Pinned Countdowns Ribbon */}
-          {pinnedCountdowns.length > 0 && (
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
-              <div className="text-[10px] font-black text-amber-700 dark:text-amber-300 bg-amber-500/15 px-2.5 py-1 rounded-xl whitespace-nowrap shrink-0 flex items-center space-x-1">
-                <Pin className="w-3 h-3" />
-                <span>重要倒數</span>
-              </div>
-              {pinnedCountdowns.map((cd) => (
-                <div
-                  key={cd.id}
-                  onClick={() => {
-                    setViewMode('ledger');
-                    setIsSocialDebtOpen(true);
-                    setSocialDebtTab('countdowns');
-                  }}
-                  className="cursor-pointer active:scale-95 transition-transform shrink-0"
-                  title="點擊前往倒數日管理"
-                >
-                  <CountdownCard item={cd} compact />
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* Top View Mode 3-Segment Switcher */}
       <div className="p-1 rounded-2xl bg-black/5 dark:bg-white/10 flex items-center gap-1 text-xs font-bold shadow-2xs">
         <button
@@ -1311,15 +1269,12 @@ export const AccountingView: React.FC = () => {
                 setIsSocialDebtOpen(true);
               }}
               className="p-4 rounded-3xl bg-gradient-to-br from-amber-50 to-orange-50/50 dark:from-zinc-900 dark:to-zinc-800 border border-amber-200/50 dark:border-zinc-700/40 shadow-ios cursor-pointer hover:border-amber-400 transition-all group"
-              title="點擊展開往來分帳、借還、固定收支、分期與倒數日"
+              title="點擊展開往來分帳、借還、固定收支、分期與存錢計畫"
             >
               <div className="flex items-center justify-between text-amber-700 dark:text-amber-400 text-xs font-bold mb-1">
-                <div className="flex items-center space-x-1.5">
-                  <Calculator className="w-4 h-4" />
-                  <span>往來與計畫</span>
-                </div>
-                <span className="text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-extrabold group-hover:scale-105 transition-transform">
-                  {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (countdowns || []).length} 筆 ➔
+                <span className="font-extrabold tracking-tight">往來與計畫</span>
+                <span className="text-[10px] bg-amber-500/15 text-amber-800 dark:text-amber-300 px-2 py-0.5 rounded-full font-extrabold group-hover:scale-105 transition-transform whitespace-nowrap">
+                  {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (savingsJars || []).length} 筆 ➔
                 </span>
               </div>
               <p className="text-2xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
@@ -1329,12 +1284,12 @@ export const AccountingView: React.FC = () => {
                 {debtStats.totalTheyOwe > 0 && debtStats.totalIOwe > 0
                   ? `待收 $${debtStats.totalTheyOwe} · 待還 $${debtStats.totalIOwe}`
                   : installmentStats.activeCount > 0
-                  ? `分期剩餘 $${installmentStats.totalRemaining} · 倒數 ${(countdowns || []).length} 個`
+                  ? `分期剩餘 $${installmentStats.totalRemaining} · 存錢 ${(savingsJars || []).length} 個`
                   : debtStats.totalIOwe > 0
                   ? '包含借款與待償項目'
                   : debtStats.totalTheyOwe > 0
                   ? '包含代墊與借出款項'
-                  : '分帳借還 · 固定收支 · 倒數日'}
+                  : '多人分帳 · 借還 · 固定 · 分期'}
               </p>
             </div>
           </div>
@@ -1617,17 +1572,16 @@ export const AccountingView: React.FC = () => {
                 }`}
                 title="展開/收合往來分帳與長期計畫"
               >
-                <Calculator className={`w-3.5 h-3.5 ${isSocialDebtOpen ? 'text-white' : 'text-amber-500'}`} />
                 <span>往來與計畫</span>
-                {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0 || recurringStats.activeCount > 0 || installmentStats.activeCount > 0 || (countdowns || []).length > 0) && (
+                {(debtStats.activeDebtsCount > 0 || debtStats.activeSplitsCount > 0 || recurringStats.activeCount > 0 || installmentStats.activeCount > 0 || (savingsJars || []).length > 0) && (
                   <span
-                    className={`text-[10px] px-1 py-0.2 rounded-full font-extrabold ${
+                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-extrabold ${
                       isSocialDebtOpen
                         ? 'bg-white/25 text-white'
                         : 'bg-amber-100 dark:bg-amber-900/50 text-amber-800 dark:text-amber-200'
                     }`}
                   >
-                    {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (countdowns || []).length}
+                    {debtStats.activeDebtsCount + debtStats.activeSplitsCount + recurringStats.activeCount + installmentStats.activeCount + (savingsJars || []).length}
                   </span>
                 )}
                 <ChevronDown
@@ -1655,18 +1609,13 @@ export const AccountingView: React.FC = () => {
             <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-br from-amber-500/5 via-orange-500/5 to-amber-500/10 dark:from-zinc-900 dark:to-calico-darkCard border border-amber-500/20 dark:border-amber-500/30 shadow-ios space-y-4 animate-fade-in">
               {/* Header with Switcher Tabs */}
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-black/5 dark:border-white/10 pb-3">
-                <div className="flex items-center space-x-2">
-                  <div className="p-1.5 rounded-xl bg-amber-500/15 text-amber-600 dark:text-amber-400 shrink-0">
-                    <Calculator className="w-4 h-4" />
-                  </div>
-                  <div>
-                    <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
-                      往來與長期計畫中心
-                    </h3>
-                    <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap">
-                      分帳借還 · 固定收支 · 分期付款 · 校園倒數
-                    </p>
-                  </div>
+                <div>
+                  <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                    往來與長期計畫
+                  </h3>
+                  <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 whitespace-nowrap">
+                    多人分帳 · 往來借還 · 每月固定 · 分期付款 · 夢想存錢
+                  </p>
                 </div>
 
                 {/* Sub Tab Switcher: 5 Tabs */}
@@ -1674,15 +1623,15 @@ export const AccountingView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSocialDebtTab('splits')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1.5 ${
                       socialDebtTab === 'splits'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-100 shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
                     }`}
                   >
-                    <span>🤝 分帳</span>
+                    <span>多人分帳</span>
                     {debtStats.activeSplitsCount > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold">
                         {debtStats.activeSplitsCount}
                       </span>
                     )}
@@ -1691,15 +1640,15 @@ export const AccountingView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSocialDebtTab('debts')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1.5 ${
                       socialDebtTab === 'debts'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-100 shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
                     }`}
                   >
-                    <span>💳 借還</span>
+                    <span>往來借還</span>
                     {debtStats.activeDebtsCount > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold">
                         {debtStats.activeDebtsCount}
                       </span>
                     )}
@@ -1708,15 +1657,15 @@ export const AccountingView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSocialDebtTab('recurring')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1.5 ${
                       socialDebtTab === 'recurring'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-100 shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
                     }`}
                   >
-                    <span>🔄 固定</span>
+                    <span>每月固定</span>
                     {recurringStats.activeCount > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-700 dark:text-blue-300 font-extrabold">
                         {recurringStats.activeCount}
                       </span>
                     )}
@@ -1725,15 +1674,15 @@ export const AccountingView: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => setSocialDebtTab('installments')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1.5 ${
                       socialDebtTab === 'installments'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-100 shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
                     }`}
                   >
-                    <span>📅 分期</span>
+                    <span>分期付款</span>
                     {installmentStats.activeCount > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-extrabold">
                         {installmentStats.activeCount}
                       </span>
                     )}
@@ -1741,33 +1690,16 @@ export const AccountingView: React.FC = () => {
 
                   <button
                     type="button"
-                    onClick={() => setSocialDebtTab('countdowns')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
-                      socialDebtTab === 'countdowns'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
-                    }`}
-                  >
-                    <span>⏳ 倒數</span>
-                    {(countdowns || []).length > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-rose-500/20 text-rose-700 dark:text-rose-300">
-                        {(countdowns || []).length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
                     onClick={() => setSocialDebtTab('savings')}
-                    className={`flex items-center space-x-1 px-2.5 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 ${
+                    className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap shrink-0 flex items-center space-x-1.5 ${
                       socialDebtTab === 'savings'
-                        ? 'bg-white dark:bg-zinc-800 text-amber-600 dark:text-amber-400 shadow-ios-sm'
-                        : 'text-calico-cocoa/60 dark:text-zinc-400'
+                        ? 'bg-white dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-100 shadow-ios-sm font-black'
+                        : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
                     }`}
                   >
-                    <span>🏺 存錢</span>
+                    <span>夢想存錢</span>
                     {(savingsJars || []).length > 0 && (
-                      <span className="text-[10px] px-1 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300">
+                      <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-purple-500/20 text-purple-700 dark:text-purple-300 font-extrabold">
                         {(savingsJars || []).length}
                       </span>
                     )}
@@ -1805,10 +1737,10 @@ export const AccountingView: React.FC = () => {
                         setSplitToEdit(null);
                         setIsSplitModalOpen(true);
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>發起多人分帳</span>
+                      <span>發起分帳</span>
                     </button>
                   </div>
 
@@ -1875,7 +1807,7 @@ export const AccountingView: React.FC = () => {
                             <div className="mt-2 text-xs text-calico-cocoa/70 dark:text-zinc-300 space-y-1 bg-black/2 dark:bg-white/5 p-2.5 rounded-xl">
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="text-calico-cocoa/50 dark:text-zinc-400 font-bold">
-                                  💳 先墊錢：
+                                  先墊款：
                                 </span>
                                 <span className="font-semibold text-calico-cocoa dark:text-zinc-200">
                                   {(sb.payers || []).map((p) => `${p.name} $${p.paidAmount}`).join('、') || '無'}
@@ -1883,7 +1815,7 @@ export const AccountingView: React.FC = () => {
                               </div>
                               <div className="flex items-center justify-between text-[11px]">
                                 <span className="text-calico-cocoa/50 dark:text-zinc-400 font-bold">
-                                  👥 分攤人：
+                                  分攤人：
                                 </span>
                                 <span className="font-semibold text-calico-cocoa dark:text-zinc-200">
                                   {(sb.participants || []).map((p) => `${p.name} ($${p.owedAmount})`).join('、') || '無'}
@@ -1972,10 +1904,10 @@ export const AccountingView: React.FC = () => {
                         setDebtToEdit(null);
                         setIsDebtModalOpen(true);
                       }}
-                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                      className="px-3.5 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5" />
-                      <span>新增借還/分期</span>
+                      <span>新增借還</span>
                     </button>
                   </div>
 
@@ -2106,7 +2038,7 @@ export const AccountingView: React.FC = () => {
                                 onClick={() => setExpandedDebtHistoryId(isExpanded ? null : d.id)}
                                 className="text-[11px] font-bold text-calico-cocoa/60 dark:text-zinc-400 hover:text-amber-500 flex items-center space-x-1"
                               >
-                                <span>📜 還款紀錄 ({d.repayments?.length || 0})</span>
+                                <span>還款明細 ({d.repayments?.length || 0})</span>
                                 <ChevronDown
                                   className={`w-3 h-3 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
                                 />
@@ -2118,10 +2050,9 @@ export const AccountingView: React.FC = () => {
                                     setRepayDebtTarget(d);
                                     setIsRepayModalOpen(true);
                                   }}
-                                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1"
+                                  className="px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all whitespace-nowrap shrink-0"
                                 >
-                                  <DollarSign className="w-3.5 h-3.5" />
-                                  <span>記一次還款</span>
+                                  記還款
                                 </button>
                               )}
                             </div>
@@ -2314,13 +2245,12 @@ export const AccountingView: React.FC = () => {
                                 type="button"
                                 disabled={isRecordedThisMonth}
                                 onClick={() => recordRecurringNow(r.id)}
-                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all flex items-center space-x-1 whitespace-nowrap shrink-0 ${
+                                className={`px-3 py-1 rounded-xl text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                                   isRecordedThisMonth
                                     ? 'bg-black/5 dark:bg-white/5 text-calico-cocoa/40 dark:text-zinc-500 cursor-not-allowed'
                                     : 'bg-calico-orange/15 hover:bg-calico-orange text-calico-orange hover:text-white shadow-2xs active:scale-95'
                                 }`}
                               >
-                                <RefreshCw className="w-3 h-3 shrink-0" />
                                 <span>{isRecordedThisMonth ? '本月已入帳' : '本月一鍵入帳'}</span>
                               </button>
                             </div>
@@ -2483,10 +2413,9 @@ export const AccountingView: React.FC = () => {
                                 <button
                                   type="button"
                                   onClick={() => payInstallmentPeriod(inst.id)}
-                                  className="px-3 py-1 rounded-xl text-xs font-bold bg-indigo-500/15 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white shadow-2xs active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                                  className="px-3 py-1 rounded-xl text-xs font-bold bg-indigo-500/15 hover:bg-indigo-600 text-indigo-700 dark:text-indigo-300 hover:text-white shadow-2xs active:scale-95 transition-all whitespace-nowrap shrink-0"
                                 >
-                                  <DollarSign className="w-3 h-3 shrink-0" />
-                                  <span>扣繳第 {inst.paidPeriods + 1} 期 (${inst.periodAmount})</span>
+                                  扣繳第 {inst.paidPeriods + 1} 期 (${inst.periodAmount})
                                 </button>
                               </div>
                             )}
@@ -2498,71 +2427,7 @@ export const AccountingView: React.FC = () => {
                 </div>
               )}
 
-              {/* TAB 5: 校園倒數日 (Countdowns Tracker) */}
-              {socialDebtTab === 'countdowns' && (
-                <div className="space-y-3">
-                  {/* Summary & Create button */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-2xl bg-white/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5">
-                    <div className="flex items-center space-x-3 text-xs">
-                      <div>
-                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
-                          倒數目標事件
-                        </span>
-                        <span className="text-sm font-black text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                          {(countdowns || []).length} 個倒數
-                        </span>
-                      </div>
-                      <div className="w-px h-6 bg-black/10 dark:bg-white/10" />
-                      <div>
-                        <span className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 block font-bold whitespace-nowrap">
-                          首頁置頂釘選
-                        </span>
-                        <span className="text-sm font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
-                          {pinnedCountdowns.length} 個常駐
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCountdownToEdit(null);
-                        setIsCountdownModalOpen(true);
-                      }}
-                      className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-bold text-xs shadow-ios-sm active:scale-95 transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      <span>新增倒數日</span>
-                    </button>
-                  </div>
-
-                  {/* List of Countdowns */}
-                  {(!countdowns || countdowns.length === 0) ? (
-                    <div className="p-6 text-center rounded-2xl bg-white/40 dark:bg-zinc-800/20 border border-dashed border-black/10 dark:border-white/10">
-                      <p className="text-xs font-bold text-calico-cocoa/60 dark:text-zinc-400">
-                        尚無倒數日，點擊上方按鈕記錄期末考、畢業典禮或重要日子 🎓
-                      </p>
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {countdowns.map((cd) => (
-                        <CountdownCard
-                          key={cd.id}
-                          item={cd}
-                          onEdit={(item) => {
-                            setCountdownToEdit(item);
-                            setIsCountdownModalOpen(true);
-                          }}
-                          onDelete={(id) => deleteCountdown(id)}
-                          onTogglePin={(id) => togglePinCountdown(id)}
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* TAB 6: 夢想存錢筒／願望清單 (Savings Jar) */}
+              {/* TAB 5: 夢想存錢筒／願望清單 (Savings Jar) */}
               {socialDebtTab === 'savings' && (
                 <div className="space-y-3">
                   {/* Summary & Create button */}
@@ -3338,16 +3203,6 @@ export const AccountingView: React.FC = () => {
           setInstallmentToEdit(null);
         }}
         installmentToEdit={installmentToEdit}
-      />
-
-      {/* ⏳ Countdown Modal */}
-      <CountdownModal
-        isOpen={isCountdownModalOpen}
-        onClose={() => {
-          setIsCountdownModalOpen(false);
-          setCountdownToEdit(null);
-        }}
-        countdownToEdit={countdownToEdit}
       />
 
       {/* 🏺 Savings Jar Modal */}

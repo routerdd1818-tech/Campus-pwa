@@ -15,7 +15,7 @@ const CATEGORY_NAMES: Record<CountdownItem['category'], string> = {
   finance: '繳費財務',
   life: '校園生活',
   anniversary: '紀念日',
-  other: '其他倒數',
+  other: '其他事件',
 };
 
 export const CountdownCard: React.FC<CountdownCardProps> = ({
@@ -25,20 +25,47 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({
   onTogglePin,
   compact = false,
 }) => {
+  const isCountUp = item.mode === 'countup';
   const today = new Date(new Date().toISOString().slice(0, 10));
   const target = new Date(item.targetDate);
-  const diffTime = target.getTime() - today.getTime();
-  const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
-  const isDDay = diffDays === 0;
-  const isPast = diffDays < 0;
+  let badgeText = '';
+  let subText = '';
+  let badgeStyle = '';
 
-  // Compact Pill Display (for pinned items in dashboard ribbon)
+  if (isCountUp) {
+    // 📈 持續幾日 (Count-up / 紀念日 / 習慣養成)
+    const diffTime = today.getTime() - target.getTime();
+    const passedDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    const dayNumber = Math.max(1, passedDays + 1); // 當日起算為第 1 天
+
+    badgeText = `第 ${dayNumber} 天`;
+    subText = passedDays >= 0 ? `已持續 ${passedDays} 天` : `將於 ${item.targetDate} 開始`;
+    badgeStyle = 'bg-pink-500/15 text-pink-700 dark:text-pink-300 font-black';
+  } else {
+    // ⏳ 倒數日 (Countdown / 目標日)
+    const diffTime = target.getTime() - today.getTime();
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) {
+      badgeText = 'D-Day';
+      subText = '今天就是目標日！';
+      badgeStyle = 'bg-rose-500 text-white animate-pulse font-black';
+    } else if (diffDays < 0) {
+      badgeText = `D+${Math.abs(diffDays)}`;
+      subText = `已逾期 ${Math.abs(diffDays)} 天`;
+      badgeStyle = 'bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400 font-bold';
+    } else {
+      badgeText = `D-${diffDays}`;
+      subText = `還有 ${diffDays} 天`;
+      badgeStyle = 'bg-amber-500/15 text-amber-700 dark:text-amber-300 font-black';
+    }
+  }
+
+  // Compact Pill Display (for top ribbon in Calendar & Today views)
   if (compact) {
     return (
-      <div
-        className="flex items-center space-x-2 py-1 px-3 rounded-2xl bg-white/80 dark:bg-zinc-800/80 border border-black/5 dark:border-white/10 shadow-ios-sm shrink-0"
-      >
+      <div className="flex items-center space-x-2 py-1 px-3 rounded-2xl bg-white/90 dark:bg-zinc-800/90 border border-black/5 dark:border-white/10 shadow-2xs shrink-0 hover:border-black/15 transition-all">
         <div
           style={{
             backgroundColor: `${item.colorHex || '#F59E0B'}25`,
@@ -46,21 +73,13 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({
           }}
           className="w-6 h-6 rounded-lg border flex items-center justify-center text-xs shrink-0"
         >
-          {item.emoji || '⏳'}
+          {item.emoji || (isCountUp ? '💖' : '⏳')}
         </div>
         <span className="text-xs font-bold text-calico-cocoa dark:text-zinc-100 max-w-[110px] truncate whitespace-nowrap">
           {item.title}
         </span>
-        <span
-          className={`text-xs font-black px-2 py-0.5 rounded-lg whitespace-nowrap shrink-0 ${
-            isDDay
-              ? 'bg-rose-500 text-white animate-pulse'
-              : isPast
-              ? 'bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400'
-              : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-          }`}
-        >
-          {isDDay ? 'D-Day' : isPast ? `D+${Math.abs(diffDays)}` : `D-${diffDays}`}
+        <span className={`text-xs px-2 py-0.5 rounded-lg whitespace-nowrap shrink-0 ${badgeStyle}`}>
+          {badgeText}
         </span>
       </div>
     );
@@ -78,27 +97,35 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({
           }}
           className="w-11 h-11 rounded-2xl border flex items-center justify-center text-xl shrink-0 shadow-2xs"
         >
-          {item.emoji || '⏳'}
+          {item.emoji || (isCountUp ? '💖' : '⏳')}
         </div>
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center space-x-1.5 flex-wrap">
-            <h5 className="text-sm font-extrabold text-calico-cocoa dark:text-zinc-100 truncate">
+            <h5 className="text-sm font-black text-calico-cocoa dark:text-zinc-100 truncate">
               {item.title}
             </h5>
             {item.isPinned && (
-              <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-bold whitespace-nowrap shrink-0">
+              <span className="text-[10px] bg-amber-500/15 text-amber-700 dark:text-amber-300 px-1.5 py-0.2 rounded-md font-black whitespace-nowrap shrink-0">
                 📌 置頂
               </span>
             )}
-            <span className="text-[10px] bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400 px-1.5 py-0.2 rounded-md font-medium whitespace-nowrap shrink-0">
-              {CATEGORY_NAMES[item.category] || '倒數'}
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-md font-bold whitespace-nowrap shrink-0 ${
+                isCountUp
+                  ? 'bg-pink-500/15 text-pink-600 dark:text-pink-300'
+                  : 'bg-black/5 dark:bg-white/10 text-calico-cocoa/60 dark:text-zinc-400'
+              }`}
+            >
+              {isCountUp ? '持續日' : '倒數日'} · {CATEGORY_NAMES[item.category] || '生活'}
             </span>
           </div>
 
-          <div className="flex items-center space-x-1 text-xs text-calico-cocoa/50 dark:text-zinc-400 mt-0.5 truncate">
-            <Calendar className="w-3 h-3 shrink-0" />
-            <span className="whitespace-nowrap shrink-0">{item.targetDate}</span>
+          <div className="flex items-center space-x-1.5 text-xs text-calico-cocoa/50 dark:text-zinc-400 mt-1 truncate font-semibold">
+            <Calendar className="w-3.5 h-3.5 shrink-0 opacity-60" />
+            <span className="whitespace-nowrap shrink-0">
+              {isCountUp ? `起始於 ${item.targetDate}` : `目標於 ${item.targetDate}`}
+            </span>
             {item.notes && <span className="truncate">· {item.notes}</span>}
           </div>
         </div>
@@ -108,18 +135,12 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({
       <div className="flex items-center space-x-2 shrink-0">
         <div className="text-right shrink-0">
           <span
-            className={`text-xs sm:text-sm font-black px-2.5 py-1 rounded-xl inline-block whitespace-nowrap shadow-2xs ${
-              isDDay
-                ? 'bg-rose-500 text-white animate-bounce'
-                : isPast
-                ? 'bg-black/5 dark:bg-white/10 text-calico-cocoa/50 dark:text-zinc-400'
-                : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 font-extrabold'
-            }`}
+            className={`text-xs sm:text-sm px-2.5 py-1 rounded-xl inline-block whitespace-nowrap shadow-2xs ${badgeStyle}`}
           >
-            {isDDay ? 'D-Day' : isPast ? `D+${Math.abs(diffDays)}` : `D-${diffDays}`}
+            {badgeText}
           </span>
-          <p className="text-[10px] text-calico-cocoa/40 dark:text-zinc-500 font-medium mt-0.5 whitespace-nowrap">
-            {isDDay ? '今天就是目標日！' : isPast ? `已過 ${Math.abs(diffDays)} 天` : `還有 ${diffDays} 天`}
+          <p className="text-[10px] text-calico-cocoa/50 dark:text-zinc-400 font-bold mt-0.5 whitespace-nowrap">
+            {subText}
           </p>
         </div>
 

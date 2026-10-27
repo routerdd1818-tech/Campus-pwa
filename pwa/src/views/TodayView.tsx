@@ -25,6 +25,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
+import { CountdownCard } from '../components/CountdownCard';
 
 export const TodayView: React.FC = () => {
   const {
@@ -49,6 +50,7 @@ export const TodayView: React.FC = () => {
     setIsFortuneModalOpen,
     setIsFoodRouletteOpen,
     setIsPomodoroOpen,
+    countdowns,
   } = useApp();
 
   const now = new Date();
@@ -209,6 +211,46 @@ export const TodayView: React.FC = () => {
           <span className="text-[9px] text-calico-cocoa/50 dark:text-zinc-400 font-medium">25分衝刺</span>
         </button>
       </div>
+
+      {/* ======================================================== */}
+      {/* ⏳ 重要日子（倒數日 & 持續紀念日）首頁即時動態卡 */}
+      {/* ======================================================== */}
+      {countdowns && countdowns.length > 0 && (
+        <div className="p-4 rounded-3xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-ios space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              <span className="text-base">⏳</span>
+              <h3 className="text-sm font-black text-calico-cocoa dark:text-zinc-100">
+                重要日子
+              </h3>
+              <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-300">
+                {countdowns.length} 個事件
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setActiveTab('calendar')}
+              className="text-xs font-bold text-calico-orange hover:underline flex items-center space-x-0.5"
+            >
+              <span>查看行事曆</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* 橫向膠囊滑動列 */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+            {countdowns.map((cd) => (
+              <div
+                key={cd.id}
+                onClick={() => setActiveTab('calendar')}
+                className="cursor-pointer active:scale-95 transition-transform shrink-0"
+              >
+                <CountdownCard item={cd} compact />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* 1. 🕒 即時上課狀態卡片 */}

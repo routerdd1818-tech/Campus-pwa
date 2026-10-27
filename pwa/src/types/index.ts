@@ -139,12 +139,15 @@ export interface Installment {
   isCompleted: boolean;
 }
 
+export type CountdownMode = 'countdown' | 'countup'; // 'countdown': 倒數日 (目標日), 'countup': 持續日/紀念日 (起始日)
+
 export interface CountdownItem {
   id: string;
   userId?: string;
   title: string;
-  targetDate: string;            // YYYY-MM-DD
-  emoji: string;                 // 自訂 Emoji (例: 🎓, 🎂, ✈️, 💳)
+  targetDate: string;            // YYYY-MM-DD (倒數日為目標日，持續日為起始日)
+  mode?: CountdownMode;          // 預設為 'countdown'
+  emoji: string;                 // 自訂 Emoji (例: 🎓, 🎂, ✈️, 💳, 💖)
   category: 'exam' | 'finance' | 'life' | 'anniversary' | 'other';
   colorHex: string;
   isPinned: boolean;             // 置頂釘選
