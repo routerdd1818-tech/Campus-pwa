@@ -55,6 +55,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
   const [paperUrl, setPaperUrl] = useState('');
   const [reminderAdvance, setReminderAdvance] = useState<'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d'>('1d');
   const [isSharedToCalendar, setIsSharedToCalendar] = useState<boolean>(false);
+  const [isCountdown, setIsCountdown] = useState<boolean>(false);
 
   // Inline custom category creation
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -76,6 +77,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setRecurrence(todo.recurrence || 'none');
         setReminderAdvance(todo.reminderAdvance || '1d');
         setIsSharedToCalendar(todo.isSharedToCalendar ?? false);
+        setIsCountdown(todo.isCountdown ?? false);
       } else {
         setTitle('');
         setNotes('');
@@ -89,6 +91,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
         setRecurrence('none');
         setReminderAdvance('1d');
         setIsSharedToCalendar(false); // 預設先關閉
+        setIsCountdown(false);
       }
       setIsCreatingCategory(false);
       setNewCatName('');
@@ -132,6 +135,7 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
       readingStatus: todo?.readingStatus || (category === '論文閱讀' ? '未讀' : undefined),
       reminderAdvance,
       isSharedToCalendar,
+      isCountdown,
     });
     onClose();
   };
@@ -535,6 +539,29 @@ export const TodoModal: React.FC<TodoModalProps> = ({ todo, isOpen, onClose, onS
                 className="sr-only peer"
               />
               <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-calico-orange"></div>
+            </label>
+          </div>
+
+          {/* ⏳ 同步加入重要日子倒數 */}
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 dark:bg-amber-500/10 border border-amber-500/20 dark:border-amber-500/30 flex items-center justify-between">
+            <div className="flex items-center space-x-2.5 min-w-0 flex-1 pr-2">
+              <div className="min-w-0">
+                <span className="text-xs font-black text-amber-900 dark:text-amber-200 block truncate">
+                  同步加入重要日子倒數
+                </span>
+                <span className="text-[10px] text-amber-800/60 dark:text-amber-300/70 block leading-tight mt-0.5">
+                  在行事曆專區與首頁即時顯示到期倒數，不怕忘記重要截止！
+                </span>
+              </div>
+            </div>
+            <label className="relative inline-flex items-center cursor-pointer shrink-0">
+              <input
+                type="checkbox"
+                checked={isCountdown}
+                onChange={(e) => setIsCountdown(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-500"></div>
             </label>
           </div>
 

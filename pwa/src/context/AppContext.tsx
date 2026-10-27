@@ -6,6 +6,7 @@ import {
   Installment,
   RecurringItem,
   CountdownItem,
+  CountdownTodoItem,
   SavingsJar,
   SavingsDeposit,
   CourseGradeItem,
@@ -343,6 +344,11 @@ export const DEFAULT_COUNTDOWNS: CountdownItem[] = [
     colorHex: '#10B981',
     isPinned: false,
     notes: '歐趴衝刺！',
+    todos: [
+      { id: 'ct_1', title: '計量經濟考古題 110-113', isCompleted: true },
+      { id: 'ct_2', title: '機器學習作業二提交', isCompleted: false },
+      { id: 'ct_3', title: '總體經濟學筆記整理', isCompleted: false },
+    ],
   },
 ];
 
@@ -525,6 +531,9 @@ interface AppContextType {
   updateCountdown: (item: CountdownItem) => void;
   deleteCountdown: (id: string) => void;
   togglePinCountdown: (id: string) => void;
+  toggleCountdownTodo: (countdownId: string, todoItemId: string) => void;
+  addCountdownTodo: (countdownId: string, title: string) => void;
+  deleteCountdownTodo: (countdownId: string, todoItemId: string) => void;
   // 🏺 夢想存錢筒 (Savings Jars)
   savingsJars: SavingsJar[];
   addSavingsJar: (jar: SavingsJar) => void;
@@ -1753,6 +1762,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
     });
+    // ⏳ 連動建立重要日子倒數
+    if (enriched.isCountdown && enriched.dueDate) {
+      const targetDate = enriched.dueDate.slice(0, 10);
+      const newCd: CountdownItem = {
+        id: toUUID(`cd_todo_${canonicalId}`),
+        userId: currentUser?.id,
+        title: enriched.title,
+        targetDate,
+        mode: 'countdown',
+        emoji: '📝',
+        category: 'exam',
+        colorHex: enriched.colorHex || '#F59E0B',
+        isPinned: false,
+        notes: enriched.notes,
+        linkedTodoId: canonicalId,
+      };
+      setCountdowns((prev) => [newCd, ...prev.filter((c) => c.linkedTodoId !== canonicalId)]);
+    }
     await upsertTodoToSupabase(enriched, currentUser?.id);
     setCatMood('thinking');
   };
@@ -1766,6 +1793,37 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
     });
+    // ⏳ 連動更新/移除重要日子倒數
+    if (enriched.isCountdown && enriched.dueDate) {
+      const targetDate = enriched.dueDate.slice(0, 10);
+      setCountdowns((prev) => {
+        const exists = prev.some((c) => c.linkedTodoId === canonicalId);
+        if (exists) {
+          return prev.map((c) =>
+            c.linkedTodoId === canonicalId
+              ? { ...c, title: enriched.title, targetDate, notes: enriched.notes }
+              : c
+          );
+        } else {
+          const newCd: CountdownItem = {
+            id: toUUID(`cd_todo_${canonicalId}`),
+            userId: currentUser?.id,
+            title: enriched.title,
+            targetDate,
+            mode: 'countdown',
+            emoji: '📝',
+            category: 'exam',
+            colorHex: enriched.colorHex || '#F59E0B',
+            isPinned: false,
+            notes: enriched.notes,
+            linkedTodoId: canonicalId,
+          };
+          return [newCd, ...prev];
+        }
+      });
+    } else if (!enriched.isCountdown) {
+      setCountdowns((prev) => prev.filter((c) => c.linkedTodoId !== canonicalId));
+    }
     await upsertTodoToSupabase(enriched, currentUser?.id);
   };
 
@@ -1795,6 +1853,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       syncScheduleToCloud(coursesRef.current, next, transactionsRef.current, calendarEventsRef.current);
       return next;
     });
+    // ⏳ 連動刪除重要日子倒數
+    setCountdowns((prev) => prev.filter((c) => c.linkedTodoId !== canonicalId));
     await deleteTodoFromSupabase(id);
   };
 
@@ -2168,6 +2228,48 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
+  const toggleCountdownTodo = (countdownId: string, todoItemId: string) => {
+    setCountdowns((prev) =>
+      prev.map((cd) => {
+        if (cd.id === countdownId) {
+          const updatedTodos = (cd.todos || []).map((t) =>
+            t.id === todoItemId ? { ...t, isCompleted: !t.isCompleted } : t
+          );
+          return { ...cd, todos: updatedTodos };
+        }
+        return cd;
+      })
+    );
+  };
+
+  const addCountdownTodo = (countdownId: string, title: string) => {
+    if (!title.trim()) return;
+    const newTodo: CountdownTodoItem = {
+      id: `ct_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      title: title.trim(),
+      isCompleted: false,
+    };
+    setCountdowns((prev) =>
+      prev.map((cd) => {
+        if (cd.id === countdownId) {
+          return { ...cd, todos: [...(cd.todos || []), newTodo] };
+        }
+        return cd;
+      })
+    );
+  };
+
+  const deleteCountdownTodo = (countdownId: string, todoItemId: string) => {
+    setCountdowns((prev) =>
+      prev.map((cd) => {
+        if (cd.id === countdownId) {
+          return { ...cd, todos: (cd.todos || []).filter((t) => t.id !== todoItemId) };
+        }
+        return cd;
+      })
+    );
+  };
+
   // --------------------------------------------------------------------------
   // 🏺 夢想存錢筒 (Savings Jars / Wish List)
   // --------------------------------------------------------------------------
@@ -2497,6 +2599,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCountdown,
         deleteCountdown,
         togglePinCountdown,
+        toggleCountdownTodo,
+        addCountdownTodo,
+        deleteCountdownTodo,
         savingsJars,
         addSavingsJar,
         updateSavingsJar,

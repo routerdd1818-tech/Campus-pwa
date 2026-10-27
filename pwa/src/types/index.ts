@@ -54,6 +54,8 @@ export interface Todo {
   reminderAdvance?: 'none' | 'due' | '1h' | '3h' | '1d' | '2d' | '3d';
   reminderCustomDays?: number;
   isSharedToCalendar?: boolean; // 同步分享至共同行事曆 (預設 false)
+  isCountdown?: boolean;        // 同步連動至重要日子倒數 (預設 false)
+  linkedCountdownId?: string;   // 連動的重要日子 ID
 }
 
 export interface Transaction {
@@ -141,6 +143,12 @@ export interface Installment {
 
 export type CountdownMode = 'countdown' | 'countup'; // 'countdown': 倒數日 (目標日), 'countup': 持續日/紀念日 (起始日)
 
+export interface CountdownTodoItem {
+  id: string;
+  title: string;
+  isCompleted: boolean;
+}
+
 export interface CountdownItem {
   id: string;
   userId?: string;
@@ -152,6 +160,8 @@ export interface CountdownItem {
   colorHex: string;
   isPinned: boolean;             // 置頂釘選
   notes?: string;
+  todos?: CountdownTodoItem[];   // 專屬待辦/備戰清單
+  linkedTodoId?: string;         // 連動的主待辦任務 ID
 }
 
 export type FriendPeriodMode = 'daily' | 'weekly' | 'monthly';
