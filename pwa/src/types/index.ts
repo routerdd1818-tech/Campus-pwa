@@ -9,6 +9,13 @@ export interface ClassPeriod {
   isNoon?: boolean;
 }
 
+export interface CourseAbsenceLog {
+  id: string;
+  date: string; // YYYY-MM-DD
+  type: 'sick' | 'personal' | 'skip'; // 病假 / 事假 / 自主翹課
+  note?: string;
+}
+
 export interface Course {
   id: string;
   userId?: string;
@@ -25,6 +32,10 @@ export interface Course {
   credits?: number;
   category?: CreditCategory;
   semester?: string;
+  absenceCount?: number;
+  maxAbsences?: number; // 預設 3 次
+  absenceLogs?: CourseAbsenceLog[];
+  syllabusNotes?: string;
 }
 
 export type TodoPriority = 'low' | 'medium' | 'high';
@@ -70,6 +81,10 @@ export interface Transaction {
   categoryIcon: string;
   categoryColorHex: string;
   paymentMethodName: string;
+  accountId?: string;          // 綁定的資產帳戶 ID
+  isTransfer?: boolean;        // 是否為跨帳戶轉帳 / 提款 / 儲值
+  toAccountId?: string;        // 轉入目標帳戶 ID
+  toAccountName?: string;      // 轉入目標帳戶名稱
   date: string; // ISO string
   notes?: string;
   valueScore?: number; // 1-10
@@ -441,6 +456,41 @@ export interface TodayLayoutSettings {
   collapsedSections: Record<string, boolean>;
   hiddenSections: Record<string, boolean>;
 }
+
+// ⚡ 一鍵極速記帳常駐捷徑
+export interface QuickExpenseShortcut {
+  id: string;
+  label: string;             // 例: '早餐', '學餐午餐', '超商咖啡'
+  amount: number;            // 例: 65, 100, 55
+  categoryName: string;      // 例: '早餐', '午餐', '飲料'
+  categoryIcon: string;      // 例: 'Coffee', 'Utensils'
+  categoryColorHex: string;  // 例: '#E67E22'
+  paymentMethodName: string; // 例: 'LINE Pay', '錢包現金'
+  accountId?: string;        // 對應資產帳戶 ID
+}
+
+// 📊 月度現金流預測與扣款預警
+export interface CashflowBillAlert {
+  id: string;
+  sourceType: 'recurring' | 'installment' | 'debt';
+  sourceId: string;
+  title: string;
+  amount: number;
+  dueDayOrDate: string;      // 例: '每月 28 日' 或 '2026-11-20'
+  daysUntilDue: number;      // 0 = 今天, 1~3 = 3天內, >3 = 本月稍後
+  paymentMethodName: string;
+  colorHex: string;
+  isUrgent: boolean;         // <= 3 天內到期
+}
+
+export interface CashflowForecastSummary {
+  upcomingAlerts: CashflowBillAlert[];       // 本月尚未扣款的固定支出/分期/欠款
+  urgentAlerts: CashflowBillAlert[];         // 3 天內即將扣款項目
+  pendingFixedOutflowThisMonth: number;      // 本月尚未扣款之固定支出+分期總額
+  liquidAssetsTotal: number;                 // 可動用現金+銀行存款總額
+  projectedMonthEndSafeBalance: number;      // 扣除未付固定帳單與預備金後的真實可支配餘額
+}
+
 
 
 

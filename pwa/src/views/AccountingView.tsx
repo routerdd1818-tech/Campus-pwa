@@ -45,6 +45,7 @@ import {
   CalendarDays,
   AlertCircle,
   Wallet,
+  X,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 
@@ -278,10 +279,24 @@ export const AccountingView: React.FC = () => {
     depositToSavingsJar,
     assetAccounts,
     survivalSettings,
+    setIsQuantModalOpen,
+    quickShortcuts,
+    addQuickShortcut,
+    deleteQuickShortcut,
+    executeQuickShortcut,
+    cashflowForecast,
+    customExpenseCategories,
   } = useApp();
 
   // 💰 資產盤點與對帳銷帳 Modal
   const [isAssetModalOpen, setIsAssetModalOpen] = useState(false);
+  // ⚡ 一鍵極速記帳自訂編輯狀態
+  const [isEditingShortcuts, setIsEditingShortcuts] = useState(false);
+  const [newScLabel, setNewScLabel] = useState('');
+  const [newScAmount, setNewScAmount] = useState('');
+  const [newScCategory, setNewScCategory] = useState('餐飲');
+  const [newScPayment, setNewScPayment] = useState('LINE Pay');
+  const [lastQuickTx, setLastQuickTx] = useState<Transaction | null>(null);
 
   // Top Scope: 'mine' (我的記帳) | 'friends' (好友帳本)
   const [ledgerScope, setLedgerScope] = useState<'mine' | 'friends'>('mine');
@@ -1556,23 +1571,173 @@ export const AccountingView: React.FC = () => {
             </div>
 
             <div className="pt-2 border-t border-black/5 dark:border-white/5 flex items-center justify-between text-[11px] font-medium text-calico-cocoa/70 dark:text-zinc-300 flex-wrap gap-1.5">
-              <div className="flex items-center space-x-2 flex-wrap">
+              <div className="flex items-center space-x-2 flex-wrap tabular-nums">
                 <span>
                   身家總值: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100 font-mono">${Math.round(survivalBudget.totalNetWorth).toLocaleString()}</strong>
                 </span>
                 <span className="text-calico-cocoa/30 dark:text-zinc-600">·</span>
                 <span>
-                  支配剩餘: <strong className="font-extrabold text-calico-cocoa dark:text-zinc-100 font-mono">${survivalBudget.freeBalance}</strong>
+                  待扣固定/分期: <strong className="font-extrabold text-amber-600 dark:text-amber-400 font-mono">-${cashflowForecast.pendingFixedOutflowThisMonth.toLocaleString()}</strong>
+                </span>
+                <span className="text-calico-cocoa/30 dark:text-zinc-600">·</span>
+                <span>
+                  預估月底安全餘額: <strong className="font-extrabold text-emerald-600 dark:text-emerald-400 font-mono">${cashflowForecast.projectedMonthEndSafeBalance.toLocaleString()}</strong>
                 </span>
               </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsQuantModalOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-calico-orange/15 hover:bg-calico-orange/25 text-calico-orange font-bold text-[10px] transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                >
+                  <span>⚡️ 量化戰情中台</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAssetModalOpen(true)}
+                  className="px-2.5 py-1 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-amber-500/15 text-calico-cocoa dark:text-zinc-200 hover:text-amber-600 dark:hover:text-amber-400 font-bold text-[10px] transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                >
+                  <span>⚙️ 資產盤點與對帳銷帳</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* ⚡ 一鍵極速記帳常駐捷徑列 (Quick-Tap Shortcuts Bar) */}
+          <div className="p-3 rounded-2xl bg-white dark:bg-calico-darkCard border border-black/5 dark:border-white/10 shadow-2xs space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-black text-calico-cocoa dark:text-zinc-200 flex items-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
+                <span>一鍵極速記帳捷徑（點擊立即記帳並同步扣減帳戶）</span>
+              </span>
               <button
                 type="button"
-                onClick={() => setIsAssetModalOpen(true)}
-                className="px-2.5 py-1 rounded-xl bg-black/5 dark:bg-white/10 hover:bg-amber-500/15 text-calico-cocoa dark:text-zinc-200 hover:text-amber-600 dark:hover:text-amber-400 font-bold text-[10px] transition-all flex items-center space-x-1 whitespace-nowrap shrink-0"
+                onClick={() => setIsEditingShortcuts(!isEditingShortcuts)}
+                className="text-[11px] font-bold text-calico-orange hover:underline"
               >
-                <span>⚙️ 資產盤點與對帳銷帳</span>
+                {isEditingShortcuts ? '完成設定' : '+ 自訂捷徑'}
               </button>
             </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+              {quickShortcuts.map((sc) => (
+                <div key={sc.id} className="relative flex items-center shrink-0">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (isEditingShortcuts) {
+                        deleteQuickShortcut(sc.id);
+                        return;
+                      }
+                      const created = await executeQuickShortcut(sc.id);
+                      if (created) {
+                        setLastQuickTx(created);
+                        setTimeout(() => {
+                          setLastQuickTx((prev) => (prev?.id === created.id ? null : prev));
+                        }, 4500);
+                      }
+                    }}
+                    className={`px-3 py-1.5 rounded-xl border text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
+                      isEditingShortcuts
+                        ? 'bg-rose-500/10 border-rose-500/30 text-rose-600'
+                        : 'bg-calico-cream/70 dark:bg-zinc-800 border-black/5 dark:border-white/10 hover:border-calico-orange text-calico-cocoa dark:text-zinc-100'
+                    }`}
+                  >
+                    <CategoryIcon icon={sc.categoryIcon} categoryName={sc.categoryName} className="w-3.5 h-3.5 text-calico-orange" />
+                    <span>{sc.label}</span>
+                    <span className="font-mono font-black text-calico-orange tabular-nums">${sc.amount}</span>
+                    <span className="text-[10px] opacity-60">({sc.paymentMethodName})</span>
+                    {isEditingShortcuts && <X className="w-3 h-3 text-rose-500 ml-0.5" />}
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {lastQuickTx && (
+              <div className="p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between text-xs animate-fade-in">
+                <span className="font-bold text-emerald-800 dark:text-emerald-200 truncate">
+                  ⚡ 已記帳：{lastQuickTx.notes} -${lastQuickTx.amount}（已扣減 {lastQuickTx.paymentMethodName}）
+                </span>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    await deleteTransaction(lastQuickTx.id);
+                    setLastQuickTx(null);
+                  }}
+                  className="px-2 py-0.5 rounded-lg bg-white dark:bg-zinc-800 text-rose-600 font-black shrink-0 ml-2"
+                >
+                  撤銷
+                </button>
+              </div>
+            )}
+
+            {isEditingShortcuts && (
+              <div className="pt-2 border-t border-black/5 dark:border-white/5 flex flex-wrap items-center gap-1.5 animate-fade-in">
+                <input
+                  type="text"
+                  value={newScLabel}
+                  onChange={(e) => setNewScLabel(e.target.value)}
+                  placeholder="品項 (例: 拿鐵)"
+                  className="w-28 px-2.5 py-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+                />
+                <input
+                  type="number"
+                  value={newScAmount}
+                  onChange={(e) => setNewScAmount(e.target.value)}
+                  placeholder="金額"
+                  className="w-20 px-2.5 py-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-mono font-bold"
+                />
+                <select
+                  value={newScCategory}
+                  onChange={(e) => setNewScCategory(e.target.value)}
+                  className="px-2 py-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+                >
+                  {customExpenseCategories.map((c) => (
+                    <option key={c.id || c.name} value={c.name}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={newScPayment}
+                  onChange={(e) => setNewScPayment(e.target.value)}
+                  className="px-2 py-1.5 rounded-xl bg-calico-cream dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-xs font-bold"
+                >
+                  {(assetAccounts || [])
+                    .filter((a) => a.type !== 'stock')
+                    .map((a) => (
+                      <option key={a.id} value={a.name}>
+                        {a.name}
+                      </option>
+                    ))}
+                  <option value="LINE Pay">LINE Pay</option>
+                  <option value="現金">現金</option>
+                  <option value="悠遊卡">悠遊卡</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const amt = Number(newScAmount);
+                    if (!newScLabel.trim() || !amt || amt <= 0) return;
+                    const cat = customExpenseCategories.find((c) => c.name === newScCategory);
+                    addQuickShortcut({
+                      id: `qs_${Date.now()}`,
+                      label: newScLabel.trim(),
+                      amount: amt,
+                      categoryName: newScCategory,
+                      categoryIcon: cat?.icon || 'Utensils',
+                      categoryColorHex: cat?.colorHex || '#E67E22',
+                      paymentMethodName: newScPayment,
+                    });
+                    setNewScLabel('');
+                    setNewScAmount('');
+                  }}
+                  className="px-3 py-1.5 rounded-xl bg-calico-orange text-white text-xs font-black"
+                >
+                  + 新增
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Action Row & Category Filters */}

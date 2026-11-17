@@ -28,6 +28,10 @@ import {
   SurvivalBudgetSettings,
   CourseWishlistItem,
   TodaySectionId,
+  QuickExpenseShortcut,
+  CashflowBillAlert,
+  CashflowForecastSummary,
+  CourseAbsenceLog,
 } from '../types';
 import { DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
 import { batchFetchStockPrices, fetchStockPrice } from '../services/stockService';
@@ -650,6 +654,8 @@ interface AppContextType {
   setIsFoodRouletteOpen: (open: boolean) => void;
   isPomodoroOpen: boolean;
   setIsPomodoroOpen: (open: boolean) => void;
+  isQuantModalOpen: boolean;
+  setIsQuantModalOpen: (open: boolean) => void;
   restoreBackupData: (data: any) => boolean;
   resetAllData: () => void;
   eventToEdit: CalendarEvent | null;
@@ -714,6 +720,19 @@ interface AppContextType {
   toggleTodaySectionHidden: (sectionId: string) => void;
   resetTodayLayout: () => void;
   upcomingCountdownsCount: number;
+  // ⚡ 一鍵極速記帳、跨帳戶轉帳、現金流預測、課程缺課與全域搜尋
+  quickShortcuts: QuickExpenseShortcut[];
+  addQuickShortcut: (item: QuickExpenseShortcut) => void;
+  updateQuickShortcut: (item: QuickExpenseShortcut) => void;
+  deleteQuickShortcut: (id: string) => void;
+  executeQuickShortcut: (id: string) => Promise<Transaction | null>;
+  transferBetweenAccounts: (fromAccountId: string, toAccountId: string, amount: number, note?: string, date?: string) => Promise<void>;
+  recordCourseAbsence: (courseId: string, type: 'sick' | 'personal' | 'skip', note?: string, date?: string) => Promise<void>;
+  removeCourseAbsence: (courseId: string, logId?: string) => Promise<void>;
+  archiveCurrentSemester: (semesterName: string, clearSchedule?: boolean) => Promise<number>;
+  cashflowForecast: CashflowForecastSummary;
+  isGlobalSearchOpen: boolean;
+  setIsGlobalSearchOpen: (open: boolean) => void;
   // 🎓 GPA 制度與待選課程心願單 (GPA Scale & Wishlist Courses)
   gpaScale: GpaScale;
   setGpaScale: (scale: GpaScale) => void;
@@ -1000,13 +1019,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [catMood, setCatMood] = useState<'happy' | 'sleeping' | 'thinking' | 'proud'>('happy');
 
-  // 👤 User Account & Modal State
-  const initialUser: UserAccount | null = (() => {
+  // 👤 User Account & Modal State (Default to built-in primary account so app works immediately without login blocker)
+  const initialUser: UserAccount = (() => {
+    const fallbackUser: UserAccount = {
+      id: 'usr_alpha_admin_01',
+      username: 'tang921118',
+      displayName: 'Tang (主力帳本)',
+      shareCode: 'CAMP88',
+      createdAt: new Date().toISOString(),
+    };
     try {
       const saved = localStorage.getItem('campus_auth_session');
-      return saved ? JSON.parse(saved) : null;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && parsed.username) return parsed;
+      }
+      localStorage.setItem('campus_auth_session', JSON.stringify(fallbackUser));
+      return fallbackUser;
     } catch {
-      return null;
+      return fallbackUser;
     }
   })();
 
@@ -1021,6 +1052,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isFortuneModalOpen, setIsFortuneModalOpen] = useState(false);
   const [isFoodRouletteOpen, setIsFoodRouletteOpen] = useState(false);
   const [isPomodoroOpen, setIsPomodoroOpen] = useState(false);
+  const [isQuantModalOpen, setIsQuantModalOpen] = useState(false);
   const [eventToEdit, setEventToEdit] = useState<CalendarEvent | null>(null);
 
   // Load from LocalStorage (Scoped strictly per user account, with fallback for guest / initial session)
@@ -1319,6 +1351,175 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return diffDays >= 0 && diffDays <= 3;
     }).length;
   }, [countdowns]);
+
+  // 🔍 全域搜尋彈窗狀態
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+
+  // ⚡ 一鍵極速記帳常駐捷徑預設清單
+  const DEFAULT_QUICK_SHORTCUTS: QuickExpenseShortcut[] = [
+    {
+      id: 'qs_breakfast',
+      label: '活力早餐',
+      amount: 65,
+      categoryName: '早餐',
+      categoryIcon: 'Coffee',
+      categoryColorHex: '#F59E0B',
+      paymentMethodName: '錢包現金',
+    },
+    {
+      id: 'qs_lunch',
+      label: '學餐午餐',
+      amount: 95,
+      categoryName: '午餐',
+      categoryIcon: 'Utensils',
+      categoryColorHex: '#E67E22',
+      paymentMethodName: 'LINE Pay',
+    },
+    {
+      id: 'qs_dinner',
+      label: '美味晚餐',
+      amount: 120,
+      categoryName: '晚餐',
+      categoryIcon: 'UtensilsCrossed',
+      categoryColorHex: '#EF4444',
+      paymentMethodName: 'LINE Pay',
+    },
+    {
+      id: 'qs_drink',
+      label: '咖啡手搖',
+      amount: 55,
+      categoryName: '飲料',
+      categoryIcon: 'CupSoda',
+      categoryColorHex: '#8B5CF6',
+      paymentMethodName: 'LINE Pay',
+    },
+    {
+      id: 'qs_transit',
+      label: '公車捷運',
+      amount: 20,
+      categoryName: '交通',
+      categoryIcon: 'Bus',
+      categoryColorHex: '#3B82F6',
+      paymentMethodName: '悠遊卡',
+    },
+  ];
+
+  const [quickShortcuts, setQuickShortcuts] = useState<QuickExpenseShortcut[]>(() => {
+    const uid = initialUser?.id;
+    const saved =
+      localStorage.getItem(getScopedKey(uid, 'quick_shortcuts')) ||
+      localStorage.getItem('campus_quick_shortcuts');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch {}
+    }
+    return DEFAULT_QUICK_SHORTCUTS;
+  });
+
+  useEffect(() => {
+    const uid = activeUserIdRef.current;
+    localStorage.setItem(getScopedKey(uid, 'quick_shortcuts'), JSON.stringify(quickShortcuts));
+  }, [quickShortcuts]);
+
+  // 📊 月度現金流預測與固定扣款前 3 日預警引擎 (Cashflow Forecast Engine)
+  const cashflowForecast: CashflowForecastSummary = useMemo(() => {
+    const now = new Date();
+    const currentDay = now.getDate();
+    const currentMonthStr = now.toISOString().slice(0, 7);
+    const todayZero = new Date(now.toISOString().slice(0, 10));
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+
+    const alerts: CashflowBillAlert[] = [];
+
+    // 1. 掃描每月固定支出 (Recurring Expenses)
+    (recurringItems || []).forEach((rec) => {
+      if (!rec.isActive || rec.type !== 'expense') return;
+      const alreadyPaidThisMonth = rec.lastRecordedMonth === currentMonthStr;
+      if (alreadyPaidThisMonth) return;
+
+      const targetDay = Math.min(daysInMonth, Math.max(1, rec.dayOfMonth || 1));
+      const daysUntilDue = targetDay >= currentDay ? targetDay - currentDay : 0;
+
+      alerts.push({
+        id: `cf_rec_${rec.id}`,
+        sourceType: 'recurring',
+        sourceId: rec.id,
+        title: rec.title,
+        amount: rec.amount,
+        dueDayOrDate: `每月 ${rec.dayOfMonth} 日`,
+        daysUntilDue,
+        paymentMethodName: rec.paymentMethodName || '銀行扣款',
+        colorHex: rec.colorHex || '#E67E22',
+        isUrgent: daysUntilDue <= 3,
+      });
+    });
+
+    // 2. 掃描未結清分期付款 (Installments)
+    (installments || []).forEach((inst) => {
+      if (inst.isCompleted || inst.paidPeriods >= inst.totalPeriods) return;
+      const targetDay = Math.min(daysInMonth, Math.max(1, inst.billingDay || 15));
+      const daysUntilDue =
+        targetDay >= currentDay ? targetDay - currentDay : daysInMonth - currentDay + targetDay;
+
+      if (targetDay >= currentDay || daysUntilDue <= 3) {
+        alerts.push({
+          id: `cf_inst_${inst.id}`,
+          sourceType: 'installment',
+          sourceId: inst.id,
+          title: `${inst.title} (${inst.paidPeriods + 1}/${inst.totalPeriods}期)`,
+          amount: inst.periodAmount,
+          dueDayOrDate: `每月 ${inst.billingDay} 日`,
+          daysUntilDue,
+          paymentMethodName: inst.paymentMethodName || '信用卡',
+          colorHex: inst.colorHex || '#6366F1',
+          isUrgent: daysUntilDue <= 3,
+        });
+      }
+    });
+
+    // 3. 掃描有設定到期日的待還債務 (Debts I Owe)
+    (debts || []).forEach((d) => {
+      if (d.isSettled || d.type !== 'i_owe' || d.remainingAmount <= 0 || !d.dueDate) return;
+      const due = new Date(d.dueDate);
+      const diffDays = Math.round((due.getTime() - todayZero.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays <= 14) {
+        alerts.push({
+          id: `cf_debt_${d.id}`,
+          sourceType: 'debt',
+          sourceId: d.id,
+          title: `還款：${d.title} (${d.counterparty})`,
+          amount: d.periodAmount && d.isInstallment ? d.periodAmount : d.remainingAmount,
+          dueDayOrDate: d.dueDate,
+          daysUntilDue: Math.max(0, diffDays),
+          paymentMethodName: '轉帳/現金',
+          colorHex: '#EF4444',
+          isUrgent: diffDays <= 3,
+        });
+      }
+    });
+
+    alerts.sort((a, b) => a.daysUntilDue - b.daysUntilDue);
+
+    const pendingFixedOutflowThisMonth = alerts.reduce((sum, a) => sum + a.amount, 0);
+    const liquidAssetsTotal = (assetAccounts || [])
+      .filter((a) => a.type === 'cash' || a.type === 'bank' || a.type === 'digital_wallet')
+      .reduce((sum, a) => sum + a.balance, 0);
+
+    const reserve = survivalSettings?.emergencyReserve ?? 3000;
+    const projectedMonthEndSafeBalance = Math.round(
+      liquidAssetsTotal - pendingFixedOutflowThisMonth - reserve
+    );
+
+    return {
+      upcomingAlerts: alerts,
+      urgentAlerts: alerts.filter((a) => a.isUrgent),
+      pendingFixedOutflowThisMonth,
+      liquidAssetsTotal,
+      projectedMonthEndSafeBalance,
+    };
+  }, [recurringItems, installments, debts, assetAccounts, survivalSettings]);
 
   useEffect(() => {
     const uid = activeUserIdRef.current;
@@ -1959,14 +2160,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const now = new Date();
     const todayStr = now.toISOString().slice(0, 10);
 
-    // 今日花費
+    // 今日花費 (排除跨帳戶轉帳/提款)
     const todaySpent = transactions
-      .filter((t) => t.type === 'expense' && t.date.slice(0, 10) === todayStr)
+      .filter((t) => t.type === 'expense' && !t.isTransfer && t.date.slice(0, 10) === todayStr)
       .reduce((acc, cur) => acc + cur.amount, 0);
 
-    // 本月總支出
+    // 本月總支出 (排除跨帳戶轉帳/提款)
     const totalMonthExpense = transactions
-      .filter((t) => t.type === 'expense')
+      .filter((t) => t.type === 'expense' && !t.isTransfer)
       .reduce((acc, cur) => acc + cur.amount, 0);
 
     // 計算重置日倒數
@@ -2218,6 +2419,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     await deleteTodoFromSupabase(id);
   };
 
+  // 輔助：根據 accountId 或付款方式名稱匹配資產帳戶索引
+  const findMatchedAccountIndex = (
+    accounts: AssetAccount[],
+    accountId?: string,
+    paymentMethodName?: string
+  ): number => {
+    if (!accounts || accounts.length === 0) return -1;
+    if (accountId) {
+      const byId = accounts.findIndex((a) => a.id === accountId);
+      if (byId !== -1) return byId;
+    }
+    const pm = (paymentMethodName || '').trim().toLowerCase();
+    if (!pm) return 0;
+
+    let idx = accounts.findIndex(
+      (acc) => pm.includes(acc.name.toLowerCase()) || acc.name.toLowerCase().includes(pm)
+    );
+    if (idx !== -1) return idx;
+
+    const isDigital =
+      pm.includes('line') ||
+      pm.includes('街口') ||
+      pm.includes('pay') ||
+      pm.includes('電子') ||
+      pm.includes('悠遊') ||
+      pm.includes('一卡通');
+    if (isDigital) {
+      idx = accounts.findIndex((acc) => acc.type === 'digital_wallet');
+      if (idx !== -1) return idx;
+    }
+
+    const isCash = pm.includes('現') || pm.includes('cash') || pm.includes('錢包');
+    idx = accounts.findIndex((acc) => acc.type === (isCash ? 'cash' : 'bank'));
+    return idx !== -1 ? idx : 0;
+  };
+
   const addTransaction = async (t: Transaction) => {
     const canonicalId = toUUID(t.id || `tx_${Date.now()}_${Math.random()}`);
     const enriched: Transaction = { ...t, id: canonicalId, userId: currentUser?.id || t.userId };
@@ -2229,28 +2466,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
 
-    // 💰 連動資產帳戶餘額 (Asset Account Balance Linkage)
+    // 💰 連動資產帳戶餘額 (支援單向收支與雙向跨帳戶轉帳/提款)
     setAssetAccounts((prev) => {
-      const pm = (t.paymentMethodName || '').toLowerCase();
-      const isCash = pm.includes('現') || pm.includes('cash');
-      const targetType = isCash ? 'cash' : 'bank';
-      const delta = t.type === 'expense' ? -t.amount : t.amount;
+      if (t.isTransfer) {
+        const fromIdx = findMatchedAccountIndex(prev, t.accountId, t.paymentMethodName);
+        const toIdx = findMatchedAccountIndex(prev, t.toAccountId, t.toAccountName);
+        return prev.map((acc, idx) => {
+          let nextBal = acc.balance;
+          if (idx === fromIdx) nextBal -= t.amount;
+          if (idx === toIdx) nextBal += t.amount;
+          if (idx === fromIdx || idx === toIdx) {
+            return {
+              ...acc,
+              balance: Math.round(nextBal * 10) / 10,
+              updatedAt: new Date().toISOString(),
+            };
+          }
+          return acc;
+        });
+      }
 
-      let matchedIndex = prev.findIndex((acc) => pm && (pm.includes(acc.name.toLowerCase()) || acc.name.toLowerCase().includes(pm)));
-      if (matchedIndex === -1) {
-        const isDigital = pm.includes('line') || pm.includes('街口') || pm.includes('pay') || pm.includes('電子') || pm.includes('悠遊') || pm.includes('一卡通');
-        if (isDigital) matchedIndex = prev.findIndex((acc) => acc.type === 'digital_wallet');
-      }
-      if (matchedIndex === -1) {
-        matchedIndex = prev.findIndex((acc) => acc.type === targetType);
-      }
-      if (matchedIndex === -1 && prev.length > 0) {
-        matchedIndex = 0;
-      }
+      const matchedIndex = findMatchedAccountIndex(prev, t.accountId, t.paymentMethodName);
+      const delta = t.type === 'expense' ? -t.amount : t.amount;
       if (matchedIndex !== -1) {
         return prev.map((acc, idx) =>
           idx === matchedIndex
-            ? { ...acc, balance: Math.round((acc.balance + delta) * 10) / 10, updatedAt: new Date().toISOString() }
+            ? {
+                ...acc,
+                balance: Math.round((acc.balance + delta) * 10) / 10,
+                updatedAt: new Date().toISOString(),
+              }
             : acc
         );
       }
@@ -2266,23 +2511,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetTx = transactions.find((t) => toUUID(t.id) === canonicalId);
     if (targetTx) {
       setAssetAccounts((prev) => {
-        const pm = (targetTx.paymentMethodName || '').toLowerCase();
-        const isCash = pm.includes('現') || pm.includes('cash');
-        const targetType = isCash ? 'cash' : 'bank';
-        const reverseDelta = targetTx.type === 'expense' ? targetTx.amount : -targetTx.amount;
-
-        let matchedIndex = prev.findIndex((acc) => pm && (pm.includes(acc.name.toLowerCase()) || acc.name.toLowerCase().includes(pm)));
-        if (matchedIndex === -1) {
-          const isDigital = pm.includes('line') || pm.includes('街口') || pm.includes('pay') || pm.includes('電子') || pm.includes('悠遊') || pm.includes('一卡通');
-          if (isDigital) matchedIndex = prev.findIndex((acc) => acc.type === 'digital_wallet');
+        if (targetTx.isTransfer) {
+          const fromIdx = findMatchedAccountIndex(prev, targetTx.accountId, targetTx.paymentMethodName);
+          const toIdx = findMatchedAccountIndex(prev, targetTx.toAccountId, targetTx.toAccountName);
+          return prev.map((acc, idx) => {
+            let nextBal = acc.balance;
+            if (idx === fromIdx) nextBal += targetTx.amount;
+            if (idx === toIdx) nextBal -= targetTx.amount;
+            if (idx === fromIdx || idx === toIdx) {
+              return {
+                ...acc,
+                balance: Math.round(nextBal * 10) / 10,
+                updatedAt: new Date().toISOString(),
+              };
+            }
+            return acc;
+          });
         }
-        if (matchedIndex === -1) matchedIndex = prev.findIndex((acc) => acc.type === targetType);
-        if (matchedIndex === -1 && prev.length > 0) matchedIndex = 0;
 
+        const matchedIndex = findMatchedAccountIndex(
+          prev,
+          targetTx.accountId,
+          targetTx.paymentMethodName
+        );
+        const reverseDelta = targetTx.type === 'expense' ? targetTx.amount : -targetTx.amount;
         if (matchedIndex !== -1) {
           return prev.map((acc, idx) =>
             idx === matchedIndex
-              ? { ...acc, balance: Math.round((acc.balance + reverseDelta) * 10) / 10, updatedAt: new Date().toISOString() }
+              ? {
+                  ...acc,
+                  balance: Math.round((acc.balance + reverseDelta) * 10) / 10,
+                  updatedAt: new Date().toISOString(),
+                }
               : acc
           );
         }
@@ -2297,6 +2557,168 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return next;
     });
     await deleteTransactionFromSupabase(id);
+  };
+
+  // 🔄 跨帳戶轉帳 / 提款 / 儲值
+  const transferBetweenAccounts = async (
+    fromAccountId: string,
+    toAccountId: string,
+    amount: number,
+    note?: string,
+    date?: string
+  ) => {
+    if (!amount || amount <= 0 || fromAccountId === toAccountId) return;
+    const fromAcc = assetAccounts.find((a) => a.id === fromAccountId);
+    const toAcc = assetAccounts.find((a) => a.id === toAccountId);
+    const fromName = fromAcc?.name || '轉出帳戶';
+    const toName = toAcc?.name || '轉入帳戶';
+
+    const tx: Transaction = {
+      id: `tx_trf_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      amount: Math.round(amount),
+      type: 'expense',
+      isTransfer: true,
+      accountId: fromAccountId,
+      toAccountId,
+      toAccountName: toName,
+      categoryName: '帳戶轉帳',
+      categoryIcon: 'ArrowLeftRight',
+      categoryColorHex: '#3B82F6',
+      paymentMethodName: fromName,
+      date: date || new Date().toISOString(),
+      notes: `【轉帳/提款】${fromName} ➔ ${toName}${note ? ` · ${note}` : ''}`,
+      valueScore: 8,
+      isSharedWithFriends: false,
+    };
+    await addTransaction(tx);
+  };
+
+  // ⚡ 一鍵極速記帳捷徑管理與觸發
+  const addQuickShortcut = (item: QuickExpenseShortcut) => {
+    const newId = item.id || `qs_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`;
+    setQuickShortcuts((prev) => [...prev, { ...item, id: newId }]);
+  };
+
+  const updateQuickShortcut = (item: QuickExpenseShortcut) => {
+    setQuickShortcuts((prev) => prev.map((q) => (q.id === item.id ? item : q)));
+  };
+
+  const deleteQuickShortcut = (id: string) => {
+    setQuickShortcuts((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const executeQuickShortcut = async (id: string): Promise<Transaction | null> => {
+    const sc = quickShortcuts.find((q) => q.id === id);
+    if (!sc) return null;
+    const newTx: Transaction = {
+      id: toUUID(`tx_qs_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
+      amount: sc.amount,
+      type: 'expense',
+      categoryName: sc.categoryName,
+      categoryIcon: sc.categoryIcon || 'Utensils',
+      categoryColorHex: sc.categoryColorHex || '#E67E22',
+      paymentMethodName: sc.paymentMethodName || '現金',
+      accountId: sc.accountId,
+      date: new Date().toISOString(),
+      notes: sc.label,
+      valueScore: 8,
+      isSharedWithFriends: false,
+    };
+    await addTransaction(newTx);
+    return newTx;
+  };
+
+  // 📚 課程翹課/請假安全額度計數器與學期封存
+  const recordCourseAbsence = async (
+    courseId: string,
+    type: 'sick' | 'personal' | 'skip',
+    note?: string,
+    date?: string
+  ) => {
+    const target = courses.find((c) => c.id === courseId || toUUID(c.id) === toUUID(courseId));
+    if (!target) return;
+    const newLog: CourseAbsenceLog = {
+      id: `abs_${Date.now()}_${Math.random().toString(36).slice(2, 5)}`,
+      date: date || new Date().toISOString().slice(0, 10),
+      type,
+      note: note?.trim() || undefined,
+    };
+    const nextLogs = [newLog, ...(target.absenceLogs || [])];
+    const updated: Course = {
+      ...target,
+      absenceCount: nextLogs.length,
+      maxAbsences: target.maxAbsences ?? 3,
+      absenceLogs: nextLogs,
+    };
+    await updateCourse(updated);
+  };
+
+  const removeCourseAbsence = async (courseId: string, logId?: string) => {
+    const target = courses.find((c) => c.id === courseId || toUUID(c.id) === toUUID(courseId));
+    if (!target) return;
+    const currentLogs = target.absenceLogs || [];
+    const nextLogs = logId ? currentLogs.filter((l) => l.id !== logId) : currentLogs.slice(1);
+    const nextCount = logId
+      ? nextLogs.length
+      : Math.max(0, (target.absenceCount || currentLogs.length) - 1);
+    const updated: Course = {
+      ...target,
+      absenceCount: nextCount,
+      absenceLogs: nextLogs,
+    };
+    await updateCourse(updated);
+  };
+
+  const archiveCurrentSemester = async (
+    semesterName: string,
+    clearSchedule = false
+  ): Promise<number> => {
+    const sem = semesterName.trim() || '115-1';
+    const existingNames = new Set(
+      courseGrades
+        .filter((cg) => cg.semester === sem)
+        .map((cg) => cg.courseName.trim().toLowerCase())
+    );
+    const uniqueCourses = new Map<string, Course>();
+    for (const c of courses) {
+      const key = (c.name || '').trim().toLowerCase();
+      if (key && !existingNames.has(key) && !uniqueCourses.has(key)) {
+        uniqueCourses.set(key, c);
+      }
+    }
+
+    const newGradeItems: CourseGradeItem[] = Array.from(uniqueCourses.values()).map((c, idx) => ({
+      id: toUUID(`cg_arc_${Date.now()}_${idx}`),
+      semester: c.semester || sem,
+      courseName: c.name,
+      emoji: 'BookOpen',
+      colorHex: c.colorHex || '#E67E22',
+      credits: c.credits ?? 3,
+      category: c.category || 'required',
+      attendanceWeight: 30,
+      midtermWeight: 30,
+      finalWeight: 40,
+      attendanceScore: null,
+      midtermScore: null,
+      finalScore: null,
+      isPassed: true,
+    }));
+
+    if (newGradeItems.length > 0) {
+      setCourseGrades((prev) => [...newGradeItems, ...prev]);
+    }
+
+    if (clearSchedule && courses.length > 0) {
+      for (const c of courses) {
+        await deleteCourseFromSupabase(c.id);
+      }
+      setCourses([]);
+      coursesRef.current = [];
+      syncScheduleToCloud([], todosRef.current, transactionsRef.current, calendarEventsRef.current);
+    }
+
+    setCatMood('proud');
+    return newGradeItems.length;
   };
 
   const rateFriendAccounting = async (
@@ -2406,10 +2828,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const repayDebt = (debtId: string, amount: number, note?: string, date?: string) => {
+    const repayAmount = Math.max(0, Number(amount));
+    const targetDebt = debts.find((d) => d.id === debtId);
+    if (targetDebt && repayAmount > 0) {
+      // 💰 還款/收款同步聯動資產帳戶餘額 (別人還我 -> 現金/銀行增加；我還別人 -> 現金/銀行減少)
+      setAssetAccounts((prev) => {
+        const delta = targetDebt.type === 'they_owe' ? repayAmount : -repayAmount;
+        const cashOrBankIdx = prev.findIndex((a) => a.type === 'cash' || a.type === 'bank');
+        const targetIdx = cashOrBankIdx !== -1 ? cashOrBankIdx : 0;
+        if (prev.length === 0) return prev;
+        return prev.map((acc, idx) =>
+          idx === targetIdx
+            ? {
+                ...acc,
+                balance: Math.round((acc.balance + delta) * 10) / 10,
+                updatedAt: new Date().toISOString(),
+              }
+            : acc
+        );
+      });
+    }
+
     setDebts((prev) =>
       prev.map((d) => {
         if (d.id !== debtId) return d;
-        const repayAmount = Math.max(0, Number(amount));
         const newRemaining = Math.max(0, d.remainingAmount - repayAmount);
         const repayment: DebtRepayment = {
           id: `repay_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
@@ -3163,6 +3605,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsFoodRouletteOpen,
         isPomodoroOpen,
         setIsPomodoroOpen,
+        isQuantModalOpen,
+        setIsQuantModalOpen,
         restoreBackupData,
         resetAllData,
         eventToEdit,
@@ -3223,6 +3667,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         toggleTodaySectionHidden,
         resetTodayLayout,
         upcomingCountdownsCount,
+        quickShortcuts,
+        addQuickShortcut,
+        updateQuickShortcut,
+        deleteQuickShortcut,
+        executeQuickShortcut,
+        transferBetweenAccounts,
+        recordCourseAbsence,
+        removeCourseAbsence,
+        archiveCurrentSemester,
+        cashflowForecast,
+        isGlobalSearchOpen,
+        setIsGlobalSearchOpen,
         gpaScale,
         setGpaScale,
         courseWishlist,

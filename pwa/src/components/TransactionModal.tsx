@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { Transaction } from '../types';
 import { useApp } from '../context/AppContext';
 import { toUUID } from '../services/supabase';
-import { X, Wallet, Tag, CreditCard, Sparkles, Plus, Check, Palette, GripVertical, Pencil, Trash2, ArrowUp, ArrowDown, ChevronLeft, Settings2, Calendar } from 'lucide-react';
+import { X, Wallet, Tag, CreditCard, Sparkles, Plus, Check, Palette, GripVertical, Pencil, Trash2, ArrowUp, ArrowDown, ChevronLeft, Settings2, Calendar, ArrowLeftRight } from 'lucide-react';
 import {
   CategoryIcon,
   AVAILABLE_CATEGORY_ICONS,
@@ -20,16 +20,29 @@ const PAYMENT_METHODS = ['現金', 'LINE Pay', '悠遊卡', '信用卡', '街口
 const QUICK_AMOUNTS = [50, 80, 100, 150, 200, 500, 1000];
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onClose, onSave }) => {
-  const { customExpenseCategories, customIncomeCategories, addCustomCategory, updateCustomCategory, reorderCustomCategories, deleteCustomCategory } = useApp();
+  const {
+    customExpenseCategories,
+    customIncomeCategories,
+    addCustomCategory,
+    updateCustomCategory,
+    reorderCustomCategories,
+    deleteCustomCategory,
+    assetAccounts,
+  } = useApp();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const [type, setType] = useState<'expense' | 'income'>('expense');
+  const [mode, setMode] = useState<'expense' | 'income' | 'transfer'>('expense');
+  const type: 'expense' | 'income' = mode === 'income' ? 'income' : 'expense';
   const [txDate, setTxDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
   const [amount, setAmount] = useState<string>('');
   const [categoryName, setCategoryName] = useState<string>('餐飲');
   const [paymentMethod, setPaymentMethod] = useState<string>('LINE Pay');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [toAccountId, setToAccountId] = useState<string>('');
   const [notes, setNotes] = useState<string>('');
   const [valueScore, setValueScore] = useState<number>(8);
+
+  const liquidAccounts = (assetAccounts || []).filter((a) => a.type !== 'stock');
 
   // Inline custom category creation
   const [isCreatingCategory, setIsCreatingCategory] = useState(false);
@@ -48,11 +61,20 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
 
   React.useEffect(() => {
     if (isOpen) {
-      setType('expense');
+      setMode('expense');
       setTxDate(new Date().toISOString().slice(0, 10));
       setAmount('');
       setCategoryName(customExpenseCategories[0]?.name || '餐飲');
-      setPaymentMethod('LINE Pay');
+      const firstAcc = liquidAccounts[0];
+      const secondAcc = liquidAccounts[1] || liquidAccounts[0];
+      if (firstAcc) {
+        setSelectedAccountId(firstAcc.id);
+        setPaymentMethod(firstAcc.name);
+      } else {
+        setSelectedAccountId('');
+        setPaymentMethod('LINE Pay');
+      }
+      setToAccountId(secondAcc?.id || '');
       setNotes('');
       setValueScore(8);
       setIsCreatingCategory(false);
@@ -128,20 +150,47 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
     const numAmount = parseFloat(amount);
     if (isNaN(numAmount) || numAmount <= 0) return;
 
+    const dateObj = new Date();
+    const isToday = txDate === dateObj.toISOString().slice(0, 10);
+    const finalDate = isToday ? dateObj.toISOString() : `${txDate}T12:00:00.000Z`;
+
+    if (mode === 'transfer') {
+      const fromAcc = liquidAccounts.find((a) => a.id === selectedAccountId);
+      const toAcc = liquidAccounts.find((a) => a.id === toAccountId);
+      const fromName = fromAcc?.name || paymentMethod || '轉出帳戶';
+      const toName = toAcc?.name || '轉入帳戶';
+
+      onSave({
+        id: toUUID(`tx_trf_${Date.now()}_${Math.random()}`),
+        amount: numAmount,
+        type: 'expense',
+        isTransfer: true,
+        accountId: selectedAccountId || undefined,
+        toAccountId: toAccountId || undefined,
+        toAccountName: toName,
+        categoryName: '帳戶轉帳',
+        categoryIcon: 'ArrowLeftRight',
+        categoryColorHex: '#3B82F6',
+        paymentMethodName: fromName,
+        date: finalDate,
+        notes: `【轉帳/提款】${fromName} ➔ ${toName}${notes.trim() ? ` · ${notes.trim()}` : ''}`,
+        isSharedWithFriends: false,
+      });
+      onClose();
+      return;
+    }
+
     const catObj = currentCategories.find((c) => c.name === categoryName) || {
       name: categoryName,
       icon: 'tag',
       colorHex: '#E67E22',
     };
 
-    const dateObj = new Date();
-    const isToday = txDate === dateObj.toISOString().slice(0, 10);
-    const finalDate = isToday ? dateObj.toISOString() : `${txDate}T12:00:00.000Z`;
-
     onSave({
       id: toUUID(`tx_${Date.now()}_${Math.random()}`),
       amount: numAmount,
       type,
+      accountId: selectedAccountId || undefined,
       categoryName: catObj.name,
       categoryIcon: catObj.icon || 'tag',
       categoryColorHex: catObj.colorHex,
@@ -183,39 +232,54 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
         {/* Scrollable Form Body */}
         <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4 pb-10 sm:pb-6">
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Expense / Income Toggle */}
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5">
-            <button
-              type="button"
-              onClick={() => {
-                setType('expense');
-                setCategoryName(customExpenseCategories[0]?.name || '餐飲');
-                setIsCreatingCategory(false);
-              }}
-              className={`py-2 rounded-xl text-xs font-black transition-all ${
-                type === 'expense'
-                  ? 'bg-calico-orange text-white shadow-xs'
-                  : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
-              }`}
-            >
-              支出 (Expense)
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setType('income');
-                setCategoryName(customIncomeCategories[0]?.name || '生活費');
-                setIsCreatingCategory(false);
-              }}
-              className={`py-2 rounded-xl text-xs font-black transition-all ${
-                type === 'income'
-                  ? 'bg-calico-sage text-white shadow-xs'
-                  : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
-              }`}
-            >
-              收入 (Income)
-            </button>
-          </div>
+            {/* Expense / Income / Transfer 3-Way Toggle */}
+            <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-calico-cream dark:bg-zinc-800 border border-black/5 dark:border-white/5">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('expense');
+                  setCategoryName(customExpenseCategories[0]?.name || '餐飲');
+                  setIsCreatingCategory(false);
+                }}
+                className={`py-2 rounded-xl text-xs font-black transition-all ${
+                  mode === 'expense'
+                    ? 'bg-calico-orange text-white shadow-xs'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+                }`}
+              >
+                支出 (扣款)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('income');
+                  setCategoryName(customIncomeCategories[0]?.name || '生活費');
+                  setIsCreatingCategory(false);
+                }}
+                className={`py-2 rounded-xl text-xs font-black transition-all ${
+                  mode === 'income'
+                    ? 'bg-calico-sage text-white shadow-xs'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+                }`}
+              >
+                收入 (入帳)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('transfer');
+                  setIsCreatingCategory(false);
+                }}
+                className={`py-2 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1 ${
+                  mode === 'transfer'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-calico-cocoa/60 dark:text-zinc-400 hover:text-calico-cocoa'
+                }`}
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5" />
+                <span>轉帳/提款</span>
+              </button>
+            </div>
 
           {/* 消費日期 (預設今日，點擊可自由選擇過去日期補記帳) */}
           <div className="flex items-center justify-between p-2.5 px-3.5 rounded-2xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/5 dark:border-white/5">
@@ -283,22 +347,110 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             </div>
           </div>
 
-          {/* 2. 消費物品名稱 */}
+          {/* 2. 消費物品名稱 / 轉帳備註 */}
           <div>
             <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1">
-              消費物品名稱 *
+              {mode === 'transfer' ? '轉帳 / 提款備註 (選填)' : '消費 / 收入品項說明'}
             </label>
             <input
               type="text"
-              placeholder="例如：排骨便當、拿鐵咖啡、文具筆記本..."
+              placeholder={
+                mode === 'transfer'
+                  ? '例如：ATM 提款、儲值 LINE Pay...'
+                  : '例如：排骨便當、拿鐵咖啡、家教薪水...'
+              }
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-calico-cream/60 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-sm font-bold text-calico-cocoa dark:text-zinc-100 focus:outline-none focus:ring-2 focus:ring-calico-orange/50"
             />
           </div>
 
-          {/* 3. 種類 (Category selection & Custom Category Creator & Management) */}
-          <div>
+          {mode === 'transfer' ? (
+            /* 🔄 跨帳戶轉帳 / 提款 / 儲值雙向選擇器 */
+            <div className="p-4 rounded-2xl bg-blue-500/5 border border-blue-500/20 space-y-3">
+              <div>
+                <label className="block text-xs font-black text-calico-cocoa dark:text-zinc-200 mb-1.5">
+                  1. 選擇轉出帳戶（扣款來源）
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {liquidAccounts.map((acc) => {
+                    const isSelected = selectedAccountId === acc.id;
+                    return (
+                      <button
+                        type="button"
+                        key={acc.id}
+                        onClick={() => {
+                          setSelectedAccountId(acc.id);
+                          setPaymentMethod(acc.name);
+                          if (toAccountId === acc.id) {
+                            const other = liquidAccounts.find((a) => a.id !== acc.id);
+                            if (other) setToAccountId(other.id);
+                          }
+                        }}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSelected
+                            ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                            : 'bg-white dark:bg-zinc-800 border-black/5 dark:border-white/10 text-calico-cocoa dark:text-zinc-200'
+                        }`}
+                      >
+                        <span className="text-xs font-black block truncate">{acc.name}</span>
+                        <span
+                          className={`text-[10px] font-mono font-bold tabular-nums ${
+                            isSelected ? 'text-blue-100' : 'text-calico-cocoa/50 dark:text-zinc-400'
+                          }`}
+                        >
+                          餘額 ${acc.balance.toLocaleString()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-center text-blue-600 dark:text-blue-400 text-xs font-black gap-1 py-0.5">
+                <ArrowLeftRight className="w-4 h-4" />
+                <span>資金自動轉入下方帳戶（不計入日常消費支出）</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-calico-cocoa dark:text-zinc-200 mb-1.5">
+                  2. 選擇轉入帳戶（入帳目標）
+                </label>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {liquidAccounts.map((acc) => {
+                    const isSelected = toAccountId === acc.id;
+                    const isSameAsFrom = selectedAccountId === acc.id;
+                    return (
+                      <button
+                        type="button"
+                        key={acc.id}
+                        disabled={isSameAsFrom}
+                        onClick={() => setToAccountId(acc.id)}
+                        className={`p-2.5 rounded-xl border text-left transition-all ${
+                          isSameAsFrom
+                            ? 'opacity-30 cursor-not-allowed bg-black/5 dark:bg-white/5 border-transparent'
+                            : isSelected
+                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-2xs'
+                            : 'bg-white dark:bg-zinc-800 border-black/5 dark:border-white/10 text-calico-cocoa dark:text-zinc-200'
+                        }`}
+                      >
+                        <span className="text-xs font-black block truncate">{acc.name}</span>
+                        <span
+                          className={`text-[10px] font-mono font-bold tabular-nums ${
+                            isSelected ? 'text-emerald-100' : 'text-calico-cocoa/50 dark:text-zinc-400'
+                          }`}
+                        >
+                          餘額 ${acc.balance.toLocaleString()}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* 3. 種類 (Category selection & Custom Category Creator & Management) */
+            <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
                 <Tag className="w-3.5 h-3.5" />
@@ -621,16 +773,17 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
               </div>
             )}
           </div>
+          )}
 
           {/* 4. 自評 (Value score rating for expenses) */}
-          {type === 'expense' && (
+          {mode === 'expense' && (
             <div className="p-3.5 rounded-2xl bg-calico-cream/70 dark:bg-zinc-800/60 border border-black/5 dark:border-white/5 space-y-1.5">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 flex items-center space-x-1">
                   <Sparkles className="w-3.5 h-3.5 text-calico-orange" />
                   <span>花費價值感自評</span>
                 </label>
-                <span className="text-xs font-extrabold text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15">
+                <span className="text-xs font-extrabold text-calico-orange px-2 py-0.5 rounded-md bg-calico-orange/15 tabular-nums">
                   {valueScore} / 10 分
                 </span>
               </div>
@@ -650,35 +803,89 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({ isOpen, onCl
             </div>
           )}
 
-          {/* 5. 付款方式 (Payment Method) */}
-          <div>
-            <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center space-x-1">
-              <CreditCard className="w-3.5 h-3.5" />
-              <span>付款方式</span>
-            </label>
-            <div className="flex flex-wrap gap-1.5">
-              {PAYMENT_METHODS.map((pm) => (
-                <button
-                  type="button"
-                  key={pm}
-                  onClick={() => setPaymentMethod(pm)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
-                    paymentMethod === pm
-                      ? 'bg-calico-cocoa text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-105'
-                      : 'bg-calico-cream/80 dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-400 hover:bg-calico-orange/10'
-                  }`}
-                >
-                  {pm}
-                </button>
-              ))}
+          {/* 5. 連動扣款/入帳資產帳戶與付款方式 */}
+          {mode !== 'transfer' && (
+            <div>
+              <label className="block text-xs font-bold text-calico-cocoa/70 dark:text-zinc-400 mb-1.5 flex items-center justify-between">
+                <span className="flex items-center space-x-1">
+                  <CreditCard className="w-3.5 h-3.5 text-calico-orange" />
+                  <span>{mode === 'expense' ? '扣款資產帳戶 / 付款方式' : '入帳資產帳戶'}</span>
+                </span>
+                <span className="text-[10px] text-calico-sage font-bold">
+                  自動同步增減帳戶餘額
+                </span>
+              </label>
+              <div className="flex flex-wrap gap-1.5">
+                {liquidAccounts.map((acc) => {
+                  const isSelected =
+                    selectedAccountId === acc.id ||
+                    (!selectedAccountId && paymentMethod === acc.name);
+                  return (
+                    <button
+                      type="button"
+                      key={acc.id}
+                      onClick={() => {
+                        setSelectedAccountId(acc.id);
+                        setPaymentMethod(acc.name);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 tabular-nums ${
+                        isSelected
+                          ? 'bg-calico-cocoa text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-102'
+                          : 'bg-calico-cream/80 dark:bg-zinc-800 text-calico-cocoa/75 dark:text-zinc-300 border border-black/5 dark:border-white/5 hover:border-calico-orange/40'
+                      }`}
+                    >
+                      <span>{acc.name}</span>
+                      <span
+                        className={`text-[10px] font-mono ${
+                          isSelected ? 'text-amber-300 dark:text-amber-600' : 'opacity-60'
+                        }`}
+                      >
+                        ${acc.balance.toLocaleString()}
+                      </span>
+                    </button>
+                  );
+                })}
+                {PAYMENT_METHODS.filter(
+                  (pm) => !liquidAccounts.some((a) => a.name.toLowerCase() === pm.toLowerCase())
+                ).map((pm) => {
+                  const isSelected = !selectedAccountId && paymentMethod === pm;
+                  return (
+                    <button
+                      type="button"
+                      key={pm}
+                      onClick={() => {
+                        setSelectedAccountId('');
+                        setPaymentMethod(pm);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                        isSelected
+                          ? 'bg-calico-cocoa text-white dark:bg-zinc-100 dark:text-zinc-900 shadow-xs scale-102'
+                          : 'bg-calico-cream/80 dark:bg-zinc-800 text-calico-cocoa/70 dark:text-zinc-400 hover:bg-calico-orange/10'
+                      }`}
+                    >
+                      {pm}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"
-            className="w-full py-3.5 px-4 rounded-2xl bg-calico-orange text-white font-extrabold shadow-ios hover:brightness-105 active:scale-95 transition-all text-sm tracking-wide mt-2"
+            className={`w-full py-3.5 px-4 rounded-2xl text-white font-extrabold shadow-ios hover:brightness-105 active:scale-95 transition-all text-sm tracking-wide mt-2 ${
+              mode === 'transfer'
+                ? 'bg-blue-600'
+                : mode === 'income'
+                ? 'bg-calico-sage'
+                : 'bg-calico-orange'
+            }`}
           >
-            儲存收支記錄
+            {mode === 'transfer'
+              ? '確認執行帳戶轉帳 / 提款'
+              : mode === 'income'
+              ? '儲存收入並入帳'
+              : '儲存支出並扣款'}
           </button>
         </form>
         </div>

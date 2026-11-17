@@ -20,3 +20,12 @@ pwa/dist/
 *.zip
 !campus-pwa.zip
 
+# Environment & Secrets
+.env
+.env.*
+!.env.example
+config.ini
+*.p12
+!config.example.ini
+
+

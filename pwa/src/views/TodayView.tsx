@@ -7,6 +7,7 @@ import { TransactionModal } from '../components/TransactionModal';
 import { EventModal } from '../components/EventModal';
 import { CountdownModal } from '../components/CountdownModal';
 import { TodayLayoutModal } from '../components/TodayLayoutModal';
+import { CourseHubModal } from '../components/CourseHubModal';
 import {
   Sun,
   Clock,
@@ -25,6 +26,9 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  Zap,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import { CategoryIcon } from '../components/CategoryIcon';
 import { CountdownCard } from '../components/CountdownCard';
@@ -59,6 +63,11 @@ export const TodayView: React.FC = () => {
     todaySectionsHidden,
     toggleTodaySectionCollapsed,
     upcomingCountdownsCount,
+    quickShortcuts,
+    executeQuickShortcut,
+    cashflowForecast,
+    recordRecurringNow,
+    payInstallmentPeriod,
   } = useApp();
 
   const now = new Date();
@@ -68,6 +77,8 @@ export const TodayView: React.FC = () => {
 
   // Modals state
   const [isCourseModalOpen, setIsCourseModalOpen] = useState(false);
+  const [isCourseHubOpen, setIsCourseHubOpen] = useState(false);
+  const [hubCourse, setHubCourse] = useState<Course | null>(null);
   const [isTodoModalOpen, setIsTodoModalOpen] = useState(false);
   const [isTxModalOpen, setIsTxModalOpen] = useState(false);
   const [isEventModalOpen, setIsEventModalOpen] = useState(false);
@@ -75,6 +86,7 @@ export const TodayView: React.FC = () => {
   const [countdownToEdit, setCountdownToEdit] = useState<CountdownItem | null>(null);
   const [isAllCountdownsExpanded, setIsAllCountdownsExpanded] = useState(false);
   const [isLayoutModalOpen, setIsLayoutModalOpen] = useState(false);
+  const [lastQuickTx, setLastQuickTx] = useState<Transaction | null>(null);
 
   const [courseToEdit, setCourseToEdit] = useState<Course | null>(null);
   const [todoToEdit, setTodoToEdit] = useState<Todo | null>(null);
@@ -566,51 +578,68 @@ export const TodayView: React.FC = () => {
 
         {todayCourses.length > 0 ? (
           <div className="space-y-2">
-            {todayCourses.map((c) => (
-              <div
-                key={c.id}
-                onClick={() => {
-                  setCourseToEdit(c);
-                  setIsCourseModalOpen(true);
-                }}
-                className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 hover:border-calico-orange/30 cursor-pointer transition-all flex items-center justify-between"
-              >
-                <div className="flex items-center space-x-3 min-w-0 flex-1 mr-2">
-                  <div
-                    className="w-2.5 h-9 rounded-full shrink-0 shadow-2xs"
-                    style={{ backgroundColor: c.colorHex }}
-                  />
-                  <div className="min-w-0">
-                    <h4 className="text-xs font-black text-calico-cocoa dark:text-zinc-100 truncate">
-                      {c.name}
-                    </h4>
-                    <div className="flex items-center space-x-2 text-[10px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 font-medium truncate">
-                      {c.classroom && (
-                        <span className="flex items-center space-x-0.5 truncate">
-                          <MapPin className="w-3 h-3 text-calico-orange shrink-0" />
-                          <span className="truncate">{c.classroom}</span>
-                        </span>
-                      )}
-                      {c.instructor && (
-                        <span className="flex items-center space-x-0.5 truncate">
-                          <User className="w-3 h-3 shrink-0" />
-                          <span className="truncate">{c.instructor}</span>
-                        </span>
-                      )}
+            {todayCourses.map((c) => {
+              const absCount = c.absenceCount ?? (c.absenceLogs?.length || 0);
+              const maxAbs = c.maxAbsences ?? 3;
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => {
+                    setHubCourse(c);
+                    setIsCourseHubOpen(true);
+                  }}
+                  className="p-3 rounded-2xl bg-calico-cream/50 dark:bg-zinc-800/40 border border-black/5 dark:border-white/5 hover:border-calico-orange/30 cursor-pointer transition-all flex items-center justify-between"
+                >
+                  <div className="flex items-center space-x-3 min-w-0 flex-1 mr-2">
+                    <div
+                      className="w-2.5 h-9 rounded-full shrink-0 shadow-2xs"
+                      style={{ backgroundColor: c.colorHex }}
+                    />
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <h4 className="text-xs font-black text-calico-cocoa dark:text-zinc-100 truncate">
+                          {c.name}
+                        </h4>
+                        {absCount > 0 && (
+                          <span
+                            className={`text-[10px] px-1.5 py-0.2 rounded-full font-black tabular-nums shrink-0 ${
+                              absCount >= maxAbs
+                                ? 'bg-rose-500/15 text-rose-600'
+                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
+                            }`}
+                          >
+                            缺 {absCount}/{maxAbs}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center space-x-2 text-[10px] text-calico-cocoa/60 dark:text-zinc-400 mt-0.5 font-medium truncate">
+                        {c.classroom && (
+                          <span className="flex items-center space-x-0.5 truncate">
+                            <MapPin className="w-3 h-3 text-calico-orange shrink-0" />
+                            <span className="truncate">{c.classroom}</span>
+                          </span>
+                        )}
+                        {c.instructor && (
+                          <span className="flex items-center space-x-0.5 truncate">
+                            <User className="w-3 h-3 shrink-0" />
+                            <span className="truncate">{c.instructor}</span>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                <div className="text-right shrink-0">
-                  <span
-                    style={{ color: c.colorHex }}
-                    className="text-[11px] font-mono font-black px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 whitespace-nowrap"
-                  >
-                    {c.startTime} - {c.endTime}
-                  </span>
+                  <div className="text-right shrink-0">
+                    <span
+                      style={{ color: c.colorHex }}
+                      className="text-[11px] font-mono font-black px-2 py-0.5 rounded-full bg-black/5 dark:bg-white/5 whitespace-nowrap tabular-nums"
+                    >
+                      {c.startTime} - {c.endTime}
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         ) : (
           <div className="py-6 text-center text-xs text-calico-cocoa/40 dark:text-zinc-500 font-bold space-y-1">
@@ -910,12 +939,12 @@ export const TodayView: React.FC = () => {
 
         {/* Budget Progress Bar */}
         <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs font-black">
+          <div className="flex items-center justify-between text-xs font-black tabular-nums">
             <span className="text-calico-cocoa dark:text-zinc-200">
               今日已花費 ${budgetInfo.todaySpent}
             </span>
             <span
-              className={spentPercent > 90 ? 'text-rose-500' : 'text-calico-orange font-mono'}
+              className={spentPercent > 90 ? 'text-rose-500 font-mono' : 'text-calico-orange font-mono'}
             >
               {spentPercent}%
             </span>
@@ -933,6 +962,125 @@ export const TodayView: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* ⚡ 一鍵極速記帳常駐捷徑 (Quick-Tap Expense Shortcuts) */}
+        <div className="space-y-1.5 pt-1">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-black text-calico-cocoa/60 dark:text-zinc-400 flex items-center gap-1">
+              <Zap className="w-3.5 h-3.5 text-calico-orange" />
+              <span>一鍵極速入帳（點擊立即記帳並連動扣款）</span>
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+            {quickShortcuts.map((sc) => (
+              <button
+                key={sc.id}
+                type="button"
+                onClick={async () => {
+                  const created = await executeQuickShortcut(sc.id);
+                  if (created) {
+                    setLastQuickTx(created);
+                    setTimeout(() => {
+                      setLastQuickTx((prev) => (prev?.id === created.id ? null : prev));
+                    }, 4500);
+                  }
+                }}
+                className="px-3 py-1.5 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800 border border-black/5 dark:border-white/10 hover:border-calico-orange hover:bg-calico-orange/10 active:scale-95 transition-all flex items-center gap-1.5 shrink-0 shadow-2xs"
+              >
+                <div
+                  style={{
+                    backgroundColor: `${sc.categoryColorHex || '#E67E22'}20`,
+                    color: sc.categoryColorHex || '#E67E22',
+                  }}
+                  className="w-5 h-5 rounded-lg flex items-center justify-center shrink-0"
+                >
+                  <CategoryIcon icon={sc.categoryIcon} categoryName={sc.categoryName} className="w-3 h-3" />
+                </div>
+                <span className="text-xs font-black text-calico-cocoa dark:text-zinc-100 whitespace-nowrap">
+                  {sc.label}
+                </span>
+                <span className="text-xs font-mono font-black text-calico-orange tabular-nums">
+                  ${sc.amount}
+                </span>
+              </button>
+            ))}
+          </div>
+
+          {/* 極速記帳成功 + 3秒撤銷提示條 */}
+          {lastQuickTx && (
+            <div className="p-2.5 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-between text-xs animate-fade-in">
+              <span className="font-bold text-emerald-800 dark:text-emerald-200 truncate">
+                ⚡ 已入帳：{lastQuickTx.notes || lastQuickTx.categoryName} -${lastQuickTx.amount}（已同步扣減 {lastQuickTx.paymentMethodName}）
+              </span>
+              <button
+                type="button"
+                onClick={async () => {
+                  await deleteTransaction(lastQuickTx.id);
+                  setLastQuickTx(null);
+                }}
+                className="px-2 py-0.5 rounded-lg bg-white dark:bg-zinc-800 text-rose-600 font-black flex items-center gap-1 shrink-0 ml-2 shadow-2xs"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>撤銷</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* 📊 3 日內固定扣款與分期到期預警 (Cashflow Alert) */}
+        {cashflowForecast.urgentAlerts.length > 0 && (
+          <div className="p-3 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-black text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                <span>近期固定扣款 / 分期到期預警 ({cashflowForecast.urgentAlerts.length} 筆)</span>
+              </span>
+              <span className="text-[10px] font-mono font-bold text-amber-700 dark:text-amber-400 tabular-nums">
+                月底預估安全餘額 ${cashflowForecast.projectedMonthEndSafeBalance.toLocaleString()}
+              </span>
+            </div>
+            <div className="space-y-1.5">
+              {cashflowForecast.urgentAlerts.map((alert) => (
+                <div
+                  key={alert.id}
+                  className="p-2 rounded-xl bg-white/85 dark:bg-zinc-900/70 flex items-center justify-between text-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="font-black text-calico-cocoa dark:text-zinc-100 truncate">
+                      {alert.title}
+                    </p>
+                    <p className="text-[10px] text-calico-cocoa/60 dark:text-zinc-400 tabular-nums">
+                      {alert.dueDayOrDate}（{alert.daysUntilDue === 0 ? '今日扣款' : `剩 ${alert.daysUntilDue} 天`}）· {alert.paymentMethodName}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0 ml-2">
+                    <span className="font-mono font-black text-rose-600 tabular-nums">
+                      -${alert.amount.toLocaleString()}
+                    </span>
+                    {alert.sourceType === 'recurring' && (
+                      <button
+                        type="button"
+                        onClick={() => recordRecurringNow(alert.sourceId)}
+                        className="px-2 py-1 rounded-lg bg-calico-orange text-white text-[10px] font-black shadow-2xs active:scale-95"
+                      >
+                        入帳
+                      </button>
+                    )}
+                    {alert.sourceType === 'installment' && (
+                      <button
+                        type="button"
+                        onClick={() => payInstallmentPeriod(alert.sourceId)}
+                        className="px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black shadow-2xs active:scale-95"
+                      >
+                        繳一期
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Today Transactions List */}
         {todayTransactions.length > 0 ? (
@@ -1011,17 +1159,17 @@ export const TodayView: React.FC = () => {
       {/* ======================================================== */}
       {/* ☀️ Top Hero Card: 今日總覽與問候 */}
       {/* ======================================================== */}
-      <div className="p-5 rounded-3xl bg-gradient-to-br from-calico-orange/20 via-calico-cream to-amber-100/40 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800/80 border border-calico-orange/30 shadow-ios relative overflow-hidden">
+      <div className="p-5 rounded-3xl bg-white dark:bg-calico-darkCard border border-calico-orange/25 shadow-ios relative overflow-hidden">
         <div className="flex items-center justify-between relative z-10">
           <div>
-            <div className="flex items-center space-x-1.5 text-calico-orange text-xs font-black uppercase tracking-wider mb-0.5">
+            <div className="flex items-center space-x-1.5 text-calico-orange text-xs font-black tracking-wide mb-0.5">
               <Sun className="w-4 h-4" />
               <span>今日重點 · 可樂管家隨行</span>
             </div>
-            <h2 className="text-xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight">
+            <h2 className="text-xl font-black text-calico-cocoa dark:text-zinc-100 tracking-tight tabular-nums">
               {formattedDate}
             </h2>
-            <p className="text-xs text-calico-cocoa/70 dark:text-zinc-400 font-bold mt-1">
+            <p className="text-xs text-calico-cocoa/65 dark:text-zinc-400 font-bold mt-1 tabular-nums">
               今日課表 {todayCourses.length} 堂 · 待辦 {todayTodos.filter((t) => !t.isCompleted).length} 項未完成 · 今日花費 ${budgetInfo.todaySpent}
             </p>
           </div>
@@ -1031,7 +1179,7 @@ export const TodayView: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsLayoutModalOpen(true)}
-              className="p-2 sm:px-3 sm:py-2 rounded-2xl bg-white/80 dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-200 font-bold text-xs shadow-2xs hover:bg-white active:scale-95 transition-all flex items-center space-x-1 border border-black/5 dark:border-white/10"
+              className="p-2 sm:px-3 sm:py-2 rounded-2xl bg-calico-cream dark:bg-zinc-800 text-calico-cocoa dark:text-zinc-200 font-bold text-xs shadow-2xs hover:border-calico-orange active:scale-95 transition-all flex items-center space-x-1 border border-black/5 dark:border-white/10"
               title="自訂首頁板塊排列與顯示"
             >
               <SlidersHorizontal className="w-3.5 h-3.5 text-calico-orange stroke-[2.2]" />
@@ -1041,7 +1189,7 @@ export const TodayView: React.FC = () => {
             <button
               type="button"
               onClick={() => setIsTxModalOpen(true)}
-              className="px-3.5 py-2 rounded-2xl bg-calico-orange text-white font-black text-xs shadow-ios hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1 shrink-0"
+              className="px-3.5 py-2 rounded-2xl bg-calico-orange text-white font-black text-xs shadow-ios-sm hover:brightness-105 active:scale-95 transition-all flex items-center space-x-1 shrink-0"
             >
               <Plus className="w-4 h-4" />
               <span>記一筆</span>
@@ -1060,6 +1208,16 @@ export const TodayView: React.FC = () => {
       {/* ======================================================== */}
       {/* Modals */}
       {/* ======================================================== */}
+      <CourseHubModal
+        isOpen={isCourseHubOpen}
+        course={hubCourse}
+        onClose={() => setIsCourseHubOpen(false)}
+        onEditCourse={(c) => {
+          setCourseToEdit(c);
+          setIsCourseModalOpen(true);
+        }}
+      />
+
       <CourseModal
         isOpen={isCourseModalOpen}
         course={courseToEdit}

@@ -21,6 +21,14 @@ body {
   -webkit-touch-callout: none;
   font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", system-ui, sans-serif;
   min-height: 100dvh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Enforce tabular numbers on all financial, time, grade, and countdown metrics */
+.font-mono,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
 }
 
 /* Safe area insets utilities */
@@ -53,6 +61,21 @@ body {
   }
 }
 
+@keyframes sheetUp {
+  from {
+    opacity: 0;
+    transform: translateY(24px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .animate-fade-in {
-  animation: fadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: fadeIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-sheet-up {
+  animation: sheetUp 0.26s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Course, DayOfWeek, ClassPeriod, SavedFriendRecord, CourseWishlistItem } from '../types';
 import { fetchSharedScheduleByCode } from '../services/supabase';
 import { CourseModal } from '../components/CourseModal';
+import { CourseHubModal } from '../components/CourseHubModal';
 import { CourseWishlistModal } from '../components/CourseWishlistModal';
 import { OcrModal } from '../components/OcrModal';
 import { PeriodSettingsModal, DEFAULT_CLASS_PERIODS } from '../components/PeriodSettingsModal';
@@ -22,6 +23,7 @@ import {
   ArrowRight,
   Eye,
   Users,
+  Archive,
 } from 'lucide-react';
 
 interface PeriodDef {
@@ -88,11 +90,15 @@ export const ScheduleView: React.FC = () => {
     courseWishlist,
     deleteWishlistCourse,
     convertWishlistToCourse,
+    archiveCurrentSemester,
   } = useApp();
 
   const [viewMode, setViewMode] = useState<'week' | 'day' | 'grades' | 'wishlist'>('week');
   const [includeWeekend, setIncludeWeekend] = useState(false);
   const [fitToScreen, setFitToScreen] = useState(true);
+  const [hubCourse, setHubCourse] = useState<Course | null>(null);
+  const [isCourseHubOpen, setIsCourseHubOpen] = useState(false);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
 
   // 📋 待選心願單 / 模擬排課狀態
   const [isWishlistModalOpen, setIsWishlistModalOpen] = useState(false);
@@ -232,11 +238,10 @@ export const ScheduleView: React.FC = () => {
     return false;
   };
 
-  // Open modal to edit existing course
+  // Open Course Hub Drawer first when clicking an existing course
   const handleEditCourse = (course: Course) => {
-    setModalCourse(course);
-    setModalDefaults({});
-    setIsCourseModalOpen(true);
+    setHubCourse(course);
+    setIsCourseHubOpen(true);
   };
 
   // Open modal to add new course with specific slot pre-filled
@@ -460,6 +465,22 @@ export const ScheduleView: React.FC = () => {
           </button>
 
           <button
+            onClick={async () => {
+              const count = await archiveCurrentSemester('115-1', false);
+              setArchiveNotice(
+                count > 0
+                  ? `已將 ${count} 門課程封存匯入「學分與成績」試算單！`
+                  : '目前課表課程皆已存在於成績試算單中。'
+              );
+              setTimeout(() => setArchiveNotice(null), 4000);
+            }}
+            className="w-8 h-8 rounded-xl bg-white/80 dark:bg-zinc-800 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:border-calico-orange/40 hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+            title="一鍵將本學期課表封存匯入成績與學分試算器"
+          >
+            <Archive className="w-4 h-4 text-amber-600" />
+          </button>
+
+          <button
             onClick={() => setIsOcrModalOpen(true)}
             className="w-8 h-8 rounded-xl bg-calico-orange/15 text-calico-orange flex items-center justify-center hover:bg-calico-orange/20 active:scale-95 transition-all shadow-2xs"
             title="AI 圖片課表自動辨識"
@@ -476,6 +497,20 @@ export const ScheduleView: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* 學期封存成功提示 */}
+      {archiveNotice && (
+        <div className="p-3 rounded-2xl bg-emerald-500/15 border border-emerald-500/30 text-xs font-black text-emerald-800 dark:text-emerald-200 flex items-center justify-between animate-fade-in">
+          <span>📦 {archiveNotice}</span>
+          <button
+            type="button"
+            onClick={() => setViewMode('grades')}
+            className="px-2.5 py-1 rounded-xl bg-emerald-600 text-white text-[11px] font-black"
+          >
+            查看成績單
+          </button>
+        </div>
+      )}
 
       {/* ======================================================== */}
       {/* 1. 週課表 網格視圖 (Weekly Grid View) */}
@@ -553,6 +588,8 @@ export const ScheduleView: React.FC = () => {
                       const matchedCourse = dayCourses.find((c) => matchesPeriod(c, period));
 
                       if (matchedCourse) {
+                        const absCount = matchedCourse.absenceCount ?? (matchedCourse.absenceLogs?.length || 0);
+                        const maxAbs = matchedCourse.maxAbsences ?? 3;
                         return (
                           <div
                             key={w.val}
@@ -570,9 +607,22 @@ export const ScheduleView: React.FC = () => {
                             >
                               {matchedCourse.name}
                             </p>
-                            <p className="text-[8px] text-calico-cocoa/60 dark:text-zinc-400 truncate mt-0.5 font-medium">
-                              {matchedCourse.classroom || matchedCourse.instructor || '課堂'}
-                            </p>
+                            <div className="flex items-center justify-between gap-0.5 mt-0.5">
+                              <p className="text-[8px] text-calico-cocoa/60 dark:text-zinc-400 truncate font-medium">
+                                {matchedCourse.classroom || matchedCourse.instructor || '課堂'}
+                              </p>
+                              {absCount > 0 && (
+                                <span
+                                  className={`text-[8px] px-1 rounded font-mono font-black shrink-0 tabular-nums ${
+                                    absCount >= maxAbs
+                                      ? 'bg-rose-500 text-white'
+                                      : 'bg-amber-500/20 text-amber-700 dark:text-amber-300'
+                                  }`}
+                                >
+                                  缺{absCount}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         );
                       }
@@ -1077,8 +1127,19 @@ export const ScheduleView: React.FC = () => {
       )}
 
       {/* ======================================================== */}
-      {/* 3. 課程新增 / 編輯 Modal */}
+      {/* 3. 課程戰情抽屜 & 課程新增 / 編輯 Modal */}
       {/* ======================================================== */}
+      <CourseHubModal
+        isOpen={isCourseHubOpen}
+        course={hubCourse}
+        onClose={() => setIsCourseHubOpen(false)}
+        onEditCourse={(c) => {
+          setModalCourse(c);
+          setModalDefaults({});
+          setIsCourseModalOpen(true);
+        }}
+      />
+
       <CourseModal
         isOpen={isCourseModalOpen}
         course={modalCourse}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { TabBar } from './components/TabBar';
@@ -13,13 +13,12 @@ import { AccountingView } from './views/AccountingView';
 import { SettingsView } from './views/SettingsView';
 import { ShareModal } from './components/ShareModal';
 import { PeriodSettingsModal } from './components/PeriodSettingsModal';
-import { CampusFortuneModal } from './components/CampusFortuneModal';
-import { FoodRouletteModal } from './components/FoodRouletteModal';
 import { FocusPomodoroModal } from './components/FocusPomodoroModal';
+import { QuantInsightModal } from './components/QuantInsightModal';
+import { GlobalSearchModal } from './components/GlobalSearchModal';
 
 const MainContent: React.FC = () => {
   const {
-    currentUser,
     activeTab,
     isAuthModalOpen,
     setIsAuthModalOpen,
@@ -29,29 +28,29 @@ const MainContent: React.FC = () => {
     setIsShareModalOpen,
     isPeriodModalOpen,
     setIsPeriodModalOpen,
-    isFortuneModalOpen,
-    setIsFortuneModalOpen,
-    isFoodRouletteOpen,
-    setIsFoodRouletteOpen,
     isPomodoroOpen,
     setIsPomodoroOpen,
+    isQuantModalOpen,
+    setIsQuantModalOpen,
+    isGlobalSearchOpen,
+    setIsGlobalSearchOpen,
   } = useApp();
 
-  // 🔒 強制第一次使用或未登入的使用者登入 / 註冊，防護資料隔離與隱私
-  if (!currentUser) {
-    return (
-      <div className="min-h-screen flex flex-col justify-center items-center bg-calico-cream dark:bg-calico-darkBg text-calico-cocoa dark:text-zinc-100 p-4 transition-colors">
-        <AuthModal
-          isOpen={true}
-          onClose={() => {}}
-        />
-      </div>
-    );
-  }
+  // 全域 Cmd+K / Ctrl+K 開啟智慧搜尋
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setIsGlobalSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [setIsGlobalSearchOpen]);
 
   return (
     <div className="min-h-screen flex flex-col bg-calico-cream dark:bg-calico-darkBg text-calico-cocoa dark:text-zinc-100 transition-colors">
-      {/* iOS style Top Header */}
+      {/* Top Header */}
       <Header />
 
       {/* PWA "Add to Home Screen" Banner */}
@@ -67,7 +66,7 @@ const MainContent: React.FC = () => {
         {activeTab === 'settings' && <SettingsView />}
       </main>
 
-      {/* iOS Floating Bottom TabBar */}
+      {/* Floating Bottom TabBar */}
       <TabBar />
 
       {/* 👤 User Auth & Multi-User Switcher Modal */}
@@ -94,22 +93,22 @@ const MainContent: React.FC = () => {
         onClose={() => setIsPeriodModalOpen(false)}
       />
 
-      {/* 🎋 可樂管家校園每日吉籤 Modal */}
-      <CampusFortuneModal
-        isOpen={isFortuneModalOpen}
-        onClose={() => setIsFortuneModalOpen(false)}
-      />
-
-      {/* 🍱 午餐吃什麼？校園美食決策轉盤 Modal */}
-      <FoodRouletteModal
-        isOpen={isFoodRouletteOpen}
-        onClose={() => setIsFoodRouletteOpen(false)}
-      />
-
       {/* ⏱️ 可樂管家伴讀番茄鐘 Modal */}
       <FocusPomodoroModal
         isOpen={isPomodoroOpen}
         onClose={() => setIsPomodoroOpen(false)}
+      />
+
+      {/* 📈 台股 AI 量化中台 Modal */}
+      <QuantInsightModal
+        isOpen={isQuantModalOpen}
+        onClose={() => setIsQuantModalOpen(false)}
+      />
+
+      {/* 🔍 全域關鍵字搜尋與統計 Spotlight Modal */}
+      <GlobalSearchModal
+        isOpen={isGlobalSearchOpen}
+        onClose={() => setIsGlobalSearchOpen(false)}
       />
     </div>
   );

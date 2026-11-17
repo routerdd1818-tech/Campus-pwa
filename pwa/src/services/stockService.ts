@@ -3,6 +3,8 @@
  * 支援台股 (TWSE/TPEx)、美股主要 ETF/個股即時查詢與離線基準行情
  */
 
+import { quantService } from './quantService';
+
 export interface StockPreset {
   symbol: string;
   name: string;
@@ -30,21 +32,36 @@ export const POPULAR_STOCKS: StockPreset[] = [
 const USD_TO_TWD = 32.2;
 
 /**
- * 取得單一標的最新價格（優先嘗試公開公開報價端點，失敗時回退至預設參考行情）
+ * 取得單一標的最新價格（優先嘗試 AlphaMind v2 即時撮合，失敗時依序降級）
  */
 export async function fetchStockPrice(symbol: string): Promise<{ price: number; name?: string; updatedAt: string }> {
   const cleanSymbol = symbol.trim().toUpperCase();
+  const rawTicker = cleanSymbol.replace(/\.(TW|TWO)$/i, '');
 
-  // 1. 嘗試由公開 Yahoo Finance API (免金鑰 query1 endpoint) 獲取
+  // 1. 優先嘗試由 AlphaMind v2 量化後端獲取（直連 TWSE MIS，無 CORS 且支援全台股）
+  try {
+    const quotes = await quantService.getRealtimeQuotes([rawTicker]);
+    if (quotes && quotes[rawTicker] && quotes[rawTicker].price > 0) {
+      const q = quotes[rawTicker];
+      return {
+        price: q.price,
+        name: q.name || undefined,
+        updatedAt: q.timestamp || new Date().toISOString(),
+      };
+    }
+  } catch {
+    // 降級處理
+  }
+
+  // 2. 嘗試由公開 Yahoo Finance API 獲取（適用美股等標的）
   try {
     const targetSymbol = cleanSymbol.includes('.') || cleanSymbol.length <= 4
       ? cleanSymbol
       : `${cleanSymbol}.TW`;
 
-    // 透過開放 query1 取得當前日線盤價
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(targetSymbol)}?interval=1d&range=1d`;
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000); // 4秒超時
+    const timeoutId = setTimeout(() => controller.abort(), 3500);
 
     const res = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
@@ -55,7 +72,6 @@ export async function fetchStockPrice(symbol: string): Promise<{ price: number; 
       if (meta && meta.regularMarketPrice) {
         let price = Number(meta.regularMarketPrice);
         const currency = meta.currency || 'TWD';
-        // 若為美金則折算為新台幣
         if (currency === 'USD') {
           price = Math.round(price * USD_TO_TWD * 10) / 10;
         }
@@ -66,13 +82,13 @@ export async function fetchStockPrice(symbol: string): Promise<{ price: number; 
         };
       }
     }
-  } catch (err) {
-    // 網路不可用或 CORS 限制，優雅降級
+  } catch {
+    // 降級處理
   }
 
-  // 2. 查閱內建基準清單
+  // 3. 查閱內建基準清單
   const preset = POPULAR_STOCKS.find(
-    (p) => p.symbol.toUpperCase() === cleanSymbol || p.symbol.split('.')[0] === cleanSymbol
+    (p) => p.symbol.toUpperCase() === cleanSymbol || p.symbol.split('.')[0] === cleanSymbol || p.symbol.split('.')[0] === rawTicker
   );
   if (preset) {
     return {
@@ -82,7 +98,7 @@ export async function fetchStockPrice(symbol: string): Promise<{ price: number; 
     };
   }
 
-  // 3. 自訂未收錄標的，保留當前價格
+  // 4. 自訂未收錄標的，保留當前價格
   return {
     price: 100,
     updatedAt: new Date().toISOString(),
@@ -90,22 +106,58 @@ export async function fetchStockPrice(symbol: string): Promise<{ price: number; 
 }
 
 /**
- * 批次更新所有持股標的之行情
+ * 批次更新所有持股標的之行情（優先調用 AlphaMind v2 批次合併查詢）
  */
 export async function batchFetchStockPrices(
   symbols: string[]
 ): Promise<Record<string, { price: number; name?: string }>> {
   const result: Record<string, { price: number; name?: string }> = {};
+  if (!symbols.length) return result;
 
-  const promises = symbols.map(async (s) => {
-    try {
-      const quote = await fetchStockPrice(s);
-      result[s] = { price: quote.price, name: quote.name };
-    } catch {
-      // 保持原樣
+  // 1. 整理代碼映射並由 AlphaMind 批次獲取台股
+  const rawToOriginal: Record<string, string> = {};
+  const rawList: string[] = [];
+
+  symbols.forEach((s) => {
+    const clean = s.trim().toUpperCase();
+    const raw = clean.replace(/\.(TW|TWO)$/i, '');
+    rawToOriginal[raw] = s;
+    rawList.push(raw);
+  });
+
+  const remainingSymbols: string[] = [];
+
+  try {
+    const liveQuotes = await quantService.getRealtimeQuotes(rawList);
+    Object.entries(liveQuotes).forEach(([raw, q]) => {
+      if (q && q.price > 0) {
+        const orig = rawToOriginal[raw] || raw;
+        result[orig] = { price: q.price, name: q.name };
+      }
+    });
+  } catch {
+    // 若 AlphaMind 未連線則整批降級
+  }
+
+  // 找出尚未獲取行情的標的（如美股或非台股代碼）
+  symbols.forEach((s) => {
+    if (!result[s]) {
+      remainingSymbols.push(s);
     }
   });
 
-  await Promise.allSettled(promises);
+  // 2. 對其餘標的進行單檔查詢降級
+  if (remainingSymbols.length > 0) {
+    const promises = remainingSymbols.map(async (s) => {
+      try {
+        const quote = await fetchStockPrice(s);
+        result[s] = { price: quote.price, name: quote.name };
+      } catch {
+        // 保持原樣
+      }
+    });
+    await Promise.allSettled(promises);
+  }
+
   return result;
 }

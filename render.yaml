@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: alphamind-quant-api
+    runtime: python
+    rootDir: alphamind
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python web/server.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: KEEP_ALIVE_24X7
+        value: "1"
+      - key: KEEP_ALIVE_INTERVAL_SEC
+        value: "600"
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: TWSE_MIS_QUOTE_URL
+        value: "https://mis.twse.com.tw/stock/api/getStockInfo.jsp"
+      - key: EXCHANGE_RATE_API_URL
+        value: "https://open.er-api.com/v6/latest/USD"

@@ -1,7 +1,7 @@
 import React from 'react';
 import { CalicoAvatar } from './CalicoAvatar';
 import { useApp } from '../context/AppContext';
-import { RefreshCw, MessageCircle, User, Share2 } from 'lucide-react';
+import { RefreshCw, User, Share2, TrendingUp, Search } from 'lucide-react';
 
 export const Header: React.FC = () => {
   const {
@@ -12,8 +12,9 @@ export const Header: React.FC = () => {
     syncWithSupabase,
     currentUser,
     setIsAuthModalOpen,
-    setIsLineBotModalOpen,
     setIsShareModalOpen,
+    setIsQuantModalOpen,
+    setIsGlobalSearchOpen,
     settings,
     nextSyncDisplay,
   } = useApp();
@@ -36,7 +37,12 @@ export const Header: React.FC = () => {
   };
 
   const cycleMood = () => {
-    const moods: Array<'happy' | 'thinking' | 'proud' | 'sleeping'> = ['happy', 'thinking', 'proud', 'sleeping'];
+    const moods: Array<'happy' | 'thinking' | 'proud' | 'sleeping'> = [
+      'happy',
+      'thinking',
+      'proud',
+      'sleeping',
+    ];
     const nextIndex = (moods.indexOf(catMood) + 1) % moods.length;
     setCatMood(moods[nextIndex]);
   };
@@ -44,30 +50,66 @@ export const Header: React.FC = () => {
   const displayName = currentUser?.displayName || settings.ownerName || '同學';
 
   return (
-    <header className="sticky top-0 z-40 px-4 pt-[max(env(safe-area-inset-top),16px)] pb-2.5 bg-calico-cream/90 dark:bg-calico-darkBg/90 backdrop-blur-md border-b border-black/5 dark:border-white/5 transition-colors">
-      <div className="max-w-md mx-auto flex items-center justify-between">
+    <header className="sticky top-0 z-40 px-4 pt-[max(env(safe-area-inset-top),14px)] pb-2.5 bg-calico-cream/92 dark:bg-calico-darkBg/92 backdrop-blur-md border-b border-black/5 dark:border-white/5 transition-colors">
+      <div className="max-w-md mx-auto flex items-center justify-between gap-2">
         {/* Left: Avatar & Greeting */}
-        <div className="flex items-center space-x-3">
-          <div title="可樂管家（點擊切換心情）">
-            <CalicoAvatar size={42} mood={catMood} onClick={cycleMood} />
+        <div className="flex items-center space-x-2.5 min-w-0">
+          <div title="可樂管家（點擊切換心情）" className="shrink-0">
+            <CalicoAvatar size={40} mood={catMood} onClick={cycleMood} />
           </div>
-          <div className="flex flex-col justify-center">
-            <h1 className="text-sm sm:text-base font-black text-calico-cocoa dark:text-zinc-100 tracking-tight leading-tight">
+          <div className="flex flex-col justify-center min-w-0">
+            <h1 className="text-sm sm:text-base font-black text-calico-cocoa dark:text-zinc-100 tracking-tight leading-tight truncate">
               {getGreeting()}，{displayName}
             </h1>
-            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 font-bold leading-tight mt-0.5">
+            <p className="text-[11px] text-calico-cocoa/60 dark:text-zinc-400 font-bold leading-tight mt-0.5 tabular-nums truncate">
               {getFormattedDate()} · 可樂管家
             </p>
           </div>
         </div>
 
-        {/* Right: Actions - Uniform 36x36 Icon Buttons with Perfect Alignment */}
-        <div className="flex items-center space-x-2">
+        {/* Right: Actions - Clean & Balanced in Calico Warm Style */}
+        <div className="flex items-center space-x-1.5 shrink-0">
+          {/* Global Spotlight Search Button */}
+          <button
+            type="button"
+            onClick={() => setIsGlobalSearchOpen(true)}
+            className="w-9 h-9 rounded-2xl bg-white/90 dark:bg-zinc-800/90 border border-black/8 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:border-calico-orange hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+            title="全域智慧搜尋（記帳統計、待辦、課表、行程）"
+          >
+            <Search className="w-4 h-4" />
+          </button>
+
+          {/* AlphaMind Quant Center Quick Launch (Warm Calico Accent Pill) */}
+          <button
+            type="button"
+            onClick={() => setIsQuantModalOpen(true)}
+            className="h-9 px-2.5 rounded-2xl bg-calico-orange/15 dark:bg-calico-orange/20 border border-calico-orange/30 text-calico-orange font-black text-xs flex items-center gap-1 hover:bg-calico-orange hover:text-white active:scale-95 transition-all shadow-2xs shrink-0"
+            title="一鍵開啟台股 AI 量化中台"
+          >
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span>量化</span>
+          </button>
+
+          {/* Friend Schedule & Calendar Sharing Button */}
+          <button
+            type="button"
+            onClick={() => setIsShareModalOpen(true)}
+            className="w-9 h-9 rounded-2xl bg-white/90 dark:bg-zinc-800/90 text-calico-cocoa/80 dark:text-zinc-200 border border-black/8 dark:border-white/10 flex items-center justify-center hover:border-calico-orange hover:text-calico-orange active:scale-95 transition-all shadow-2xs"
+            title="開啟好友課表、行事曆與記帳共享中心"
+          >
+            <Share2 className="w-4 h-4" />
+          </button>
+
           {/* User Account Button */}
           <button
+            type="button"
             onClick={() => setIsAuthModalOpen(true)}
-            className="w-9 h-9 rounded-2xl bg-calico-cream/80 dark:bg-zinc-800/80 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:bg-calico-orange/15 hover:text-calico-orange active:scale-95 transition-all shadow-2xs relative"
-            title={currentUser ? `已登入：${currentUser.displayName} (@${currentUser.username})` : '訪客模式（點擊登入/註冊）'}
+            className="w-9 h-9 rounded-2xl bg-white/90 dark:bg-zinc-800/90 border border-black/8 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:border-calico-orange hover:text-calico-orange active:scale-95 transition-all shadow-2xs relative"
+            title={
+              currentUser
+                ? `已登入：${currentUser.displayName} (@${currentUser.username})`
+                : '訪客模式（點擊登入/註冊）'
+            }
           >
             <User className="w-4 h-4" />
             {currentUser && (
@@ -75,29 +117,12 @@ export const Header: React.FC = () => {
             )}
           </button>
 
-          {/* LINE Bot Dedicated Push Button (Icon only) */}
-          <button
-            onClick={() => setIsLineBotModalOpen(true)}
-            className="w-9 h-9 rounded-2xl bg-[#06C755]/15 border border-[#06C755]/30 text-[#06C755] dark:text-[#25D366] flex items-center justify-center hover:bg-[#06C755]/25 active:scale-95 transition-all shadow-2xs"
-            title="開啟個人 LINE Bot 獨立推播中心"
-          >
-            <MessageCircle className="w-4 h-4" />
-          </button>
-
-          {/* Friend Schedule & Calendar Sharing Button */}
-          <button
-            onClick={() => setIsShareModalOpen(true)}
-            className="w-9 h-9 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800/40 flex items-center justify-center hover:bg-indigo-100 active:scale-95 transition-all shadow-2xs"
-            title="開啟好友課表、行事曆與記帳共享中心"
-          >
-            <Share2 className="w-4 h-4" />
-          </button>
-
           {/* Cloud Sync Button with Connection Status Dot */}
           <button
+            type="button"
             onClick={() => syncWithSupabase()}
             disabled={isSyncing}
-            className="w-9 h-9 rounded-2xl bg-white/90 dark:bg-zinc-800/90 border border-black/10 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:text-calico-orange active:scale-95 transition-all shadow-2xs relative"
+            className="w-9 h-9 rounded-2xl bg-white/90 dark:bg-zinc-800/90 border border-black/8 dark:border-white/10 text-calico-cocoa dark:text-zinc-200 flex items-center justify-center hover:text-calico-orange active:scale-95 transition-all shadow-2xs relative"
             title={`雲端同步 (${nextSyncDisplay})`}
           >
             <RefreshCw className={`w-4 h-4 text-calico-orange ${isSyncing ? 'animate-spin' : ''}`} />
